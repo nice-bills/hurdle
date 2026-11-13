@@ -1,0 +1,11 @@
+{
+  "lib/forge-std": {
+    "rev": "6e05729b76f1ae0d437e74951aef1ca987788ab3"
+  },
+  "lib/v4-core": {
+    "rev": "362c9cab7c03ca1122795aed2e8e118de9ed186e"
+  },
+  "lib/v4-periphery": {
+    "rev": "2768c3d578a5ffeec0bc51abcd8e472cb68f8a93"
+  }
+}
