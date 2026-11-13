@@ -64,9 +64,9 @@ On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
 
 ## Workflow (riskiest first)
 
-1. **Benchmark math spike**: per-L markout for v4 concentrated liquidity; Python reference; replay real swaps. Risk: math wrong or too noisy for settlement.
+1. ~~Benchmark math spike~~ DONE: closed form, path-independent, 2 snapshots, ~0 swap gas (`research/benchmark-math.md`). New top risk: settlement-price manipulation, so the hook keeps a TWAP.
 2. **Verification harness**: Foundry replay test diffing hook vs Python reference.
-3. **Benchmark accumulator** in `afterSwap` (lazy markout on first swap of each block).
+3. **Epoch snapshots + TWAP observation** in `afterSwap`.
 4. **Vault + settlement**: NAV, carry, bond shortfall payments.
 5. **Fire rule** + passive fallback.
 6. **Demo**: replay script, chart UI, testnet deploy, video.
