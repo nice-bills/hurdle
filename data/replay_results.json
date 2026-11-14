@@ -1,0 +1,197 @@
+{
+  "week_per_L": {
+    "fees_per_L": 6.230721781746959e-14,
+    "il_per_L": -2.4224411914959704e-13,
+    "benchmark_per_L": -1.7993690133212744e-13,
+    "sum_daily_bm_per_L": 2.2904340904705924e-13
+  },
+  "same_capital_full_range": {
+    "L": 1.057313601033747e+16,
+    "fees_usd": 658.7826884098281,
+    "il_usd": -2561.2800194730853,
+    "pool_volume_usd": 1311870388.6280677,
+    "bm_usd": -1902.4973310632572
+  },
+  "strategies": {
+    "Patient (static \u00b110%)": {
+      "strategy": {
+        "rebalances": 0,
+        "fees_usd": 8259.002006486879,
+        "rebal_cost_usd": 0.0,
+        "hodl_usd": 930989.2181590921,
+        "value_usd": 891273.5256367716,
+        "excess_vs_hodl_usd": -39715.692522320554,
+        "fees_bps": 82.59002006486878,
+        "rebal_cost_bps": 0.0,
+        "excess_vs_hodl_bps": -397.1569252232055
+      },
+      "benchmark_same_capital": {
+        "rebalances": 0,
+        "fees_usd": 384.3525687973564,
+        "rebal_cost_usd": 0.0,
+        "hodl_usd": 930989.2181590922,
+        "value_usd": 928812.2907084166,
+        "excess_vs_hodl_usd": -2176.927450675659,
+        "fees_bps": 3.843525687973564,
+        "rebal_cost_bps": 0.0,
+        "excess_vs_hodl_bps": -21.76927450675659,
+        "wide_pct": null
+      },
+      "days": [
+        {
+          "day": "2026-11-07",
+          "swaps": 2700,
+          "fees_usd": 429.7917720720869,
+          "fees_bps": 4.29791772072087,
+          "rebal_cost_usd": 0.0,
+          "rebal_cost_bps": 0.0,
+          "rebalances": 0
+        },
+        {
+          "day": "2026-11-08",
+          "swaps": 3806,
+          "fees_usd": 758.1067273680907,
+          "fees_bps": 7.581067273680907,
+          "rebal_cost_usd": 0.0,
+          "rebal_cost_bps": 0.0,
+          "rebalances": 0
+        },
+        {
+          "day": "2026-11-09",
+          "swaps": 7616,
+          "fees_usd": 1203.143811217409,
+          "fees_bps": 12.031438112174088,
+          "rebal_cost_usd": 0.0,
+          "rebal_cost_bps": 0.0,
+          "rebalances": 0
+        },
+        {
+          "day": "2026-11-10",
+          "swaps": 6915,
+          "fees_usd": 823.8939150777674,
+          "fees_bps": 8.238939150777673,
+          "rebal_cost_usd": 0.0,
+          "rebal_cost_bps": 0.0,
+          "rebalances": 0
+        },
+        {
+          "day": "2026-11-11",
+          "swaps": 7297,
+          "fees_usd": 776.3655617759913,
+          "fees_bps": 7.7636556177599125,
+          "rebal_cost_usd": 0.0,
+          "rebal_cost_bps": 0.0,
+          "rebalances": 0
+        },
+        {
+          "day": "2026-11-12",
+          "swaps": 6282,
+          "fees_usd": 233.14284933121155,
+          "fees_bps": 2.3314284933121154,
+          "rebal_cost_usd": 0.0,
+          "rebal_cost_bps": 0.0,
+          "rebalances": 0
+        },
+        {
+          "day": "2026-11-13",
+          "swaps": 7664,
+          "fees_usd": 0.0,
+          "fees_bps": 0.0,
+          "rebal_cost_usd": 0.0,
+          "rebal_cost_bps": 0.0,
+          "rebalances": 0
+        }
+      ]
+    },
+    "Chaser (re-center \u00b12%)": {
+      "strategy": {
+        "rebalances": 23,
+        "fees_usd": 57979.546547795835,
+        "rebal_cost_usd": 30142.735950668233,
+        "hodl_usd": 930989.2181590922,
+        "value_usd": 778978.8450422415,
+        "excess_vs_hodl_usd": -152010.37311685082,
+        "fees_bps": 579.7954654779584,
+        "rebal_cost_bps": 301.4273595066823,
+        "excess_vs_hodl_bps": -1520.1037311685081
+      },
+      "benchmark_same_capital": {
+        "rebalances": 0,
+        "fees_usd": 614.4143928510578,
+        "rebal_cost_usd": 0.0,
+        "hodl_usd": 930989.2181590922,
+        "value_usd": 929042.3525324704,
+        "excess_vs_hodl_usd": -1946.8656266219482,
+        "fees_bps": 6.1441439285105774,
+        "rebal_cost_bps": 0.0,
+        "excess_vs_hodl_bps": -19.468656266219483,
+        "wide_pct": null
+      },
+      "days": [
+        {
+          "day": "2026-11-07",
+          "swaps": 2700,
+          "fees_usd": 1520.6778655734881,
+          "fees_bps": 15.206778655734881,
+          "rebal_cost_usd": 5949.950168913158,
+          "rebal_cost_bps": 59.499501689131584,
+          "rebalances": 4
+        },
+        {
+          "day": "2026-11-08",
+          "swaps": 3806,
+          "fees_usd": 3473.603384214337,
+          "fees_bps": 34.73603384214337,
+          "rebal_cost_usd": 2856.607169594973,
+          "rebal_cost_bps": 28.56607169594973,
+          "rebalances": 2
+        },
+        {
+          "day": "2026-11-09",
+          "swaps": 7616,
+          "fees_usd": 5418.094735837796,
+          "fees_bps": 54.18094735837796,
+          "rebal_cost_usd": 2782.543607436643,
+          "rebal_cost_bps": 27.82543607436643,
+          "rebalances": 2
+        },
+        {
+          "day": "2026-11-10",
+          "swaps": 6915,
+          "fees_usd": 4856.508427588538,
+          "fees_bps": 48.56508427588538,
+          "rebal_cost_usd": 2726.107325413433,
+          "rebal_cost_bps": 27.26107325413433,
+          "rebalances": 2
+        },
+        {
+          "day": "2026-11-11",
+          "swaps": 7297,
+          "fees_usd": 3447.742472930486,
+          "fees_bps": 34.477424729304865,
+          "rebal_cost_usd": 2697.119392092485,
+          "rebal_cost_bps": 26.97119392092485,
+          "rebalances": 2
+        },
+        {
+          "day": "2026-11-12",
+          "swaps": 6282,
+          "fees_usd": 4493.987279415311,
+          "fees_bps": 44.93987279415311,
+          "rebal_cost_usd": 1317.8617912430022,
+          "rebal_cost_bps": 13.178617912430022,
+          "rebalances": 1
+        },
+        {
+          "day": "2026-11-13",
+          "swaps": 7664,
+          "fees_usd": 6285.5559259579395,
+          "fees_bps": 62.855559259579394,
+          "rebal_cost_usd": 11812.546495974542,
+          "rebal_cost_bps": 118.12546495974543,
+          "rebalances": 10
+        }
+      ]
+    }
+  }
+}
