@@ -14,7 +14,8 @@ contract DeployHurdleHook is Script {
         IPoolManager manager = IPoolManager(vm.envAddress("POOL_MANAGER"));
 
         uint160 flags = uint160(
-            Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.AFTER_SWAP_FLAG
+            Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.AFTER_INITIALIZE_FLAG
         );
 
         // The deployer must match the account broadcasting the CREATE2 transaction.
