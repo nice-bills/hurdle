@@ -256,6 +256,13 @@ contract HurdleHook is BaseHook {
         return (observation.timestamp, observation.tickCumulative);
     }
 
+    /// @notice Settlement tick for vaults: TWAP over `TWAP_WINDOW`, shortened to the available history.
+    /// shortcut: the 32-slot ring holds 32 blocks with swaps, so on a busy pool the window is shorter than 30 min; upgrade to a growable ring before mainnet.
+    function twapTick(PoolId id) external view returns (int24) {
+        (, int24 spotTick,,) = poolManager.getSlot0(id);
+        return _twapTickOrSpot(id, spotTick);
+    }
+
     /// @dev TWAP over `TWAP_WINDOW`, shortened to the available history; spot tick before that.
     function _twapTickOrSpot(PoolId id, int24 spotTick) private view returns (int24) {
         if (_oracle[id].cardinality < 2) return spotTick;
