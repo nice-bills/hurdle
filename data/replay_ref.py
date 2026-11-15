@@ -41,8 +41,9 @@ TOY STRATEGIES, same fixed capital D (default $1M), simulated swap by swap:
 All arithmetic in RAW token units (USDC 1e6, WETH 1e18); humanize only for
 output. Event semantics: positive amount = token the pool RECEIVED.
 
-Rerun:  python3 data/replay_ref.py
+Rerun:  python3 data/replay_ref.py [--csv data/weeks/2026-10-31.csv] [--json out.json]
 """
+import argparse
 import csv
 import gzip
 import json
@@ -66,11 +67,12 @@ def day_str(ts):
     return time.strftime("%Y-%m-%d", time.gmtime(ts))
 
 
-def load_swaps():
+def load_swaps(path=None):
     """-> list of dicts: day, block, amount0/1 (raw ints), s (float), L_pool."""
-    opener = gzip.open if CSV_PATH.endswith(".gz") else open
+    path = path or CSV_PATH
+    opener = gzip.open if path.endswith(".gz") else open
     rows = []
-    with opener(CSV_PATH, "rt") as f:
+    with opener(path, "rt") as f:
         for r in csv.DictReader(f):
             rows.append({
                 "day": day_str(int(r["timestamp"])),
@@ -360,9 +362,9 @@ def consistency_checks(rows, min_notional_usd=10.0):
 
 # ---------------------------------------------------------------------- main
 
-def main():
-    rows = load_swaps()
-    print(f"loaded {len(rows)} swaps from {os.path.basename(CSV_PATH)}")
+def main(csv_path=None, json_path=None):
+    rows = load_swaps(csv_path)
+    print(f"loaded {len(rows)} swaps from {os.path.basename(csv_path or CSV_PATH)}")
 
     med, p99, n = consistency_checks(rows)
     print(f"decode check over {n} swaps >= $10: trade price vs spot "
@@ -409,11 +411,15 @@ def main():
         print(f"  -> strategy vs par (excess difference): "
               f"{st['excess_vs_hodl_bps'] - bs['excess_vs_hodl_bps']:+.3f} bps of capital")
 
-    with open(os.path.join(HERE, "replay_results.json"), "w") as f:
+    with open(json_path or os.path.join(HERE, "replay_results.json"), "w") as f:
         json.dump({"week_per_L": week, "same_capital_full_range": cap,
                    "strategies": results}, f, indent=2)
-    print("\nsaved data/replay_results.json")
+    print(f"\nsaved {json_path or 'data/replay_results.json'}")
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--csv", help="swaps csv(.gz); default data/swaps.csv")
+    ap.add_argument("--json", help="results json path; default data/replay_results.json")
+    a = ap.parse_args()
+    main(a.csv, a.json)

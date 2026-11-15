@@ -11,10 +11,39 @@ demo"): per-day passive-LP benchmark and two toy curator strategies
 |---|---|
 | `fetch_swaps.py` | Fetcher: chunked `eth_getLogs`, retry/backoff, endpoint rotation, adaptive range splitting, raw-log resume cache. Stdlib + `requests`. No API keys. |
 | `swaps.csv` | 42,280 decoded Swap events, 5.0 MB. `block,timestamp,logIndex,amount0,amount1,sqrtPriceX96,liquidity,tick` |
-| `replay_ref.py` | Closed-form benchmark (per day + week) and the Patient/Chaser simulation. |
+| `replay_ref.py` | Closed-form benchmark (per day + week) and the Patient/Chaser simulation. `--csv`/`--json` select input/output. |
+| `week_summary.py` | Runs `replay_ref` over every `weeks/*.csv` -> `weeks/summary.md`. |
+| `weeks/` | Five 7-day windows (Oct 10 – Nov 13) + summary. |
 | `replay_results.json` | Machine-readable output of `replay_ref.py`. |
 | `block_timestamps.json` | block → timestamp cache (23,731 blocks; reused on rerun). |
 | `fetch_meta.json` | Fetch provenance: window, block range, endpoints, per-day counts. |
+
+## Week selection rule (fixed before any week was compared)
+
+Written 2026-11-15, before `weeks/summary.md` was generated or any of the four
+new weeks was inspected.
+
+- **Demo week** = the week, among the five 7-day windows below, with the
+  smallest |net ETH move| (first-swap price → last-swap price). Rationale:
+  a range-bound week is where a patient range LP is *supposed* to earn its
+  fees without being run over by IL, so it is the fair showcase for the
+  Patient-vs-Chaser contrast.
+- **Second scenario** = the existing down week (2026-11-07 → 11-13, −13.8%),
+  as the adverse case.
+- No strategy parameters (±10% / ±2%, cost rates, capital) are tuned after
+  seeing results. Whether Patient beats par and Chaser trails par in the
+  chosen week is reported as-is in `weeks/summary.md`, win or lose.
+
+Windows (7 complete UTC days each, start midnight): 2026-10-10, 10-17, 10-24,
+10-31, 11-07. Files: `weeks/<start>.csv` (same schema as `swaps.csv`),
+`weeks/<start>.meta.json` (provenance), `weeks/<start>.json` (replay result).
+`weeks/2026-11-07.csv` is a copy of `swaps.csv`.
+
+```bash
+python3 data/fetch_swaps.py --start-date 2026-10-31 --days 7 --out data/weeks/2026-10-31.csv
+python3 data/week_summary.py    # replays every weeks/*.csv -> weeks/summary.md
+python3 data/replay_ref.py --csv data/weeks/2026-10-31.csv --json /tmp/x.json
+```
 
 ## Source and window
 
@@ -131,3 +160,23 @@ Fetcher behavior: rotates endpoints per request, exponential backoff on
 429/5xx/network errors, and splits the block range in half when an endpoint
 rejects the range or result count (detects "greater than", "ranges over",
 "response size", etc.).
+
+## Multi-week results (see `weeks/summary.md`)
+
+Selection applied as written above: demo week = **2026-10-31** (ETH 2242 →
+2236, −0.27%), second scenario = 2026-11-07 (−13.80%). Outcome in the demo
+week, untuned: **Patient beats par** (+198 bps of capital) and **Chaser trails
+par** (−4,233 bps; 30 re-centers, fees 564 bps vs rebalance cost 287 bps, the
+rest is realized whipsaw loss of a ±2% range in a flat, oscillating week).
+In the down week both trail par (Patient −378, Chaser −1,501 bps).
+
+Notes:
+- "par" in `summary.md` is the strategy-independent closed-form full-range
+  benchmark (`benchmark()`'s `cap`). `simulate_strategy`'s own
+  `benchmark_same_capital` only accrues fees while the *strategy's* range is
+  in range, so it differs slightly per strategy (e.g. −21.8 vs −19.5 bps on
+  2026-11-07); that logic in `replay_ref.py` was left unchanged.
+- The Chaser magnitude on 2026-10-31 (−42% of capital in a −0.27% week) is
+  the toy model's output and has not been independently cross-checked.
+- Realized vol = annualized stdev of hourly log returns of the last in-hour
+  swap price.

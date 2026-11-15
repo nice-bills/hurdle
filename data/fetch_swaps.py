@@ -13,7 +13,12 @@ Output:
   data/fetch_meta.json        (block range, row count, endpoints used)
 
 Rerun:  python3 data/fetch_swaps.py
+Explicit window:  python3 data/fetch_swaps.py --start-date 2026-10-31 --days 7 --out data/weeks/2026-10-31.csv
+  (UTC midnight start; --out ending .gz is gzipped; fetch_meta/raw cache are then
+   written next to --out so the default swaps.csv/fetch_meta.json stay untouched)
 """
+import argparse
+import calendar
 import gzip
 import json
 import os
@@ -262,7 +267,7 @@ def fetch_all_chunks(from_block, to_block, endpoints_state):
     return logs
 
 
-def main():
+def main(args):
     t0 = time.time()
     ts_cache_path = os.path.join(HERE, "block_timestamps.json")
     ts_cache = {}
@@ -271,24 +276,30 @@ def main():
             ts_cache = {int(k): v for k, v in json.load(f).items()}
     print(f"timestamp cache: {len(ts_cache)} blocks")
 
-    head = latest_block()
-    head_ts = ts_cache.get(head) or block_timestamp(hex(head))
-    ts_cache[head] = head_ts
-    print(f"head block {head} ts {head_ts} ({time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(head_ts))} UTC)")
+    if args.start_date:
+        start_midnight = calendar.timegm(time.strptime(args.start_date, "%Y-%m-%d"))
+        end_midnight = start_midnight + args.days * DAY
+    else:
+        head = latest_block()
+        head_ts = ts_cache.get(head) or block_timestamp(hex(head))
+        ts_cache[head] = head_ts
+        print(f"head block {head} ts {head_ts} ({time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(head_ts))} UTC)")
 
-    # Window = 7 complete UTC days, ending at the last completed UTC midnight.
-    end_midnight = head_ts - (head_ts % DAY)          # today 00:00 UTC (partial day)
-    start_midnight = end_midnight - DAYS * DAY        # 7 full days before that
+        # Window = 7 complete UTC days, ending at the last completed UTC midnight.
+        end_midnight = head_ts - (head_ts % DAY)          # today 00:00 UTC (partial day)
+        start_midnight = end_midnight - DAYS * DAY        # 7 full days before that
     from_block = timestamp_at(start_midnight)
     to_block = timestamp_at(end_midnight) - 1
     print(f"fetching blocks {from_block}..{to_block} "
-          f"({to_block - from_block + 1} blocks, {DAYS} full UTC days "
+          f"({to_block - from_block + 1} blocks, {(end_midnight - start_midnight) // DAY} full UTC days "
           f"{time.strftime('%Y-%m-%d', time.gmtime(start_midnight))} .. "
           f"{time.strftime('%Y-%m-%d', time.gmtime(end_midnight - 1))})")
 
     # Resume support: cache the raw logs of a completed full fetch so a rerun
     # (e.g. after a crash in postprocessing) does not hit the RPCs again.
     cache_path = os.path.join(HERE, ".rawlogs_cache.json.gz")
+    if args.out:
+        cache_path = os.path.abspath(args.out) + ".rawlogs_cache.json.gz"
     endpoints_state = {"split": 0}
     logs = None
     if os.path.exists(cache_path):
@@ -359,14 +370,17 @@ def main():
     print(f"timestamp cache saved: {len(ts_cache)} blocks")
 
     csv_path = os.path.join(HERE, "swaps.csv")
+    if args.out:
+        csv_path = os.path.abspath(args.out)
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     header = "block,timestamp,logIndex,amount0,amount1,sqrtPriceX96,liquidity,tick"
     lines = [header]
     for r in rows:
         lines.append(f"{r['block']},{r['_ts']},{r['logIndex']},{r['amount0']},{r['amount1']},"
                      f"{r['sqrtPriceX96']},{r['liquidity']},{r['tick']}")
     size = sum(len(l) + 1 for l in lines)
-    if size > 50 * 1024 * 1024:
-        gz = csv_path + ".gz"
+    if csv_path.endswith(".gz") or size > (20 if args.out else 50) * 1024 * 1024:
+        gz = csv_path if csv_path.endswith(".gz") else csv_path + ".gz"
         with open(gz, "wb") as f:
             with gzip.GzipFile(fileobj=f, mode="wb") as g:
                 g.write("\n".join(lines).encode())
@@ -405,7 +419,10 @@ def main():
         "output": out,
         "fetch_seconds": round(time.time() - t0, 1),
     }
-    with open(os.path.join(HERE, "fetch_meta.json"), "w") as f:
+    meta_path = os.path.join(HERE, "fetch_meta.json")
+    if args.out:
+        meta_path = os.path.splitext(out)[0].removesuffix(".csv") + ".meta.json"
+    with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
     print(json.dumps(meta["days_utc"], indent=2))
     try:
@@ -417,4 +434,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--start-date", help="UTC date YYYY-MM-DD; default = 7 most recent complete days")
+    ap.add_argument("--days", type=int, default=DAYS)
+    ap.add_argument("--out", help="output csv path (.gz => gzipped); default data/swaps.csv")
+    main(ap.parse_args())

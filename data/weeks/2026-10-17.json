@@ -1,0 +1,61 @@
+{
+  "strategies": {
+    "patient": {
+      "strategy": {
+        "rebalances": 0,
+        "fees_usd": 10777.156557641032,
+        "rebal_cost_usd": 0.0,
+        "hodl_usd": 992426.3062697088,
+        "value_usd": 1002582.4632257905,
+        "excess_vs_hodl_usd": 10156.156956081788,
+        "fees_bps": 107.77156557641032,
+        "rebal_cost_bps": 0.0,
+        "excess_vs_hodl_bps": 101.56156956081787
+      },
+      "benchmark_same_capital": {
+        "rebalances": 0,
+        "fees_usd": 501.54096148750136,
+        "rebal_cost_usd": 0.0,
+        "hodl_usd": 992426.3062697084,
+        "value_usd": 992898.94751766,
+        "excess_vs_hodl_usd": 472.6412479515381,
+        "fees_bps": 5.015409614875013,
+        "rebal_cost_bps": 0.0,
+        "excess_vs_hodl_bps": 4.726412479515381,
+        "wide_pct": null
+      }
+    },
+    "chaser": {
+      "strategy": {
+        "rebalances": 8,
+        "fees_usd": 49248.24147997277,
+        "rebal_cost_usd": 11674.771753659667,
+        "hodl_usd": 992426.3062697084,
+        "value_usd": 985702.543745088,
+        "excess_vs_hodl_usd": -6723.762524620483,
+        "fees_bps": 492.4824147997277,
+        "rebal_cost_bps": 116.74771753659667,
+        "excess_vs_hodl_bps": -67.23762524620484
+      },
+      "benchmark_same_capital": {
+        "rebalances": 0,
+        "fees_usd": 498.9701764490736,
+        "rebal_cost_usd": 0.0,
+        "hodl_usd": 992426.3062697084,
+        "value_usd": 992896.3767326216,
+        "excess_vs_hodl_usd": 470.0704629130859,
+        "fees_bps": 4.989701764490736,
+        "rebal_cost_bps": 0.0,
+        "excess_vs_hodl_bps": 4.700704629130859,
+        "wide_pct": null
+      }
+    }
+  },
+  "same_capital_full_range": {
+    "L": 1.0163321903879006e+16,
+    "fees_usd": 501.5409614874991,
+    "il_usd": -28.89971353606375,
+    "pool_volume_usd": 217113698.4036614,
+    "bm_usd": 472.64124795143533
+  }
+}

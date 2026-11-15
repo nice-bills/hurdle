@@ -1,0 +1,36 @@
+{
+  "pool": "0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640",
+  "pool_label": "Uniswap v3 WETH/USDC 0.05% (Ethereum mainnet)",
+  "swap_topic": "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67",
+  "token0": "USDC (0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48, 6 dec)",
+  "token1": "WETH (0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2, 18 dec)",
+  "log_rpcs": [
+    "https://rpc.mevblocker.io",
+    "https://rpc.flashbots.net",
+    "https://eth.drpc.org"
+  ],
+  "general_rpcs": [
+    "https://rpc.mevblocker.io",
+    "https://rpc.flashbots.net",
+    "https://eth.drpc.org",
+    "https://ethereum-rpc.publicnode.com",
+    "https://1rpc.io/eth",
+    "https://cloudflare-eth.com"
+  ],
+  "from_block": 26158301,
+  "to_block": 26208546,
+  "window_start_utc": "2026-10-10T00:00:11Z",
+  "window_end_utc": "2026-10-16T23:59:59Z",
+  "swaps": 45457,
+  "days_utc": {
+    "2026-10-10": 4946,
+    "2026-10-11": 6789,
+    "2026-10-12": 6487,
+    "2026-10-13": 5557,
+    "2026-10-14": 5666,
+    "2026-10-15": 8954,
+    "2026-10-16": 7058
+  },
+  "output": "/home/bills/code/hurdle/data/weeks/2026-10-10.csv",
+  "fetch_seconds": 129.9
+}
