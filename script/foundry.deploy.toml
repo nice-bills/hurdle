@@ -1,0 +1,13 @@
+# Same as foundry.toml plus write access to script/out for vm.writeJson.
+# Use: FOUNDRY_CONFIG=script/foundry.deploy.toml forge script ...
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+ffi = true
+fs_permissions = [
+    { access = "read-write", path = ".forge-snapshots/" },
+    { access = "read-write", path = "script/out/" },
+]
+solc_version = "0.8.26"
+evm_version = "cancun"
