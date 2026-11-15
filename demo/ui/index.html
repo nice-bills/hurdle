@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hurdle demo</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg:#0d1117; --panel:#161b22; --line:#30363d; --grid:#21262d; --text:#e6edf3; --muted:#8b949e;
+  --par:#e6edf3; --v0:#3dd6c4; --v1:#ff9f43; --v2:#a78bfa; --v3:#f472b6;
+  --bad:#ff5d5d; --good:#3fb950; --below:rgba(255,93,93,.10);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:#f6f8fa; --panel:#ffffff; --line:#d0d7de; --grid:#eaeef2; --text:#1f2328; --muted:#59636e;
+    --par:#1f2328; --v0:#0a8f80; --v1:#c75b00; --v2:#6f42c1; --v3:#bf3989;
+    --bad:#cf222e; --good:#1a7f37; --below:rgba(207,34,46,.08);
+  }
+}
+:root[data-theme="light"] {
+  --bg:#f6f8fa; --panel:#ffffff; --line:#d0d7de; --grid:#eaeef2; --text:#1f2328; --muted:#59636e;
+  --par:#1f2328; --v0:#0a8f80; --v1:#c75b00; --v2:#6f42c1; --v3:#bf3989;
+  --bad:#cf222e; --good:#1a7f37; --below:rgba(207,34,46,.08);
+}
+* { box-sizing:border-box; margin:0; }
+html,body { height:100%; }
+body { background:var(--bg); color:var(--text); font:14px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  display:grid; grid-template-rows:auto 1fr auto; gap:10px; padding:12px 16px; min-height:100vh; overflow:hidden; }
+.num { font-variant-numeric:tabular-nums; }
+header { display:flex; align-items:flex-end; gap:16px; justify-content:space-between; }
+h1 { font-size:22px; letter-spacing:-.01em; }
+h1 span { color:var(--muted); font-weight:400; font-size:15px; margin-left:8px; }
+.sub { color:var(--muted); font-size:12px; margin-top:2px; }
+.tools { display:flex; gap:8px; align-items:center; }
+select,button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; cursor:pointer; }
+button:hover,select:hover { border-color:var(--muted); }
+button.on { border-color:var(--text); }
+main { display:grid; grid-template-columns:1fr 330px; gap:12px; min-height:0; }
+.chartbox { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 4px 4px; display:flex; flex-direction:column; min-height:0; position:relative; }
+.legend { display:flex; flex-wrap:wrap; gap:4px 16px; padding:0 14px 4px; font-size:12px; color:var(--muted); align-items:center; }
+.legend i { display:inline-block; width:22px; height:0; border-top:3px solid; vertical-align:middle; margin-right:5px; }
+.legend i.dash { border-top-style:dashed; border-top-width:2px; }
+.legend i.box { width:14px; height:10px; border:0; background:var(--below); outline:1px solid var(--bad); }
+#main { flex:1; min-height:0; position:relative; }
+#strip { height:104px; position:relative; }
+svg { display:block; width:100%; height:100%; }
+text { fill:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+.fired { position:absolute; transform:translate(-50%,0); pointer-events:none; display:none; text-align:center; }
+.fired.show { display:block; animation:pop .5s cubic-bezier(.2,1.4,.4,1); }
+.fired b { display:block; background:var(--bad); color:#fff; font-size:26px; letter-spacing:.08em; padding:2px 14px; border-radius:6px; box-shadow:0 4px 18px rgba(0,0,0,.35); }
+.fired small { display:block; color:var(--bad); font-weight:600; font-size:12px; margin-top:3px; background:var(--panel); border-radius:4px; }
+@keyframes pop { from { transform:translate(-50%,0) scale(.3); opacity:0 } to { transform:translate(-50%,0) scale(1); opacity:1 } }
+.cards { display:flex; flex-direction:column; gap:10px; min-height:0; }
+.card { background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--c); border-radius:10px; padding:10px 12px; flex:1; display:flex; flex-direction:column; gap:6px; min-height:0; }
+.card.isfired { border-color:var(--bad); border-left-color:var(--bad); }
+.card h2 { font-size:16px; display:flex; justify-content:space-between; align-items:center; }
+.card h2 em { font-style:normal; color:var(--c); }
+.pill { font-size:11px; font-weight:700; letter-spacing:.06em; padding:2px 8px; border-radius:99px; border:1px solid var(--good); color:var(--good); }
+.card.isfired .pill { background:var(--bad); border-color:var(--bad); color:#fff; }
+.meter { height:10px; background:var(--grid); border-radius:5px; position:relative; }
+.meter .fill { position:absolute; inset:0 auto 0 0; border-radius:5px; background:var(--c); }
+.meter .tick { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--muted); }
+.meter .tick.thr { background:var(--bad); }
+.cap { font-size:11px; color:var(--muted); margin-top:-2px; }
+.minibond { flex:1; min-height:48px; }
+.rows { display:grid; grid-template-columns:1fr auto; gap:2px 8px; font-size:13px; }
+.rows span:nth-child(odd) { color:var(--muted); }
+.rows span:nth-child(even) { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.ok { color:var(--good); } .bad { color:var(--bad); }
+footer { display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 12px; }
+footer input[type=range] { flex:1; accent-color:var(--text); }
+#play { min-width:84px; font-weight:600; }
+#clock { min-width:150px; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+#msg { position:absolute; inset:0; display:none; align-items:center; justify-content:center; color:var(--bad); padding:24px; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Hurdle<span id="pitch">Your LP curator beats a passive LP or pays you the difference from their own bond.</span></h1>
+    <div class="sub num" id="sub"></div>
+  </div>
+  <div class="tools">
+    <select id="scenario" aria-label="Scenario"></select>
+    <button id="theme" title="Toggle theme (t)">Theme</button>
+  </div>
+</header>
+
+<main>
+  <div class="chartbox">
+    <div class="legend" id="legend"></div>
+    <div id="main"><svg id="svgMain"></svg></div>
+    <div id="strip"><svg id="svgStrip"></svg></div>
+    <div id="msg"></div>
+  </div>
+  <div class="cards" id="cards"></div>
+</main>
+
+<footer>
+  <button id="play">Play</button>
+  <button id="restart" title="Home">⏮</button>
+  <input id="scrub" type="range" min="0" max="1" step="0.01" value="0" aria-label="Time">
+  <button id="final" title="End">Final</button>
+  <button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button>
+  <span id="clock"></span>
+</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const SVGNS = 'http://www.w3.org/2000/svg';
+const DURATION = 24;                      // seconds for a full 1× playback
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const pct = (v, d = 2) => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(d) + '%';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const S = { data: null, names: [], pos: 0, playing: false, speed: 1, last: 0, firedAt: {}, firedShown: {} };
+
+// ---------- load ----------
+async function boot() {
+  let list;
+  try { list = await (await fetch('scenarios.json')).json(); }
+  catch (e) { return showMsg('Cannot load scenarios.json — serve demo/ over HTTP (see README).'); }
+  const sel = $('#scenario');
+  sel.innerHTML = list.map(s => `<option value="${esc(s.id)}">${esc(s.label || s.id)}</option>`).join('');
+  const q = new URLSearchParams(location.search).get('s');
+  if (q && list.some(s => s.id === q)) sel.value = q;
+  sel.onchange = () => load(sel.value);
+  await load(sel.value);
+  if (location.hash === '#play') play();
+}
+
+async function load(id) {
+  pause(); showMsg('');
+  let d;
+  try {
+    const r = await fetch(`../out/${encodeURIComponent(id)}.json`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    d = await r.json();
+    if (!d.points || !d.points.length) throw new Error('no points');
+  } catch (e) { S.data = null; clearAll(); return showMsg(`Could not load ../out/${id}.json (${e.message}). Run the replay script or pick another scenario.`); }
+  S.data = d; S.names = Object.keys(d.points[0].vaults);
+  const P = d.points, N = P.length;
+  S.t = P.map(p => p.t);
+  S.firedAt = {};
+  for (const e of d.events || []) if (e.type === 'fired' && S.firedAt[e.vault] == null) S.firedAt[e.vault] = e.t;
+  S.names.forEach(n => { if (S.firedAt[n] == null) { const p = P.find(p => p.vaults[n].fired); if (p) S.firedAt[n] = p.t; } });
+  S.firedShown = {};
+  // fixed scales across the whole run so the chart does not jump while playing
+  const ys = []; P.forEach(p => { ys.push(p.par); S.names.forEach(n => ys.push(p.vaults[n].depositor, p.vaults[n].nav)); });
+  S.y = niceRange(Math.min(...ys), Math.max(...ys));
+  const pr = P.map(p => p.price); S.py = niceRange(Math.min(...pr), Math.max(...pr), .12, true);
+  const bonds = []; P.forEach(p => S.names.forEach(n => bonds.push(p.vaults[n].bond)));
+  S.bmax = Math.max(...bonds, d.points[0].vaults[S.names[0]].bond) * 1.15;
+  S.bmin = Math.min(...bonds, 0);
+  $('#scrub').max = N - 1;
+  const m = d.meta || {};
+  $('#sub').textContent = [m.pool, m.start && m.end ? `${m.start.slice(0,10)} → ${m.end.slice(0,10)}` : '',
+    `1.00 = start capital · unit: ${m.unit || '?'}`, m.carryBps != null ? `carry ${m.carryBps/100}%` : '', m.minBondBps != null ? `fire at bond < ${m.minBondBps/100}% NAV` : ''].filter(Boolean).join('  ·  ');
+  buildLegend(); buildCards(); buildBadges();
+  S.pos = N - 1;                           // default: static final view
+  $('#play').textContent = 'Play';
+  render();
+}
+
+function niceRange(lo, hi, padF = .1, noZero) {
+  const pad = (hi - lo || Math.abs(hi) * .01 || 1) * padF; lo -= pad; hi += pad;
+  const raw = (hi - lo) / 5, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(k => k * mag).find(s => s >= raw);
+  return { lo, hi, step };
+}
+function showMsg(t) { const m = $('#msg'); m.textContent = t; m.style.display = t ? 'flex' : 'none'; }
+function clearAll() { $('#svgMain').innerHTML = $('#svgStrip').innerHTML = $('#cards').innerHTML = $('#legend').innerHTML = ''; $('#sub').textContent = ''; document.querySelectorAll('.fired').forEach(e => e.remove()); }
+const col = i => `var(--v${i % 4})`;
+
+// ---------- static DOM ----------
+function buildLegend() {
+  $('#legend').innerHTML = `<span><i style="border-color:var(--par);border-top-width:5px;opacity:.55"></i>Par (passive LP)</span>` +
+    S.names.map((n, i) => `<span><i style="border-color:${col(i)}"></i>${esc(n)} depositor</span><span><i class="dash" style="border-color:${col(i)}"></i>${esc(n)} NAV</span>`).join('') +
+    `<span><i class="box"></i>below par</span><span>shade = bond paid</span>`;
+}
+function buildCards() {
+  $('#cards').innerHTML = S.names.map((n, i) => `
+    <div class="card" id="card-${i}" style="--c:${col(i)}">
+      <h2><em>${esc(n[0].toUpperCase() + n.slice(1))}</em><span class="pill">ACTIVE</span></h2>
+      <div class="rows">
+        <span>Depositor vs par</span><span id="c${i}-dep"></span>
+        <span>NAV vs par</span><span id="c${i}-nav"></span>
+      </div>
+      <div class="meter" id="c${i}-meter"><div class="fill"></div><div class="tick init"></div><div class="tick thr"></div></div>
+      <div class="cap" id="c${i}-cap"></div>
+      <div class="rows">
+        <span>Bond</span><span id="c${i}-bond"></span>
+        <span>Carry earned</span><span id="c${i}-carry"></span>
+        <span>Shortfall paid</span><span id="c${i}-short"></span>
+      </div>
+      <div class="minibond"><svg id="c${i}-svg"></svg></div>
+    </div>`).join('');
+}
+function buildBadges() {
+  document.querySelectorAll('.fired').forEach(e => e.remove());
+  S.names.forEach((n, i) => {
+    if (S.firedAt[n] == null) return;
+    const d = document.createElement('div'); d.className = 'fired'; d.id = `fired-${i}`;
+    d.innerHTML = `<b>FIRED</b><small>${esc(n)} · bond exhausted → passive</small>`;
+    $('.chartbox').appendChild(d);
+  });
+}
+
+// ---------- geometry ----------
+function interp(arr, pos) {                // arr: number[] ; linear tip
+  const i = Math.floor(pos), f = pos - i;
+  return i >= arr.length - 1 ? arr[arr.length - 1] : arr[i] + (arr[i + 1] - arr[i]) * f;
+}
+function xOfT(t, g) { const T = S.t; return g.l + (t - T[0]) / (T[T.length - 1] - T[0]) * (g.w - g.l - g.r); }
+function posOfT(t) { const T = S.t; if (t <= T[0]) return 0; for (let i = 1; i < T.length; i++) if (T[i] >= t) return i - 1 + (t - T[i-1]) / (T[i] - T[i-1]); return T.length - 1; }
+function series(get) { return S.data.points.map(get); }
+// polyline path points for 0..pos with interpolated tip
+function pathPts(vals, pos, X, Y) {
+  const out = [], n = Math.floor(pos);
+  for (let i = 0; i <= n && i < vals.length; i++) out.push([X(S.t[i]), Y(vals[i])]);
+  if (pos > n && n < vals.length - 1) out.push([X(interp(S.t, pos)), Y(interp(vals, pos))]);
+  return out;
+}
+const line = pts => pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+
+function ticks(r) { const a = []; for (let v = Math.ceil(r.lo / r.step) * r.step; v <= r.hi; v += r.step) a.push(v); return a; }
+
+// ---------- render ----------
+function render() {
+  const D = S.data; if (!D) return;
+  const pos = S.pos, n = Math.floor(pos), P = D.points;
+  drawMain(pos); drawStrip(pos);
+  S.names.forEach((nm, i) => updateCard(i, nm, P[Math.min(n, P.length - 1)], pos));
+  const tNow = interp(S.t, pos), day = (tNow - S.t[0]) / 86400;
+  $('#clock').textContent = `Day ${Math.min(Math.floor(day) + 1, Math.ceil((S.t[S.t.length-1] - S.t[0]) / 86400))} · ${new Date(tNow * 1000).toISOString().slice(5, 16).replace('T', ' ')} UTC`;
+  $('#scrub').value = pos;
+  $('#play').textContent = S.playing ? 'Pause' : (pos >= P.length - 1 ? 'Replay' : 'Play');
+}
+
+function mk(w, h, l, r, t, b) { return { w, h, l, r, t, b }; }
+function drawMain(pos) {
+  const el = $('#svgMain'), w = el.clientWidth, h = el.clientHeight; if (!w) return;
+  const g = mk(w, h, 58, 16, 10, 8), Y = v => g.t + (S.y.hi - v) / (S.y.hi - S.y.lo) * (h - g.t - g.b), X = t => xOfT(t, g);
+  const P = S.data.points;
+  let s = '';
+  for (const v of ticks(S.y)) s += `<line x1="${g.l}" x2="${w - g.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${g.l - 6}" y="${Y(v) + 4}" text-anchor="end">${pct(v - 1, 1)}</text>`;
+  for (let d = 0; d * 86400 <= S.t[S.t.length - 1] - S.t[0]; d++) { const x = X(S.t[0] + d * 86400); s += `<line x1="${x}" x2="${x}" y1="${g.t}" y2="${h - g.b}" stroke="var(--grid)"/>`; }
+  const par = pathPts(series(p => p.par), pos, X, Y);
+  // below-par zone
+  if (par.length > 1) s += `<path d="${line(par)}L${par[par.length-1][0]} ${h - g.b}L${par[0][0]} ${h - g.b}Z" fill="var(--below)"/>`;
+  S.names.forEach((nm, i) => {   // tint between NAV and depositor
+    const dep = pathPts(series(p => p.vaults[nm].depositor), pos, X, Y), nav = pathPts(series(p => p.vaults[nm].nav), pos, X, Y);
+    if (dep.length > 1) s += `<path d="${line(dep)}${line(nav.slice().reverse()).replace('M', 'L')}Z" fill="${col(i)}" opacity=".16"/>`;
+  });
+  if (par.length > 1) s += `<path d="${line(par)}" fill="none" stroke="var(--par)" stroke-width="5" opacity=".4" stroke-linejoin="round"/>`;
+  S.names.forEach((nm, i) => {
+    const nav = pathPts(series(p => p.vaults[nm].nav), pos, X, Y), dep = pathPts(series(p => p.vaults[nm].depositor), pos, X, Y);
+    if (nav.length > 1) s += `<path d="${line(nav)}" fill="none" stroke="${col(i)}" stroke-width="1.6" stroke-dasharray="5 4" opacity=".9"/>`;
+    if (dep.length > 1) s += `<path d="${line(dep)}" fill="none" stroke="${col(i)}" stroke-width="3" stroke-linejoin="round"/>`;
+    if (dep.length) { const q = dep[dep.length - 1]; s += `<circle cx="${q[0]}" cy="${q[1]}" r="4.5" fill="${col(i)}"/>`; }
+  });
+  // settle ticks
+  for (const e of S.data.events || []) if (e.type === 'settle' && posOfT(e.t) <= pos) { const x = X(e.t); s += `<path d="M${x} ${h - g.b - 7}l4 4-4 4-4-4z" fill="var(--muted)" opacity=".5"/>`; }
+  // fire markers
+  let slot = 0;
+  S.names.forEach((nm, i) => {
+    const b = $(`#fired-${i}`); if (!b) return;
+    const ft = S.firedAt[nm], shown = posOfT(ft) <= pos + 1e-9;
+    if (shown) {
+      const x = X(ft); s += `<line x1="${x}" x2="${x}" y1="${g.t}" y2="${h - g.b}" stroke="var(--bad)" stroke-width="2" stroke-dasharray="6 4"/>`;
+      const pad = 90; b.style.left = Math.min(Math.max(x, pad), w - pad) + 'px'; b.style.top = (el.parentElement.offsetTop + g.t + 2 + (slot++) * 56) + 'px';
+    }
+    if (shown && !S.firedShown[nm]) { b.classList.add('show'); }
+    if (!shown) b.classList.remove('show');
+    S.firedShown[nm] = shown;
+  });
+  const cx = X(interp(S.t, pos));
+  s += `<line x1="${cx}" x2="${cx}" y1="${g.t}" y2="${h - g.b}" stroke="var(--muted)" stroke-width="1" opacity=".6"/>`;
+  el.innerHTML = s;
+}
+
+function drawStrip(pos) {
+  const el = $('#svgStrip'), w = el.clientWidth, h = el.clientHeight; if (!w) return;
+  const g = mk(w, h, 58, 16, 6, 22), Y = v => g.t + (S.py.hi - v) / (S.py.hi - S.py.lo) * (h - g.t - g.b), X = t => xOfT(t, g);
+  let s = '';
+  for (const v of ticks(S.py).filter((_, i, a) => a.length < 5 || i % 2 === 0)) s += `<line x1="${g.l}" x2="${w - g.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${g.l - 6}" y="${Y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`;
+  for (let d = 0; d * 86400 <= S.t[S.t.length - 1] - S.t[0]; d++) {
+    const t = S.t[0] + d * 86400, x = X(t);
+    s += `<line x1="${x}" x2="${x}" y1="${g.t}" y2="${h - g.b}" stroke="var(--grid)"/><text x="${x}" y="${h - 6}" text-anchor="${d === 0 ? 'start' : 'middle'}">${new Date(t * 1000).toISOString().slice(5, 10)}</text>`;
+  }
+  const pts = pathPts(series(p => p.price), pos, X, Y);
+  if (pts.length > 1) s += `<path d="${line(pts)}L${pts[pts.length - 1][0]} ${h - g.b}L${pts[0][0]} ${h - g.b}Z" fill="var(--muted)" opacity=".15"/><path d="${line(pts)}" fill="none" stroke="var(--text)" stroke-width="1.6"/>`;
+  const cx = X(interp(S.t, pos));
+  s += `<line x1="${cx}" x2="${cx}" y1="${g.t}" y2="${h - g.b}" stroke="var(--muted)" opacity=".6"/>`;
+  s += `<text x="${w - g.r}" y="${g.t + 10}" text-anchor="end" style="fill:var(--text);font-size:12px;font-weight:600">${interp(series(p => p.price), pos).toFixed(0)} USDC/ETH</text>`;
+  el.innerHTML = s;
+}
+
+function updateCard(i, nm, p, pos) {
+  const v = p.vaults[nm], m = S.data.meta || {}, card = $(`#card-${i}`);
+  const dd = v.depositor - p.par, nd = v.nav - p.par, ok = dd >= -1e-9;
+  const set = (id, html) => { $(`#c${i}-${id}`).innerHTML = html; };
+  set('dep', `<span class="${ok ? 'ok' : 'bad'}">${pct(dd)} ${ok ? '✓ ≥ par' : '✗ below par'}</span>`);
+  set('nav', `<span class="${nd >= 0 ? 'ok' : 'bad'}">${pct(nd)}</span>`);
+  set('bond', pct(v.bond).replace(/^\+/, '') );
+  set('carry', pct(v.carry).replace(/^\+/, ''));
+  set('short', pct(v.shortfall).replace(/^\+/, '').replace('−', ''));
+  const pr = P_(), b0 = pr[0].vaults[nm].bond;
+  const thr = (m.minBondBps || 0) / 1e4 * v.nav, f = x => Math.max(0, Math.min(100, (x - 0) / S.bmax * 100)) + '%';
+  const meter = $(`#c${i}-meter`);
+  meter.querySelector('.fill').style.width = f(v.bond);
+  meter.querySelector('.init').style.left = f(b0); meter.querySelector('.thr').style.left = f(thr);
+  meter.title = `initial ${pct(b0).slice(1)} · fire threshold ${pct(thr).slice(1)}`;
+  $(`#c${i}-cap`).innerHTML = `start ${(b0*100).toFixed(1)}% <span style="color:var(--bad)">· fire below ${(thr*100).toFixed(2)}%</span>`;
+  card.classList.toggle('isfired', !!v.fired);
+  card.querySelector('.pill').textContent = v.fired ? 'FIRED' : 'ACTIVE';
+  // mini bond-over-time chart
+  const el = $(`#c${i}-svg`), w = el.clientWidth, h = el.clientHeight; if (!w) return;
+  const g = mk(w, h, 2, 2, 4, 4), Y = x => g.t + (1 - x / S.bmax) * (h - g.t - g.b), X = t => xOfT(t, g);
+  const bonds = pr.map(q => q.vaults[nm].bond), pts = pathPts(bonds, pos, X, Y);
+  let s = `<line x1="${g.l}" x2="${w - g.r}" y1="${Y(b0)}" y2="${Y(b0)}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
+  s += `<path d="${line(pr.map((q, k) => [X(S.t[k]), Y((m.minBondBps || 0) / 1e4 * q.vaults[nm].nav)]))}" fill="none" stroke="var(--bad)" stroke-width="1.2" stroke-dasharray="2 3" opacity=".8"/>`;
+  s += `<path d="${line(bonds.map((x, k) => [X(S.t[k]), Y(x)]))}" fill="none" stroke="var(--muted)" stroke-width="1" opacity=".3"/>`;
+  if (pts.length > 1) s += `<path d="${line(pts)}L${pts[pts.length - 1][0]} ${h - g.b}L${pts[0][0]} ${h - g.b}Z" fill="${col(i)}" opacity=".2"/><path d="${line(pts)}" fill="none" stroke="${col(i)}" stroke-width="2"/>`;
+  el.innerHTML = s;
+}
+const P_ = () => S.data.points;
+
+// ---------- playback ----------
+function frame(ts) {
+  if (!S.playing) return;
+  const dt = Math.min((ts - S.last) / 1000, .1); S.last = ts;
+  S.pos += dt * (S.data.points.length - 1) / DURATION * S.speed;
+  if (S.pos >= S.data.points.length - 1) { S.pos = S.data.points.length - 1; S.playing = false; }
+  render();
+  if (S.playing) requestAnimationFrame(frame);
+}
+function play() {
+  if (!S.data) return;
+  if (S.pos >= S.data.points.length - 1) S.pos = 0;
+  S.playing = true; S.last = performance.now(); requestAnimationFrame(frame);
+}
+function pause() { S.playing = false; if (S.data) render(); }
+function seek(p) { S.pos = Math.max(0, Math.min(S.data.points.length - 1, p)); }
+
+$('#play').onclick = () => S.playing ? pause() : play();
+$('#restart').onclick = () => { if (!S.data) return; seek(0); S.playing = false; render(); };
+$('#final').onclick = () => { if (!S.data) return; S.playing = false; seek(Infinity); render(); };
+$('#scrub').oninput = e => { if (!S.data) return; S.playing = false; seek(+e.target.value); render(); };
+document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
+  S.speed = +b.dataset.speed; document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('on', x === b));
+});
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || !S.data) return;
+  if (e.code === 'Space') { e.preventDefault(); $('#play').click(); }
+  else if (e.key === 'ArrowRight') { S.playing = false; seek(Math.floor(S.pos) + 1); render(); }
+  else if (e.key === 'ArrowLeft') { S.playing = false; seek(Math.ceil(S.pos) - 1); render(); }
+  else if (e.key === 'Home') $('#restart').click();
+  else if (e.key === 'End') $('#final').click();
+  else if (e.key === 't') $('#theme').click();
+});
+$('#theme').onclick = () => {
+  const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : !matchMedia('(prefers-color-scheme: light)').matches;
+  const t = dark ? 'light' : 'dark'; document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('hurdle-theme', t); } catch (e) {}
+  render();
+};
+try { const t = localStorage.getItem('hurdle-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+new ResizeObserver(() => render()).observe(document.body);
+boot();
+</script>
+</body>
+</html>
