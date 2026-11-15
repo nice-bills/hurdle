@@ -17,6 +17,7 @@ import {HurdleHook} from "../src/HurdleHook.sol";
 import {HurdleVault} from "../src/HurdleVault.sol";
 import {IHurdleVault} from "../src/IHurdleVault.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
+import {LiquidityAmounts} from "v4-core/test/utils/LiquidityAmounts.sol";
 
 contract HurdleVaultTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -53,13 +54,17 @@ contract HurdleVaultTest is Test, Deployers {
     // ---------------------------------------------------------------------
 
     function _newVault(uint256 bondAmount) internal returns (HurdleVault v) {
-        v = new HurdleVault(manager, key, CURATOR, 2000, 200, 2000);
-        _fund(ALICE, address(v), 10e18, 10e18);
-        vm.prank(ALICE);
-        v.deposit(10e18, 10e18);
+        return _newVault(bondAmount, 2000);
+    }
+
+    function _newVault(uint256 bondAmount, int24 maxDev) internal returns (HurdleVault v) {
+        v = new HurdleVault(manager, key, CURATOR, 2000, 200, maxDev, 600);
         _fund(CURATOR, address(v), 0, bondAmount);
         vm.prank(CURATOR);
         v.postBond(bondAmount);
+        _fund(ALICE, address(v), 10e18, 10e18);
+        vm.prank(ALICE);
+        v.deposit(10e18, 10e18);
     }
 
     function _fund(address who, address spender, uint256 a0, uint256 a1) internal {
@@ -104,10 +109,34 @@ contract HurdleVaultTest is Test, Deployers {
         (, t,,) = manager.getSlot0(key.toId());
     }
 
+    function _floorTick() internal view returns (int24 c) {
+        int24 t = _currentTick();
+        c = (t / SPACING) * SPACING;
+        if (t < 0 && t % SPACING != 0) c -= SPACING;
+    }
+
     function _recenter(HurdleVault v, int24 halfWidth) internal {
-        int24 c = (_currentTick() / SPACING) * SPACING;
+        int24 c = _floorTick();
         vm.prank(CURATOR);
         v.rebalance(c - halfWidth, c + halfWidth);
+    }
+
+    /// Chaser re-anchor without swaps: a range just below spot if it mostly holds token1, just above if token0.
+    function _chase(HurdleVault v, int24 width) internal {
+        (int24 lo, int24 hi, uint128 liq) = v.position();
+        (uint160 sp,,,) = manager.getSlot0(key.toId());
+        (uint256 a0, uint256 a1) = LiquidityAmounts.getAmountsForLiquidity(
+            sp, TickMath.getSqrtPriceAtTick(lo), TickMath.getSqrtPriceAtTick(hi), liq
+        );
+        a0 += MockERC20(Currency.unwrap(currency0)).balanceOf(address(v));
+        a1 += MockERC20(Currency.unwrap(currency1)).balanceOf(address(v)) - v.bond();
+        uint256 v0 = a0 * uint256(sp) / (1 << 96) * uint256(sp) / (1 << 96);
+        int24 c = _floorTick();
+        vm.prank(CURATOR);
+        if (v0 > a1) v.rebalance(c + SPACING, c + SPACING + width);
+        else v.rebalance(c - width, c);
+        (,, uint128 newLiq) = v.position();
+        assertGt(newLiq, 0, "chaser deployed nothing");
     }
 
     // ---------------------------------------------------------------------
@@ -129,11 +158,11 @@ contract HurdleVaultTest is Test, Deployers {
 
     /// Chaser: narrow range, re-centered on a trend. Trails par; bond pays depositors up to par.
     function test_chaserShortfallPaidFromBond() public {
-        vault = _newVault(3e18);
+        vault = _newVault(6e18);
         _recenter(vault, 120);
         for (uint256 i = 1; i <= 30; ++i) {
             _moveTo(int24(int256(i) * 100));
-            if (i % 3 == 0) _recenter(vault, 120);
+            if (i % 3 == 0) _chase(vault, 240);
         }
         uint256 bondBefore = vault.bond();
         (uint256 nav, uint256 bench, uint256 carry, uint256 paid) = _settled(vault);
@@ -161,16 +190,29 @@ contract HurdleVaultTest is Test, Deployers {
         assertApproxEqRel(curatorValue, carry, 1e12);
     }
 
-    /// Bond exhausted => fired, parked full range, curator locked out, anyone can re-park.
+    /// Multi-epoch: every settle pays min(shortfall, bond); bond exhausted => fired, parked full range,
+    /// curator locked out, anyone can re-park.
     function test_fireRule() public {
-        vault = _newVault(0.25e18); // 1.25% of NAV, below the 2% floor once any shortfall hits
+        vault = _newVault(0.6e18);
         _recenter(vault, 120);
-        for (uint256 i = 1; i <= 30; ++i) {
-            _moveTo(int24(int256(i) * 100));
-            if (i % 3 == 0) _recenter(vault, 120);
+        int24 tick;
+        for (uint256 epoch; epoch < 8 && !vault.fired(); ++epoch) {
+            for (uint256 i; i < 10; ++i) {
+                tick += 100;
+                _moveTo(tick);
+                if (i % 3 == 2) _chase(vault, 240);
+            }
+            uint256 bondBefore = vault.bond();
+            (uint256 nav, uint256 bench, uint256 carry, uint256 paid) = _settled(vault);
+            assertEq(bondBefore - vault.bond(), paid, "bond accounting");
+            if (paid == 0) {
+                assertGe(nav, bench);
+            } else {
+                assertEq(carry, 0);
+                assertTrue(nav == bench || vault.bond() == 0, "shortfall not fully paid while bond remained");
+            }
         }
-        vault.settle();
-        assertTrue(vault.fired());
+        assertTrue(vault.fired(), "never fired");
         (int24 lo, int24 hi,) = vault.position();
         assertEq(lo, TickMath.minUsableTick(SPACING));
         assertEq(hi, TickMath.maxUsableTick(SPACING));
@@ -178,6 +220,55 @@ contract HurdleVaultTest is Test, Deployers {
         vm.expectRevert(IHurdleVault.CuratorFired.selector);
         vault.postBond(1);
         vault.rebalance(0, 0); // anyone; range forced to full
+    }
+
+    /// A curator who loses one epoch then wins earns the shortfall back before any carry.
+    function test_deficitRecoupedBeforeCarry() public {
+        vault = _newVault(6e18);
+        _recenter(vault, 120);
+        for (uint256 i = 1; i <= 10; ++i) {
+            _moveTo(int24(int256(i) * 100));
+            if (i % 3 == 0) _chase(vault, 240);
+        }
+        (,,, uint256 paid) = _settled(vault);
+        emit log_named_uint("epoch1 paid", paid);
+        assertGt(paid, 0);
+        assertFalse(vault.fired());
+        assertEq(vault.deficit(), paid);
+        // Epoch 2: re-anchor just below spot and harvest chop inside the range, ending where it started.
+        _chase(vault, 240);
+        int24 c = _floorTick();
+        for (uint256 i; i < 80; ++i) _moveTo(i % 2 == 0 ? c - 200 : c - 40);
+        _moveTo(c);
+        (uint256 nav, uint256 bench, uint256 carry,) = _settled(vault);
+        assertGt(nav, bench, "second epoch should beat par");
+        uint256 excess = nav - bench;
+        uint256 recoup = excess < paid ? excess : paid;
+        assertEq(vault.deficit(), paid - recoup);
+        assertApproxEqAbs(carry, recoup + (excess - recoup) * 2000 / 10_000, 1);
+    }
+
+    function test_depositCappedByBond() public {
+        vault = _newVault(1e18); // 1e18 bond, 2% floor => cap 50e18 NAV; 20e18 deposited
+        _fund(ALICE, address(vault), 20e18, 20e18);
+        vm.prank(ALICE);
+        vm.expectRevert(HurdleVault.CapacityExceeded.selector);
+        vault.deposit(20e18, 20e18);
+    }
+
+    function test_publicSettleGatedByEpoch() public {
+        vault = _newVault(1e18);
+        vm.expectRevert(HurdleVault.EpochNotOver.selector);
+        vault.settle();
+    }
+
+    function test_rebalanceRevertsOnSpotDeviation() public {
+        vault = _newVault(1e18, 100);
+        for (uint256 i; i < 5; ++i) _moveTo(0);
+        swap(key, false, 5e18, ZERO_BYTES); // same-block spot pump, TWAP unchanged
+        vm.prank(CURATOR);
+        vm.expectRevert(HurdleVault.PriceDeviation.selector);
+        vault.rebalance(-600, 600);
     }
 
     /// A same-block spot manipulation before settle does not move the settlement price,

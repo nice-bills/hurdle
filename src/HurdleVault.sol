@@ -38,6 +38,8 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     uint16 public immutable minBondBps;
     /// Max |spot - TWAP| in ticks for operations that price or mint at spot.
     int24 public immutable maxTickDeviation;
+    /// Minimum seconds between public settlements (deposit/withdraw always settle first).
+    uint32 public immutable epochSeconds;
     IERC20Minimal public immutable token0;
     IERC20Minimal public immutable token1;
 
@@ -46,6 +48,9 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
 
     bool public fired;
     uint256 public bond;
+    /// Shortfall the bond has paid and the curator has not yet earned back. Recouped at 100%
+    /// before any carry, so a curator who beats par over many epochs isn't drained by the bad ones.
+    uint256 public deficit;
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
 
@@ -65,6 +70,9 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     Start public start;
 
     error PriceDeviation();
+    error EpochNotOver();
+    /// AUM cap = bond / minBondBps: a deposit may not push the bond below the firing floor.
+    error CapacityExceeded();
 
     constructor(
         IPoolManager _manager,
@@ -72,8 +80,10 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         address _curator,
         uint16 _carryBps,
         uint16 _minBondBps,
-        int24 _maxTickDeviation
+        int24 _maxTickDeviation,
+        uint32 _epochSeconds
     ) {
+        epochSeconds = _epochSeconds;
         manager = _manager;
         oracle = IHurdleOracle(address(_key.hooks));
         poolKey = _key;
@@ -96,6 +106,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         uint256 value = _value(amount0, amount1, sqrtP);
         shares = totalSupply == 0 ? value : FullMath.mulDiv(value, totalSupply, start.nav);
         if (shares == 0) revert ZeroShares();
+        if (bond * 10_000 < uint256(minBondBps) * (start.nav + value)) revert CapacityExceeded();
 
         if (amount0 > 0) require(token0.transferFrom(msg.sender, address(this), amount0), "T0");
         if (amount1 > 0) require(token1.transferFrom(msg.sender, address(this), amount1), "T1");
@@ -159,6 +170,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     // ---------------------------------------------------------------------
 
     function settle() external {
+        if (block.timestamp < start.timestamp + epochSeconds) revert EpochNotOver();
         _settle();
     }
 
@@ -186,7 +198,11 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         uint256 paid;
         if (navNow >= bench) {
             if (!fired) {
-                carry = FullMath.mulDiv(navNow - bench, carryBps, 10_000);
+                uint256 excess = navNow - bench;
+                uint256 recoup = excess < deficit ? excess : deficit;
+                deficit -= recoup;
+                // Curator's take: earn back past shortfalls in full, then carry on the rest.
+                carry = recoup + FullMath.mulDiv(excess - recoup, carryBps, 10_000);
                 if (carry > 0 && carry < navNow) {
                     uint256 newShares = FullMath.mulDiv(carry, totalSupply, navNow - carry);
                     balanceOf[curator] += newShares;
@@ -197,6 +213,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
             uint256 shortfall = bench - navNow;
             paid = shortfall < bond ? shortfall : bond;
             bond -= paid; // bond tokens become vault (depositor) tokens
+            deficit += paid;
             navNow += paid;
         }
         emit Settled(navNow, bench, carry, paid, bond, s1);
@@ -234,6 +251,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     /// Vault NAV in token1 at sqrt price `s` (excludes bond and unrealized fees).
+    /// Valuing a concentrated position at TWAP when spot differs undervalues it: errs against the curator, never depositors.
     function navAt(uint160 s) public view returns (uint256) {
         (uint256 a0, uint256 a1) = LiquidityAmounts.getAmountsForLiquidity(
             s, TickMath.getSqrtPriceAtTick(_tickLower), TickMath.getSqrtPriceAtTick(_tickUpper), _liquidity
