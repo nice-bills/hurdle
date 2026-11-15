@@ -65,8 +65,8 @@ On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
 ## Workflow (riskiest first)
 
 1. ~~Benchmark math spike~~ DONE: closed form, path-independent, 2 snapshots, ~0 swap gas (`research/benchmark-math.md`). New top risk: settlement-price manipulation, so the hook keeps a TWAP.
-2. **Verification harness**: Foundry replay test diffing hook vs Python reference.
-3. **Epoch snapshots + TWAP observation** in `afterSwap`.
+2. ~~Verification harness~~ DONE: formula matches a real v4 full-range position to ~2.5e-18 of capital over 200-300 swaps, 257 fuzz runs (`research/phase2-harness.md`).
+3. ~~Epoch snapshots + TWAP observation~~ DONE: written in `beforeSwap` so same-block manipulation has zero weight; steady-state swap overhead 12k gas (`research/phase3-twap.md`). Real data: 42,280 ETH/USDC swaps, 7 days (`data/`). Open: in that down week both toy curators ended below par, so the demo week must show Patient beating par (pick a range-bound week or tune Patient).
 4. **Vault + settlement**: NAV, carry, bond shortfall payments.
 5. **Fire rule** + passive fallback.
 6. **Demo**: replay script, chart UI, testnet deploy, video.
