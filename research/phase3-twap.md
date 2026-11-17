@@ -106,6 +106,11 @@ afterInitialize | beforeAddLiquidity | beforeRemoveLiquidity | beforeSwap
 
 ## Gas
 
+**Update (second audit, #7):** the hook now also snapshots `feeGrowthGlobal0/1` on the first swap of each
+block (`referenceFeeGrowth`). Re-measured with the same test: steady-state overhead **39,914** (cold ring
+59,814; `--isolate` full ring 58,454). Later swaps in the same block skip the write. The table below is
+the pre-snapshot measurement.
+
 Measured by `test_gasOverheadOfHookSwap`, same fee/liquidity/price, one `zeroForOne` swap in each
 pool, `gasleft()` around the router call. Optimizer is off, so these are conservative.
 

@@ -32,8 +32,8 @@ Sept 2026: arXiv 2609.37963 defines an **infinitesimal LP benchmark**: the marko
 ## 60-second demo
 
 Replay one real week of swaps through a local v4 pool with Hurdle attached, two curators:
-- **Patient** (wide range, rarely moves): beats par, carry meter climbs, bond grows, AUM cap grows.
-- **Chaser** (re-centers on every move; the 17-of-20 loser): every block it trails par, its bond drains into depositors' balance. Day 3: bond exhausted, `Fired`, capital parks passive.
+- **Patient** (wide range, rarely moves): beats par, carry meter climbs, bond stays intact.
+- **Chaser** (re-centers on every move; the 17-of-20 loser): every block it trails par, its bond drains into depositors' balance. Day 5.7 (range week): a miss leaves the bond below half the floor, `Fired`, capital parks passive.
 
 One chart: par line (benchmark), two vault lines, depositor line that never drops below par, bond meters.
 
@@ -74,7 +74,7 @@ On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
 
 Replay results (real ETH/USDC swaps, hourly epochs, 5% bond, values in USD; re-run on the audit-fixed contracts: pool initialized 700 s before the first swap for the 10-min TWAP requirement, rebalances bounded to 50 ticks of spot/reference/TWAP, par fee-capped):
 - Range week (Oct 31 – Nov 6, selected by a rule fixed in advance): Patient beats par by +1.9% and keeps its bond (5.0% of start capital, +0.39% carry paid); Chaser trails par by 2.1%, its bond pays 6.6% of start capital to depositors, it is fired on day 5.7 (Nov 5), and its depositors end 1.6% above par.
-- Down week (Nov 7 – 13, ETH −14%): both trail par. Patient (−4.3% vs par, bond paid 10.2%) is fired on day 6.2; Chaser (−2.0%, bond paid 8.2%) keeps 2.3% of bond and is not fired. Depositors of both end above par (+0.1% Patient, +0.5% Chaser) and are never below par at any hourly settlement.
+- Down week (Nov 7 – 13, ETH −14%): both trail par. Patient (−4.3% vs par, bond paid 10.2%) is fired on day 6.2; Chaser (−2.0%, bond paid 8.2%) keeps 2.3% of bond and is not fired. Depositors of both end above par (+0.1% Patient, +0.5% Chaser) and are never below par at any hourly settlement. Chaser is not fired, but its bond sits under the 2% floor for much of the week, so 36 of its re-centers are refused (`BondBelowFloor`): it is frozen in its last range until it tops up, which is why it trails par by less than Patient.
 - Since the second audit, only a miss that leaves the bond below half the floor fires a curator (NAV growth alone used to); see [research/audit2.md](research/audit2.md).
 - In both weeks depositors never fall below par while bond remains (asserted by `demo/build_json.py`).
 - For comparison, the pre-audit run had Chaser 2.7% below par and fired on day 4 in the range week. Numbers above are from the current code.

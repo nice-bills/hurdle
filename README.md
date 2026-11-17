@@ -20,7 +20,7 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
 - **Manipulation-resistant price.** `HurdleHook` (flags `afterInitialize | beforeSwap | beforeDonate`)
   writes a tick accumulator in `beforeSwap`, before the price moves, so same-block manipulation has zero
   weight. All NAV and par valuations use the TWAP, which reverts until the pool has 10 minutes of
-  history. Donations are blocked (they would inflate par). Overhead is ~12k gas per swap in steady state
+  history. Donations are blocked (they would inflate par). Overhead is ~40k gas on the first swap of each block in steady state (~12k TWAP write + ~28k block-open fee-growth snapshot); later swaps in the same block skip both writes
   ([research/phase3-twap.md](research/phase3-twap.md)).
 - **Par is fee-capped and wash-proof within a block.** `benchmark(..., elapsed)` credits at most 300% APR
   of the epoch's starting NAV in fees, and the vault reads fee growth as of the block's first swap
@@ -117,7 +117,8 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   little. With `maxIdleBps` the call reverts instead (slot kept), so this only delays the curator, at the
   attacker's cost. Fired-vault parks are uncounted, so they cannot be exhausted.
 - A curator whose bond drifts under the floor (NAV grew) keeps its range but cannot rebalance or take
-  deposits until it tops up; a later miss that takes the bond below half the floor fires it.
+  deposits until it tops up; a later miss that takes the bond below half the floor fires it, even a
+  miss of a few wei once the bond has drifted below half the floor without a top-up.
 - F2 cross-block residual: rebalances need spot, the block-open price and TWAP within
   `maxTickDeviation` of each other, and the swap is bounded by both bands, so a single block's
   sandwich costs at most ~50 bp. A price held off-market across a block boundary passes every check, at

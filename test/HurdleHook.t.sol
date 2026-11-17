@@ -340,6 +340,8 @@ contract HurdleHookTest is Test, Deployers {
         console2.log("full-ring swap gas, with hook", hookSteadyGas);
         console2.log("full-ring hook overhead      ", int256(hookSteadyGas) - int256(plainSteadyGas));
 
-        assertLt(hookSteadyGas, plainSteadyGas + 40_000, "hook overhead must stay under 40k gas");
+        // ~12k for the TWAP write + ~28k for the block-open fee-growth snapshot (second audit, #7).
+        // Paid by the first swap of each block only; later swaps in the block skip both writes.
+        assertLt(hookSteadyGas, plainSteadyGas + 45_000, "hook overhead must stay under 45k gas");
     }
 }

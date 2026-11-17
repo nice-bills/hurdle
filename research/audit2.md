@@ -20,9 +20,18 @@ below by the auditor's number, with the fix and its test. Regression tests are i
 | 11 | Info. In-kind deposits added liquidity at spot with no deviation check. | `deposit(shares, …)` now requires spot, block-open price and TWAP to agree within `maxTickDeviation`. | `test_11_depositRevertsWhenSpotPushed` |
 | 12 | Unchanged-from-claims checks (round trips, bond isolation, shortfall math, self-call gas, TWAP/reference manipulation). | No change needed. | — |
 
-Side effect of #7: wash fees earned by the vault in the settlement block count as NAV that epoch, and
-the next epoch's par (which starts from block-open fee growth) credits them again. This is bounded by
-the fee cap and errs against the curator.
+Side effect of #7: fees from swaps in the settlement block after its first swap count in the vault's NAV
+in that epoch but in par only in the next epoch (which starts from that block's block-open fee growth).
+Each is counted once; it is a one-block timing shift, first in the curator's favour, then against it.
+
+Residual of #1: a curator whose bond has already drifted below half the floor (NAV roughly doubled
+against the bond without a top-up) is fired by any miss, however small (even a few wei). It was already
+unable to rebalance or take deposits from the moment it fell below the floor, and can avoid this by
+topping up with `postBond`.
+
+Replay note for #1: in the ETH −14% week, Chaser's bond sits under the floor for much of the week, so 36 of
+its re-centers revert `BondBelowFloor` (19 more revert `PriceDeviation`, see #5). The replay curator never
+tops up, so Chaser is frozen in its last range rather than fired. In the range week: 0 and 24.
 
 Replay with the fixes (both weeks, depositor never below par at any settlement):
 
@@ -36,3 +45,9 @@ Replay with the fixes (both weeks, depositor never below par at any settlement):
 Percentages are of starting capital, valued in token1. Par matches the offchain reference within 0.001 bp.
 In the down week the old rule fired Chaser on day 4 from drift; under the new rule its bond (2.3% left)
 never fell below half the floor after a miss.
+
+Regression tests were checked by mutation: undoing each code fix (#1, #2 both halves, #3 restored to the
+old check-before-settle order, #4 both halves, #6, #7, #11) makes its named test(s) fail.
+
+Gas cost of #7: steady-state hook overhead on the first swap of a block rose from ~12k to ~40k (two fee-growth
+reads and writes); see research/phase3-twap.md.

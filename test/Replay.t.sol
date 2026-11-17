@@ -98,6 +98,8 @@ contract ReplayTest is Test, Deployers {
         emit log_named_uint("chaser depositor 1e18", _depositorRatio(chaser, tc));
         emit log_named_uint("par 1e18", tp.par);
         emit log_named_uint("settlements", settlements);
+        emit log_named_uint("chaser rebalances refused: BondBelowFloor", chaseBelowFloor);
+        emit log_named_uint("chaser rebalances refused: other (PriceDeviation etc.)", chaseOtherRevert);
         emit log_named_uint("patient fired", patient.fired() ? 1 : 0);
         emit log_named_uint("chaser fired", chaser.fired() ? 1 : 0);
         emit log_named_uint("patient day fired (x100)", tp.firedDay);
@@ -195,6 +197,9 @@ contract ReplayTest is Test, Deployers {
 
     /// Chaser: when price leaves its ±2% range, re-center 50/50 on spot (the vault swaps to ratio),
     /// at most every 10 min. This is the re-centering strategy the Bitquery data says loses.
+    uint256 chaseBelowFloor; // chases refused because the bond drifted under the floor
+    uint256 chaseOtherRevert; // chases refused for other reasons (e.g. PriceDeviation while TWAP lags)
+
     function _maybeChase() internal {
         if (chaser.fired() || block.timestamp < lastChase + 600) return;
         (int24 lo, int24 hi,) = chaser.position();
@@ -202,7 +207,11 @@ contract ReplayTest is Test, Deployers {
         if (t >= lo && t < hi) return;
         int24 c = _floor(t);
         vm.prank(CHASER);
-        try chaser.rebalance(c - CHASER_HALF, c + CHASER_HALF) {} catch {}
+        try chaser.rebalance(c - CHASER_HALF, c + CHASER_HALF) {}
+        catch (bytes memory err) {
+            if (bytes4(err) == HurdleVault.BondBelowFloor.selector) chaseBelowFloor++;
+            else chaseOtherRevert++;
+        }
         lastChase = block.timestamp;
     }
 
