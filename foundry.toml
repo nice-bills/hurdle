@@ -3,7 +3,10 @@ src = "src"
 out = "out"
 libs = ["lib"]
 ffi = true
-fs_permissions = [{ access = "read-write", path = ".forge-snapshots/" }]
+fs_permissions = [{ access = "read-write", path = ".forge-snapshots/" }, { access = "read", path = "data/" }, { access = "read-write", path = "demo/out/" }]
+# replay of ~33k swaps in one test
+gas_limit = 9223372036854775807
+memory_limit = 8589934592
 solc_version = "0.8.26"
 evm_version = "cancun"
 

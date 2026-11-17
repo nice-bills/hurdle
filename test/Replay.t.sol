@@ -1,0 +1,254 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.26;
+
+import {Test, Vm} from "forge-std/Test.sol";
+import {Deployers} from "v4-core/test/utils/Deployers.sol";
+import {Hooks} from "v4-core/src/libraries/Hooks.sol";
+import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
+import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
+import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+import {PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
+import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
+import {FullMath} from "v4-core/src/libraries/FullMath.sol";
+import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+import {Currency} from "v4-core/src/types/Currency.sol";
+import {LiquidityAmounts} from "v4-core/test/utils/LiquidityAmounts.sol";
+import {HurdleHook} from "../src/HurdleHook.sol";
+import {HurdleVault} from "../src/HurdleVault.sol";
+import {IHurdleVault} from "../src/IHurdleVault.sol";
+import {HookMiner} from "./utils/HookMiner.sol";
+
+/// Replays a real swap price path (data/weeks/*.csv) through a local v4 pool with Hurdle attached,
+/// with two curators: Patient (static ±10%) and Chaser (±2%, re-anchored whenever price leaves it).
+/// Every swap is swap-to-price at the row's sqrtPriceX96, so fee growth per unit L depends only on
+/// the price path. Settles hourly and writes one CSV row per settlement for demo/build_json.py.
+/// Run: REPLAY_CSV=data/weeks/2026-10-31.csv REPLAY_OUT=demo/out/range-week.csv \
+///      forge test --match-contract ReplayTest -vv
+contract ReplayTest is Test, Deployers {
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
+
+    int24 constant SPACING = 10;
+    uint32 constant EPOCH = 3600;
+    int24 constant PATIENT_HALF = 950; // ~±10%
+    int24 constant CHASER_HALF = 200; // ~±2%
+    uint256 constant Q96 = 1 << 96;
+
+    address constant DEPOSITOR = address(0xA1);
+    address constant PATIENT = address(0xC1);
+    address constant CHASER = address(0xC2);
+
+    HurdleHook hook;
+    HurdleVault patient;
+    HurdleVault chaser;
+
+    struct Track {
+        uint256 par; // 1e18-scaled, compounding bench/startNav
+        uint256 produced; // 1e18-scaled, compounding (nav - paid)/startNav: the curator's own result
+        uint256 take;
+        uint256 paid;
+        uint256 initialValue;
+        uint256 initialCapital;
+        bool firedLogged;
+    }
+
+    Track tp;
+    Track tc;
+    uint256 lastChase;
+
+    function test_replay() public {
+        string memory csv = vm.envOr("REPLAY_CSV", string(""));
+        if (bytes(csv).length == 0) return; // opt-in: not part of the normal suite
+        string memory out = vm.envOr("REPLAY_OUT", string("demo/out/replay.csv"));
+
+        vm.readLine(csv); // header
+        (uint256 t0, uint160 s0) = _row(vm.readLine(csv));
+        vm.warp(t0);
+        _setUp(s0);
+
+        vm.writeFile(out, "t,sqrtPriceX96,par,p_nav,p_dep,p_bond,p_take,p_paid,p_fired,c_nav,c_dep,c_bond,c_take,c_paid,c_fired\n");
+        _writeRow(out, t0);
+
+        uint256 nextSettle = t0 + EPOCH;
+        uint256 rows;
+        while (true) {
+            string memory line = vm.readLine(csv);
+            if (bytes(line).length == 0) break;
+            (uint256 t, uint160 s) = _row(line);
+            if (t > block.timestamp) vm.warp(t);
+            if (t >= nextSettle) {
+                _settleBoth();
+                _writeRow(out, t);
+                nextSettle = t + EPOCH;
+            }
+            _swapTo(s);
+            _maybeChase();
+            ++rows;
+        }
+        emit log_named_uint("rows replayed", rows);
+        emit log_named_uint("patient depositor 1e18", _depositorRatio(patient, tp));
+        emit log_named_uint("chaser depositor 1e18", _depositorRatio(chaser, tc));
+        emit log_named_uint("par 1e18", tp.par);
+    }
+
+    // ---------------------------------------------------------------------
+
+    function _setUp(uint160 s0) internal {
+        deployFreshManagerAndRouters();
+        deployMintAndApprove2Currencies();
+        uint160 flags = uint160(
+            Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.AFTER_INITIALIZE_FLAG
+        );
+        (, bytes32 salt) = HookMiner.find(address(this), flags, type(HurdleHook).creationCode, abi.encode(manager));
+        hook = new HurdleHook{salt: salt}(manager);
+
+        LIQUIDITY_PARAMS = IPoolManager.ModifyLiquidityParams(
+            TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING), 1e21, 0
+        );
+        (key,) = initPool(currency0, currency1, IHooks(address(hook)), 500, SPACING, s0);
+        modifyLiquidityRouter.modifyLiquidity(key, LIQUIDITY_PARAMS, ZERO_BYTES);
+
+        // $1M USDC-equivalent of token0 + equal value of token1; bond = 5% of NAV in token1.
+        uint256 a0 = 1e12;
+        uint256 a1 = FullMath.mulDiv(FullMath.mulDiv(a0, s0, Q96), s0, Q96);
+        patient = _vault(PATIENT, a0, a1, a1 / 10);
+        chaser = _vault(CHASER, a0, a1, a1 / 10);
+
+        int24 c = _floor(_tick());
+        vm.prank(PATIENT);
+        patient.rebalance(c - PATIENT_HALF, c + PATIENT_HALF);
+        vm.prank(CHASER);
+        chaser.rebalance(c - CHASER_HALF, c + CHASER_HALF);
+
+        tp = _track(patient);
+        tc = _track(chaser);
+    }
+
+    function _vault(address curator, uint256 a0, uint256 a1, uint256 bondAmt) internal returns (HurdleVault v) {
+        v = new HurdleVault(manager, key, curator, 2000, 200, 300, EPOCH);
+        _give(curator, address(v), 0, bondAmt);
+        vm.prank(curator);
+        v.postBond(bondAmt);
+        _give(DEPOSITOR, address(v), a0, a1);
+        vm.prank(DEPOSITOR);
+        v.deposit(a0, a1);
+    }
+
+    function _track(HurdleVault v) internal view returns (Track memory t) {
+        t.par = 1e18;
+        t.produced = 1e18;
+        t.initialValue = v.nav();
+        t.initialCapital = t.initialValue;
+    }
+
+    function _give(address who, address spender, uint256 a0, uint256 a1) internal {
+        MockERC20(Currency.unwrap(currency0)).transfer(who, a0);
+        MockERC20(Currency.unwrap(currency1)).transfer(who, a1);
+        vm.startPrank(who);
+        MockERC20(Currency.unwrap(currency0)).approve(spender, type(uint256).max);
+        MockERC20(Currency.unwrap(currency1)).approve(spender, type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function _row(string memory line) internal pure returns (uint256 t, uint160 s) {
+        string[] memory f = vm.split(line, ",");
+        t = vm.parseUint(f[1]);
+        s = uint160(vm.parseUint(f[5]));
+    }
+
+    function _swapTo(uint160 target) internal {
+        (uint160 now_,,,) = manager.getSlot0(key.toId());
+        if (target == now_) return;
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(target < now_, -int256(1e40), target),
+            PoolSwapTest.TestSettings(false, false),
+            ZERO_BYTES
+        );
+    }
+
+    /// Chaser: when price leaves its range, re-anchor one-sided next to spot (no swaps), at most every 10 min.
+    function _maybeChase() internal {
+        if (chaser.fired() || block.timestamp < lastChase + 600) return;
+        (int24 lo, int24 hi, uint128 liq) = chaser.position();
+        int24 t = _tick();
+        if (t >= lo && t < hi) return;
+        (uint160 sp,,,) = manager.getSlot0(key.toId());
+        (uint256 a0, uint256 a1) = LiquidityAmounts.getAmountsForLiquidity(
+            sp, TickMath.getSqrtPriceAtTick(lo), TickMath.getSqrtPriceAtTick(hi), liq
+        );
+        a0 += MockERC20(Currency.unwrap(currency0)).balanceOf(address(chaser));
+        a1 += MockERC20(Currency.unwrap(currency1)).balanceOf(address(chaser)) - chaser.bond();
+        uint256 v0 = FullMath.mulDiv(FullMath.mulDiv(a0, sp, Q96), sp, Q96);
+        int24 c = _floor(t);
+        vm.prank(CHASER);
+        if (v0 > a1) {
+            try chaser.rebalance(c + SPACING, c + SPACING + 2 * CHASER_HALF) {} catch {}
+        } else {
+            try chaser.rebalance(c - 2 * CHASER_HALF, c) {} catch {}
+        }
+        lastChase = block.timestamp;
+    }
+
+    function _settleBoth() internal {
+        _settle(patient, tp);
+        _settle(chaser, tc);
+    }
+
+    function _settle(HurdleVault v, Track storage tr) internal {
+        (,,,, uint256 startNav) = v.start();
+        vm.recordLogs();
+        v.settle();
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].emitter != address(v) || logs[i].topics[0] != IHurdleVault.Settled.selector) continue;
+            (uint256 nav, uint256 bench, uint256 take, uint256 paid,,) =
+                abi.decode(logs[i].data, (uint256, uint256, uint256, uint256, uint256, uint160));
+            tr.par = FullMath.mulDiv(tr.par, bench, startNav);
+            tr.produced = FullMath.mulDiv(tr.produced, nav - paid, startNav);
+            tr.take += take;
+            tr.paid += paid;
+        }
+    }
+
+    function _depositorRatio(HurdleVault v, Track storage tr) internal view returns (uint256) {
+        uint256 value = FullMath.mulDiv(v.nav(), v.balanceOf(DEPOSITOR), v.totalSupply());
+        return FullMath.mulDiv(value, 1e18, tr.initialValue);
+    }
+
+    function _writeRow(string memory out, uint256 t) internal {
+        (uint160 sp,,,) = manager.getSlot0(key.toId());
+        string memory row = string.concat(vm.toString(t), ",", vm.toString(uint256(sp)), ",", vm.toString(tp.par));
+        row = string.concat(row, ",", _vaultCols(patient, tp), ",", _vaultCols(chaser, tc));
+        vm.writeLine(out, row);
+    }
+
+    function _vaultCols(HurdleVault v, Track storage tr) internal view returns (string memory) {
+        uint256 cap = tr.initialCapital;
+        return string.concat(
+            vm.toString(tr.produced),
+            ",",
+            vm.toString(_depositorRatio(v, tr)),
+            ",",
+            vm.toString(FullMath.mulDiv(v.bond(), 1e18, cap)),
+            ",",
+            vm.toString(FullMath.mulDiv(tr.take, 1e18, cap)),
+            ",",
+            vm.toString(FullMath.mulDiv(tr.paid, 1e18, cap)),
+            ",",
+            v.fired() ? "1" : "0"
+        );
+    }
+
+    function _tick() internal view returns (int24 t) {
+        (, t,,) = manager.getSlot0(key.toId());
+    }
+
+    function _floor(int24 t) internal pure returns (int24 c) {
+        c = (t / SPACING) * SPACING;
+        if (t < 0 && t % SPACING != 0) c -= SPACING;
+    }
+}
