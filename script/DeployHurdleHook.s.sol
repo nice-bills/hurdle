@@ -52,7 +52,7 @@ contract DeployHurdleHook is Script {
 
         uint160 flags = uint160(
             Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
-                | Hooks.AFTER_INITIALIZE_FLAG
+                | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_DONATE_FLAG
         );
 
         // Under `forge script`, `new X{salt: s}` is sent through the deterministic CREATE2 deployer.
@@ -108,7 +108,7 @@ contract DeployHurdleHook is Script {
         internal
         returns (HurdleVault v)
     {
-        v = new HurdleVault(manager, d.key, curator, 2000, 200, 300, 3600);
+        v = new HurdleVault(manager, d.key, curator, 2000, 200, 50, 3600);
         d.usdc.approve(address(v), type(uint256).max);
         d.weth.approve(address(v), type(uint256).max);
         v.postBond(wethIs0 ? 300e6 : 0.1e18); // token1 is mUSDC if mWETH is currency0

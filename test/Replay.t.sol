@@ -100,7 +100,7 @@ contract ReplayTest is Test, Deployers {
         deployMintAndApprove2Currencies();
         uint160 flags = uint160(
             Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
-                | Hooks.AFTER_INITIALIZE_FLAG
+                | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_DONATE_FLAG
         );
         (, bytes32 salt) = HookMiner.find(address(this), flags, type(HurdleHook).creationCode, abi.encode(manager));
         hook = new HurdleHook{salt: salt}(manager);
@@ -128,7 +128,7 @@ contract ReplayTest is Test, Deployers {
     }
 
     function _vault(address curator, uint256 a0, uint256 a1, uint256 bondAmt) internal returns (HurdleVault v) {
-        v = new HurdleVault(manager, key, curator, 2000, 200, 300, EPOCH);
+        v = new HurdleVault(manager, key, curator, 2000, 200, 50, EPOCH);
         _give(curator, address(v), 0, bondAmt);
         vm.prank(curator);
         v.postBond(bondAmt);

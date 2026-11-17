@@ -24,6 +24,11 @@ contract HurdleHook is BaseHook {
     /// @notice Number of observations kept per pool (ring buffer).
     uint32 public constant OBSERVATION_CARDINALITY = 32;
 
+    /// @notice Minimum spacing of ring-buffer entries. The accumulator itself updates every block,
+    /// so the TWAP stays exact; spacing only stretches the history to 32 x 60s = 32 minutes, which a
+    /// one-entry-per-block ring could not hold on a 1s-block chain.
+    uint32 public constant OBSERVATION_INTERVAL = 60;
+
     /// @notice Preferred window for `snapshot`'s TWAP tick. Shortened to the available history.
     uint32 public constant TWAP_WINDOW = 30 minutes;
 
@@ -38,7 +43,7 @@ contract HurdleHook is BaseHook {
     struct OracleState {
         uint32 index; // next slot in the ring buffer to write
         uint32 cardinality; // initialized observations, capped at OBSERVATION_CARDINALITY
-        uint32 lastTimestamp; // timestamp of the newest observation
+        uint32 lastTimestamp; // timestamp of the latest accumulator update (may be newer than the ring)
         int56 tickCumulative; // cumulative at lastTimestamp
     }
 
@@ -66,6 +71,7 @@ contract HurdleHook is BaseHook {
     );
 
     error InvalidTwapWindow();
+    error DonationsDisabled();
     error InsufficientHistory();
     error UnknownEpoch();
 
@@ -82,7 +88,7 @@ contract HurdleHook is BaseHook {
             afterRemoveLiquidity: false,
             beforeSwap: true,
             afterSwap: false,
-            beforeDonate: false,
+            beforeDonate: true,
             afterDonate: false,
             beforeSwapReturnDelta: false,
             afterSwapReturnDelta: false,
@@ -128,7 +134,18 @@ contract HurdleHook is BaseHook {
         return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
-    /// @dev Appends one observation per block at most. Subsequent calls in the same block are no-ops.
+    /// @notice Donations are blocked: `donate` raises feeGrowthGlobal without a swap, which would
+    /// inflate the passive benchmark that curators are settled against.
+    function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
+        external
+        pure
+        override
+        returns (bytes4)
+    {
+        revert DonationsDisabled();
+    }
+
+    /// @dev Updates the accumulator at most once per block; appends to the ring at most every OBSERVATION_INTERVAL.
     function _write(PoolId id, int24 tick, uint32 timestamp) private {
         OracleState storage oracle = _oracle[id];
         uint32 lastTimestamp = oracle.lastTimestamp;
@@ -142,6 +159,9 @@ contract HurdleHook is BaseHook {
             }
         }
 
+        oracle.lastTimestamp = timestamp;
+        if (oracle.cardinality != 0 && timestamp < _latestRingTimestamp(id) + OBSERVATION_INTERVAL) return;
+
         uint32 index = oracle.index;
         _observations[id][index] = Observation({timestamp: timestamp, tickCumulative: oracle.tickCumulative});
 
@@ -154,7 +174,6 @@ contract HurdleHook is BaseHook {
                 oracle.cardinality += 1;
             }
         }
-        oracle.lastTimestamp = timestamp;
     }
 
     // ---------------------------------------------------------------------
@@ -231,8 +250,14 @@ contract HurdleHook is BaseHook {
             before = afterObs;
         }
 
-        // Unreachable: the caller guarantees target >= oldest observation timestamp.
-        return latestCumulative;
+        // target lies between the newest ring entry and the latest accumulator point.
+        unchecked {
+            int56 offset = int56(
+                (int256(latestCumulative - before.tickCumulative) * int256(uint256(target - before.timestamp)))
+                    / int256(uint256(latestTimestamp - before.timestamp))
+            );
+            return before.tickCumulative + offset;
+        }
     }
 
     /// @dev The observation at logical index `i` (0 = oldest).
@@ -246,14 +271,17 @@ contract HurdleHook is BaseHook {
         return observation;
     }
 
+    /// @dev The latest accumulator point (newer than or equal to the newest ring entry).
     function _latest(PoolId id) private view returns (uint32 timestamp, int56 tickCumulative) {
         OracleState storage oracle = _oracle[id];
-        uint32 index;
+        return (oracle.lastTimestamp, oracle.tickCumulative);
+    }
+
+    function _latestRingTimestamp(PoolId id) private view returns (uint32) {
+        OracleState storage oracle = _oracle[id];
         unchecked {
-            index = (oracle.index + OBSERVATION_CARDINALITY - 1) % OBSERVATION_CARDINALITY;
+            return _observations[id][(oracle.index + OBSERVATION_CARDINALITY - 1) % OBSERVATION_CARDINALITY].timestamp;
         }
-        Observation memory observation = _observations[id][index];
-        return (observation.timestamp, observation.tickCumulative);
     }
 
     /// @notice Settlement tick for vaults: TWAP over `TWAP_WINDOW`, shortened to the available history.

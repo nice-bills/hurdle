@@ -41,7 +41,7 @@ contract HurdleHookTest is Test, Deployers {
         // Mine a CREATE2 salt that gives the hook the permission bits it declares.
         uint160 flags = uint160(
             Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
-                | Hooks.AFTER_INITIALIZE_FLAG
+                | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_DONATE_FLAG
         );
         (address hookAddress, bytes32 salt) =
             HookMiner.find(address(this), flags, type(HurdleHook).creationCode, abi.encode(address(manager)));
@@ -147,7 +147,7 @@ contract HurdleHookTest is Test, Deployers {
         int24[41] memory ticksAfter; // [0] = init tick, [i] = tick after swap i
         ticksAfter[0] = _tick(key);
         for (uint256 i = 1; i <= 40; ++i) {
-            vm.warp(START + uint32(i) * 12);
+            vm.warp(START + uint32(i) * 60);
             swap(key, i % 2 == 0, -1e13, ZERO_BYTES);
             ticksAfter[i] = _tick(key);
         }
@@ -158,17 +158,41 @@ contract HurdleHookTest is Test, Deployers {
         assertEq(lastTimestamp, nowTs, "newest observation");
         assertEq(nextIndex, 41 % 32, "ring write cursor wrapped");
 
-        // The surviving window starts at observation #10 (t=+108) and ends at #41 (t=+480).
-        // Every interval is 12s, so the mean over 372s is the average of ticksAfter[9..39].
+        // The surviving window starts at observation #10 (t=+540) and ends at #41 (t=+2400).
+        // Every interval is 60s (= OBSERVATION_INTERVAL), so the mean over 1860s is the average of ticksAfter[9..39].
         int56 tickSum;
         for (uint256 k = 9; k <= 39; ++k) {
             tickSum += int56(ticksAfter[k]);
         }
-        assertEq(hook.consult(key, 31 * 12), int24(tickSum / 31), "mean over wrapped history");
+        assertEq(hook.consult(key, 31 * 60), int24(tickSum / 31), "mean over wrapped history");
 
         // One second more than the retained history is a revert, not a silent short window.
         vm.expectRevert(HurdleHook.InsufficientHistory.selector);
-        hook.consult(key, 31 * 12 + 1);
+        hook.consult(key, 31 * 60 + 1);
+    }
+
+    /// Swaps faster than OBSERVATION_INTERVAL: the accumulator still updates every block, so a
+    /// window ending between ring entries is exact (interpolated against the latest accumulator point).
+    function test_twapExactBetweenRingEntries() public {
+        int24[11] memory ticksAfter;
+        ticksAfter[0] = _tick(key);
+        for (uint256 i = 1; i <= 10; ++i) {
+            vm.warp(START + uint32(i) * 12);
+            swap(key, i % 2 == 0, -1e15, ZERO_BYTES);
+            ticksAfter[i] = _tick(key);
+        }
+        vm.warp(START + 132);
+        // Mean over the last 72s = ticks live during (60,132]: ticksAfter[5..10], 12s each.
+        int56 tickSum;
+        for (uint256 k = 5; k <= 10; ++k) tickSum += int56(ticksAfter[k]);
+        assertEq(hook.consult(key, 72), int24(tickSum / 6));
+        (uint32 cardinality,,,) = hook.oracleState(key.toId());
+        assertEq(cardinality, 3, "ring entries at t=0, 60, 120 only");
+    }
+
+    function test_donateReverts() public {
+        vm.expectRevert();
+        donateRouter.donate(key, 1e15, 1e15, ZERO_BYTES);
     }
 
     // ---------------------------------------------------------------------

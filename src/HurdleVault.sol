@@ -30,6 +30,12 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
+    /// Each rebalance can lose at most ~maxTickDeviation bps of NAV to a sandwich (its swap is
+    /// price-limited to TWAP ± maxTickDeviation). Capping rebalances per epoch keeps that worst case
+    /// under the bond floor, so a curator (or MEV) cannot extract more than the bond in one epoch.
+    uint256 public constant MAX_REBALANCES_PER_EPOCH = 4;
+    /// Shares burned on the first deposit so a donation cannot inflate the share price.
+    uint256 private constant DEAD_SHARES = 1000;
     uint256 private constant Q96 = 1 << 96;
     uint256 private constant Q128 = 1 << 128;
     bytes32 private constant SALT = bytes32(0);
@@ -73,11 +79,14 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     Start public start;
+    uint256 public rebalancesThisEpoch;
 
     error PriceDeviation();
     error EpochNotOver();
     /// AUM cap = bond / minBondBps: a deposit may not push the bond below the firing floor.
     error CapacityExceeded();
+    error TooManyRebalances();
+    error AlreadyParked();
 
     constructor(
         IPoolManager _manager,
@@ -88,6 +97,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         int24 _maxTickDeviation,
         uint32 _epochSeconds
     ) {
+        require(_maxTickDeviation > 0 && MAX_REBALANCES_PER_EPOCH * uint24(_maxTickDeviation) <= _minBondBps, "DEV");
         epochSeconds = _epochSeconds;
         manager = _manager;
         oracle = IHurdleOracle(address(_key.hooks));
@@ -110,15 +120,24 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         uint160 sqrtP = _checkedTwapSqrtPrice();
         uint256 value = _value(amount0, amount1, sqrtP);
         uint256 navNow = navAt(sqrtP);
-        shares = totalSupply == 0 ? value : FullMath.mulDiv(value, totalSupply, navNow);
+        uint256 benchNow = _benchNow(sqrtP);
+        if (totalSupply == 0) {
+            if (value <= DEAD_SHARES) revert ZeroShares();
+            shares = value - DEAD_SHARES;
+            balanceOf[address(0)] += DEAD_SHARES;
+            totalSupply = DEAD_SHARES;
+        } else {
+            // Price at par when the vault trails it: a newcomer must not buy in below par and then
+            // collect bond top-ups for a shortfall that accrued before they joined.
+            shares = FullMath.mulDiv(value, totalSupply, navNow > benchNow ? navNow : benchNow);
+        }
         if (shares == 0) revert ZeroShares();
         if (bondValue() * 10_000 < uint256(minBondBps) * (navNow + value)) revert CapacityExceeded();
 
         if (amount0 > 0) require(token0.transferFrom(msg.sender, address(this), amount0), "T0");
         if (amount1 > 0) require(token1.transferFrom(msg.sender, address(this), amount1), "T1");
         // New money joins the benchmark at today's par: add value / (par growth so far) to its start.
-        uint256 benchNow = _benchNow(sqrtP);
-        start.nav += totalSupply == 0 || benchNow == 0 ? value : FullMath.mulDiv(value, start.nav, benchNow);
+        start.nav += start.nav == 0 || benchNow == 0 ? value : FullMath.mulDiv(value, start.nav, benchNow);
         balanceOf[msg.sender] += shares;
         totalSupply += shares;
         emit Deposited(msg.sender, amount0, amount1, shares);
@@ -161,17 +180,26 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         emit BondPosted(amount1, bond);
     }
 
-    /// Move all liquidity to [tickLower, tickUpper] using idle balances, no swaps.
-    /// After firing, anyone may call it and the range is forced to full range.
+    /// Move all liquidity to [tickLower, tickUpper], swapping idle balances to the range's ratio.
+    /// After firing, anyone may call it to finish parking full range, until it is parked.
     function rebalance(int24 tickLower, int24 tickUpper) external {
         if (fired) {
             tickLower = TickMath.minUsableTick(poolKey.tickSpacing);
             tickUpper = TickMath.maxUsableTick(poolKey.tickSpacing);
+            if (_tickLower == tickLower && _tickUpper == tickUpper && !_mostlyIdle()) revert AlreadyParked();
         } else if (msg.sender != curator) {
             revert NotCurator();
         }
+        _maybeSettle(); // a finished epoch is settled (and the counter reset) before new risk is taken
+        if (++rebalancesThisEpoch > MAX_REBALANCES_PER_EPOCH) revert TooManyRebalances();
         _checkedTwapSqrtPrice();
         _redeploy(tickLower, tickUpper);
+    }
+
+    /// More than 2% of NAV sits outside the position (e.g. a park that hit its price bound).
+    function _mostlyIdle() private view returns (bool) {
+        uint160 s = _twapSqrtPrice();
+        return _value(token0.balanceOf(address(this)), _idle1(), s) * 50 > navAt(s);
     }
 
     // ---------------------------------------------------------------------
@@ -275,6 +303,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
 
     function _resetStart(uint160 s1, uint256 fg0, uint256 fg1, uint256 navValue) private {
         start = Start(uint64(block.timestamp), s1, fg0, fg1, navValue);
+        rebalancesThisEpoch = 0;
     }
 
     // ---------------------------------------------------------------------
