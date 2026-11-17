@@ -169,7 +169,7 @@ contract HurdleVaultTest is Test, Deployers {
         assertEq(carry, 0);
         assertGt(paid, 0, "chaser should trail par");
         assertEq(bondBefore - vault.bond(), paid);
-        assertEq(nav, bench, "depositors made whole to par");
+        assertEq(nav + paid, bench, "depositors made whole to par");
         assertFalse(vault.fired());
     }
 
@@ -209,7 +209,7 @@ contract HurdleVaultTest is Test, Deployers {
                 assertGe(nav, bench);
             } else {
                 assertEq(carry, 0);
-                assertTrue(nav == bench || vault.bond() == 0, "shortfall not fully paid while bond remained");
+                assertTrue(nav + paid == bench || vault.bond() == 0, "shortfall not fully paid while bond remained");
             }
         }
         assertTrue(vault.fired(), "never fired");
@@ -246,6 +246,68 @@ contract HurdleVaultTest is Test, Deployers {
         uint256 recoup = excess < paid ? excess : paid;
         assertEq(vault.deficit(), paid - recoup);
         assertApproxEqAbs(carry, recoup + (excess - recoup) * 2000 / 10_000, 1);
+    }
+
+    /// Noise around par must net out: a passive-ish curator settling every epoch keeps its bond.
+    function test_noiseAroundParKeepsBond() public {
+        vault = _newVault(1e18);
+        vm.prank(CURATOR);
+        vault.rebalance(TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING));
+        uint256 bond0 = vault.bondValue();
+        int24 tick;
+        for (uint256 epoch; epoch < 24; ++epoch) {
+            for (uint256 i; i < 12; ++i) {
+                tick = int24(int256(uint256(keccak256(abi.encode(epoch, i))) % 1200)) - 600;
+                _moveTo(tick);
+            }
+            vm.warp(block.timestamp + 600);
+            vault.settle();
+        }
+        assertFalse(vault.fired());
+        // A par-tracking curator ends with its bond intact to within rounding (1 bp of NAV).
+        assertApproxEqAbs(vault.bondValue(), bond0, vault.nav() / 10_000);
+    }
+
+    /// After firing, the vault is parked 50/50 full range, so from then on it tracks par.
+    function test_firedVaultTracksPar() public {
+        vault = _newVault(0.6e18);
+        _recenter(vault, 120);
+        int24 tick;
+        for (uint256 epoch; epoch < 8 && !vault.fired(); ++epoch) {
+            for (uint256 i; i < 10; ++i) {
+                tick += 100;
+                _moveTo(tick);
+                if (i % 3 == 2) _chase(vault, 240);
+            }
+            vault.settle();
+        }
+        assertTrue(vault.fired());
+        // The park at fire time is impact-bounded around a lagging TWAP; once TWAP catches up,
+        // anyone re-parks and the vault is fully deployed.
+        for (uint256 i; i < 35; ++i) _moveTo(tick);
+        vault.rebalance(0, 0);
+        (,, uint128 liq) = vault.position();
+        // Most of NAV must be in the position, not idle (both valued at spot).
+        (uint160 sp,,,) = manager.getSlot0(key.toId());
+        uint256 idle0 = MockERC20(Currency.unwrap(currency0)).balanceOf(address(vault));
+        uint256 idle1 = MockERC20(Currency.unwrap(currency1)).balanceOf(address(vault)) - vault.bond();
+        uint256 idle = idle0 * uint256(sp) / (1 << 96) * uint256(sp) / (1 << 96) + idle1;
+        assertLt(idle * 100, (_positionValue(vault, liq) + idle) * 2, "fired vault left > 2% idle");
+        vault.settle(); // start a clean epoch from the parked state
+        for (uint256 i; i < 30; ++i) _moveTo(tick + (i % 2 == 0 ? int24(800) : int24(-500)));
+        vm.warp(block.timestamp + 600);
+        (uint256 nav, uint256 bench,,) = _settled(vault);
+        uint256 diff = nav > bench ? nav - bench : bench - nav;
+        assertLe(diff * 10_000, nav * 10, "fired vault drifts from par by > 10 bp");
+    }
+
+    function _positionValue(HurdleVault v, uint128 liq) internal view returns (uint256) {
+        (int24 lo, int24 hi,) = v.position();
+        (uint160 sp,,,) = manager.getSlot0(key.toId());
+        (uint256 a0, uint256 a1) = LiquidityAmounts.getAmountsForLiquidity(
+            sp, TickMath.getSqrtPriceAtTick(lo), TickMath.getSqrtPriceAtTick(hi), liq
+        );
+        return a0 * uint256(sp) / (1 << 96) * uint256(sp) / (1 << 96) + a1;
     }
 
     function test_depositCappedByBond() public {

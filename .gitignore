@@ -20,3 +20,5 @@ docs/
 node_modules/
 out-*/
 cache-*/
+data/__pycache__/
+data/weeks/*.log

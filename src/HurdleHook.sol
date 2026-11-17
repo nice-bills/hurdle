@@ -289,13 +289,13 @@ contract HurdleHook is BaseHook {
 
         (uint160 sqrtPriceX96, int24 spotTick,,) = poolManager.getSlot0(id);
         (uint256 feeGrowthGlobal0X128, uint256 feeGrowthGlobal1X128) = poolManager.getFeeGrowthGlobals(id);
-        int24 twapTick = _twapTickOrSpot(id, spotTick);
+        int24 settleTick = _twapTickOrSpot(id, spotTick);
 
         _epochs[id].push(
             EpochSnapshot({
                 timestamp: block.timestamp,
                 sqrtPriceX96: sqrtPriceX96,
-                twapTick: twapTick,
+                twapTick: settleTick,
                 feeGrowthGlobal0X128: feeGrowthGlobal0X128,
                 feeGrowthGlobal1X128: feeGrowthGlobal1X128
             })
@@ -303,7 +303,7 @@ contract HurdleHook is BaseHook {
         epochId = _epochs[id].length;
 
         emit EpochSnapshotTaken(
-            id, epochId, block.timestamp, twapTick, sqrtPriceX96, feeGrowthGlobal0X128, feeGrowthGlobal1X128
+            id, epochId, block.timestamp, settleTick, sqrtPriceX96, feeGrowthGlobal0X128, feeGrowthGlobal1X128
         );
     }
 

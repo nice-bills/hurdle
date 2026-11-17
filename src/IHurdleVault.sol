@@ -8,9 +8,9 @@ interface IHurdleVault {
     event Withdrawn(address indexed owner, uint256 shares, uint256 amount0, uint256 amount1);
     event BondPosted(uint256 amount, uint256 bond);
     event Rebalanced(int24 tickLower, int24 tickUpper, uint128 liquidity);
-    /// nav and bench are token1 values at the settlement TWAP. carry = curator take (deficit recoup + carry);
-    /// carry > 0 xor shortfallPaid > 0 (or both 0).
-    event Settled(uint256 nav, uint256 bench, uint256 carry, uint256 shortfallPaid, uint256 bond, uint160 sqrtPriceX96);
+    /// nav = what the curator produced (before any shortfall payment); bench = par; both token1 at TWAP.
+    /// take = bond refill + carry (curator gain); shortfallPaid = value delivered to depositors; bond = bondValue().
+    event Settled(uint256 nav, uint256 bench, uint256 take, uint256 shortfallPaid, uint256 bond, uint160 sqrtPriceX96);
     event Fired(uint256 bond, uint256 nav);
 
     error NotCurator();

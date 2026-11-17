@@ -1,4 +1,6 @@
 [
+  { "id": "range-week", "label": "Range-bound week, Oct 31 – Nov 6 (real swaps)" },
+  { "id": "down-week", "label": "ETH −14% week, Nov 7 – 13 (real swaps)" },
   { "id": "mock-range-week", "label": "Range-bound week (mock)" },
   { "id": "mock-down-week", "label": "Down week (mock)" }
 ]

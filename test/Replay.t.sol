@@ -170,32 +170,25 @@ contract ReplayTest is Test, Deployers {
         );
     }
 
-    /// Chaser: when price leaves its range, re-anchor one-sided next to spot (no swaps), at most every 10 min.
+    /// Chaser: when price leaves its ±2% range, re-center 50/50 on spot (the vault swaps to ratio),
+    /// at most every 10 min. This is the re-centering strategy the Bitquery data says loses.
     function _maybeChase() internal {
         if (chaser.fired() || block.timestamp < lastChase + 600) return;
-        (int24 lo, int24 hi, uint128 liq) = chaser.position();
+        (int24 lo, int24 hi,) = chaser.position();
         int24 t = _tick();
         if (t >= lo && t < hi) return;
-        (uint160 sp,,,) = manager.getSlot0(key.toId());
-        (uint256 a0, uint256 a1) = LiquidityAmounts.getAmountsForLiquidity(
-            sp, TickMath.getSqrtPriceAtTick(lo), TickMath.getSqrtPriceAtTick(hi), liq
-        );
-        a0 += MockERC20(Currency.unwrap(currency0)).balanceOf(address(chaser));
-        a1 += MockERC20(Currency.unwrap(currency1)).balanceOf(address(chaser)) - chaser.bond();
-        uint256 v0 = FullMath.mulDiv(FullMath.mulDiv(a0, sp, Q96), sp, Q96);
         int24 c = _floor(t);
         vm.prank(CHASER);
-        if (v0 > a1) {
-            try chaser.rebalance(c + SPACING, c + SPACING + 2 * CHASER_HALF) {} catch {}
-        } else {
-            try chaser.rebalance(c - 2 * CHASER_HALF, c) {} catch {}
-        }
+        try chaser.rebalance(c - CHASER_HALF, c + CHASER_HALF) {} catch {}
         lastChase = block.timestamp;
     }
 
     function _settleBoth() internal {
         _settle(patient, tp);
         _settle(chaser, tc);
+        // Keeper: a fired vault is re-parked full range once spot is near TWAP again.
+        if (patient.fired()) try patient.rebalance(0, 0) {} catch {}
+        if (chaser.fired()) try chaser.rebalance(0, 0) {} catch {}
     }
 
     function _settle(HurdleVault v, Track storage tr) internal {
@@ -208,7 +201,7 @@ contract ReplayTest is Test, Deployers {
             (uint256 nav, uint256 bench, uint256 take, uint256 paid,,) =
                 abi.decode(logs[i].data, (uint256, uint256, uint256, uint256, uint256, uint160));
             tr.par = FullMath.mulDiv(tr.par, bench, startNav);
-            tr.produced = FullMath.mulDiv(tr.produced, nav - paid, startNav);
+            tr.produced = FullMath.mulDiv(tr.produced, nav, startNav);
             tr.take += take;
             tr.paid += paid;
         }
@@ -233,7 +226,7 @@ contract ReplayTest is Test, Deployers {
             ",",
             vm.toString(_depositorRatio(v, tr)),
             ",",
-            vm.toString(FullMath.mulDiv(v.bond(), 1e18, cap)),
+            vm.toString(FullMath.mulDiv(v.bondValue(), 1e18, cap)),
             ",",
             vm.toString(FullMath.mulDiv(tr.take, 1e18, cap)),
             ",",
