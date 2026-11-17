@@ -35,6 +35,7 @@ contract ReplayTest is Test, Deployers {
     int24 constant PATIENT_HALF = 950; // ~±10%
     int24 constant CHASER_HALF = 200; // ~±2%
     uint256 constant Q96 = 1 << 96;
+    uint256 constant POOL_HISTORY = 700; // > HurdleHook.MIN_TWAP_WINDOW (600)
 
     address constant DEPOSITOR = address(0xA1);
     address constant PATIENT = address(0xC1);
@@ -65,8 +66,7 @@ contract ReplayTest is Test, Deployers {
 
         vm.readLine(csv); // header
         (uint256 t0, uint160 s0) = _row(vm.readLine(csv));
-        vm.warp(t0);
-        _setUp(s0);
+        _setUp(t0, s0);
 
         vm.writeFile(out, "t,sqrtPriceX96,twapSqrtPriceX96,par,p_nav,p_dep,p_bond,p_carry,p_paid,p_fired,c_nav,c_dep,c_bond,c_carry,c_paid,c_fired\n");
         _writeRow(out, t0);
@@ -95,7 +95,10 @@ contract ReplayTest is Test, Deployers {
 
     // ---------------------------------------------------------------------
 
-    function _setUp(uint160 s0) internal {
+    /// The pool is initialized POOL_HISTORY before the first real swap so the hook's TWAP has the
+    /// 10 minutes of history the vault requires; the vaults then deposit at t0 (twap == spot == s0).
+    function _setUp(uint256 t0, uint160 s0) internal {
+        vm.warp(t0 - POOL_HISTORY);
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
         uint160 flags = uint160(
@@ -109,6 +112,7 @@ contract ReplayTest is Test, Deployers {
         );
         (key,) = initPool(currency0, currency1, IHooks(address(hook)), 500, SPACING, s0);
         modifyLiquidityRouter.modifyLiquidity(key, LIQUIDITY_PARAMS, ZERO_BYTES);
+        vm.warp(t0);
 
         // $1M USDC-equivalent of token0 + equal value of token1; bond = 5% of NAV in token1.
         uint256 a0 = 1e12;

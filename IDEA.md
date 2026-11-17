@@ -57,10 +57,10 @@ Prior-art sweep for Hurdle itself: `research/prior-art.md`. No v4 hook found tha
 ## Definition of done (falsifiable)
 
 On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
-1. Onchain benchmark matches an offchain Python reference of the paper's infinitesimal LP within 1 bp. **MET:** max 0.99 bp over 167 hourly settlements, 0.001 bp at week end, both weeks (`data/par_check.py --twap`).
+1. Onchain benchmark matches an offchain Python reference of the paper's infinitesimal LP within 1 bp. **MET** (re-run after the audit fixes, with the 300% APR fee cap applied in both): max 0.000 bp (range week) and 0.001 bp (down week) over 167 hourly settlements, no epoch reached the cap (`data/par_check.py --twap`).
 2. Chaser's depositors end ≥ benchmark (bond paid the shortfall) and Chaser is fired; Patient is paid exactly `carry × (vaultReturn − benchmark)` per epoch, after refilling any bond it has paid out. **MET** in the range-week replay; carry exactness is asserted per epoch in `test/HurdleVault.t.sol`.
 3. Swap gas overhead < 40k. **MET:** ~12k steady state, ~34k when a new ring slot is first written.
-4. Testnet deploy (Unichain Sepolia) + demo UI + video. **Deploy + UI MET**; video left.
+4. Testnet deploy (Unichain Sepolia) + demo UI + video. **UI MET**; the pre-audit deploy is superseded and a two-step redeploy of the fixed contracts is pending (`research/deploy.md`); video left.
 
 ## Workflow (riskiest first)
 
@@ -69,13 +69,14 @@ On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
 3. ~~Epoch snapshots + TWAP observation~~ DONE: written in `beforeSwap` so same-block manipulation has zero weight; steady-state swap overhead 12k gas (`research/phase3-twap.md`). Real data: 42,280 ETH/USDC swaps, 7 days (`data/`). Open: in that down week both toy curators ended below par, so the demo week must show Patient beating par (pick a range-bound week or tune Patient).
 4. ~~Vault + settlement~~ DONE (`src/HurdleVault.sol`): TWAP-valued NAV and par, carry, bond pays shortfall, shortfall recouped into the bond before carry (noise nets out), bond-capped AUM, epoch-gated settle, spot–TWAP deviation guard, swap-to-ratio rebalancing.
 5. ~~Fire rule + passive fallback~~ DONE: fired vault parks 50/50 full range and tracks par (test within 10 bp).
-6. Demo: ~~replay~~ (`test/Replay.t.sol`, real weeks) ~~chart UI~~ (`demo/ui`) ~~deploy script~~ (dry run passes). ~~broadcast~~ (live on Unichain Sepolia, see `research/deploy.md`). Left: video.
+6. Demo: ~~replay~~ (`test/Replay.t.sol`, real weeks) ~~chart UI~~ (`demo/ui`) ~~deploy script~~ (dry run passes). broadcast: the pre-audit contracts are live on Unichain Sepolia but superseded; redeploy is two steps (`script/DeployHurdleHook.s.sol`, then `script/DeployVaults.s.sol` 10+ min later, see `research/deploy.md`). Left: redeploy, video.
 7. ~~Stretch: earned capacity~~ DONE as AUM cap = bond / minBond.
 
-Replay results (real ETH/USDC swaps, hourly epochs, 5% bond, values in USD):
-- Range week (Oct 31 – Nov 6, selected by a rule fixed in advance): Patient beats par by +1.9% and keeps its bond; Chaser trails par by 2.7%, is fired on day 4, and its depositors end above par.
-- Down week (Nov 7 – 13, ETH −14%): both trail par; Patient's bond runs out on day 6 and it is fired; depositors of both end at or above par.
+Replay results (real ETH/USDC swaps, hourly epochs, 5% bond, values in USD; re-run on the audit-fixed contracts: pool initialized 700 s before the first swap for the 10-min TWAP requirement, rebalances bounded to 50 ticks of spot/reference/TWAP, par fee-capped):
+- Range week (Oct 31 – Nov 6, selected by a rule fixed in advance): Patient beats par by +1.9% (NAV 1.0183 vs par 0.9991) and keeps its bond (5.0% of start capital, +0.39% carry paid); Chaser trails par by 2.1%, its bond pays 6.6% of start capital to depositors, it is fired on day 6 (Nov 5), and its depositors end 1.6% above par.
+- Down week (Nov 7 – 13, ETH −14%): both trail par; Chaser is fired on day 4, Patient on day 6 (−4.3% vs par, bond paid 8.8%); depositors of both end at or above par (+0.1% Patient, +0.6% Chaser).
 - In both weeks depositors never fall below par while bond remains (asserted by `demo/build_json.py`).
+- For comparison, the pre-audit run had Chaser 2.7% below par and fired on day 4 in the range week. Numbers above are from the current code.
 
 Grunt work (scaffold, test fixtures, UI, research sweeps) goes to OpenCode free models (GLM 5.3 Flash / DeepSeek V4.1 Flash); Claude owns the math and reviews every result against the harness.
 

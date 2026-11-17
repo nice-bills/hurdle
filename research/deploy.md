@@ -1,6 +1,10 @@
 # Unichain Sepolia deploy (chain id 1301)
 
-Status: **deployed 2026-11-17** (deployer `0xA9B480C2694aa3F16cd109FCD2C91aCbf3BC689F`, funded by bridging Ethereum Sepolia ETH through the official L1StandardBridge `0xea58fcA6849d79EAd1f26608855c2D6407d54Ce2`).
+Status: **the fixed contracts are not deployed yet.** The pre-audit deployment below is **superseded**: it runs
+the code from before the audit fixes (no TWAP history requirement, price-valued deposits, uncapped par,
+no donate block). Do not point anything at it. Redeploy with the two steps in "Broadcast commands".
+
+Superseded (pre-audit, deployed 2026-11-17, deployer `0xA9B480C2694aa3F16cd109FCD2C91aCbf3BC689F`, funded by bridging Ethereum Sepolia ETH through the official L1StandardBridge `0xea58fcA6849d79EAd1f26608855c2D6407d54Ce2`):
 
 | Contract | Address |
 |---|---|
@@ -11,7 +15,7 @@ Status: **deployed 2026-11-17** (deployer `0xA9B480C2694aa3F16cd109FCD2C91aCbf3B
 | mWETH (currency1) | `0xd6BfbD3eb5ED7C718Ca6579E61034669Bc8a4349` |
 | Liquidity router | `0xBFF633e3b4e1F0C9bD76F734062AeD0fa677ce8E` |
 
-Full output: `script/out/deploy-1301.json`, `broadcast/DeployHurdleHook.s.sol/1301/run-latest.json`.
+Pre-audit output: `script/out/deploy-1301-preaudit.json` (renamed so the redeploy does not overwrite it), `broadcast/DeployHurdleHook.s.sol/1301/run-latest.json`.
 
 ## Addresses and sources
 
@@ -38,33 +42,70 @@ Source: https://developers.uniswap.org/docs/unichain/tools/faucets
 
 Script cost is small (hook + 2 mocks + router + pool init + liquidity); 0.05 ETH is plenty.
 
-## What the script does
+## Why two steps
 
-`script/DeployHurdleHook.s.sol`:
+`HurdleHook.twapTick` reverts until the pool has 10 minutes of history (`MIN_TWAP_WINDOW`). The vault's first
+deposit and every rebalance price at the TWAP, so vaults cannot be set up in the same transaction batch as the
+pool. Step 1 creates the pool; step 2 runs at least 10 minutes later. No swap is needed in between: while
+nobody trades, the TWAP equals the initial tick. (`PoolSwapTest` is deployed in step 1 as `swapRouter` for
+demo trades; step 2 does not use it.)
 
-1. Mines a salt (HookMiner, deployer = CREATE2 deployer) for flags `afterInitialize | beforeAddLiquidity | beforeRemoveLiquidity | beforeSwap` (`0x1A80`).
+## What the scripts do
+
+`script/DeployHurdleHook.s.sol` (step 1):
+
+1. Mines a salt (HookMiner, deployer = CREATE2 deployer) for flags `afterInitialize | beforeSwap | beforeDonate`.
 2. Deploys `HurdleHook` via CREATE2.
 3. Deploys `mUSDC` (6 dec) and `mWETH` (18 dec) (solmate `MockERC20`), mints 1,000,000 mUSDC and 1,000 mWETH to the deployer.
-4. Deploys a `PoolModifyLiquidityTest` router, initializes a fee 500 / tickSpacing 10 pool with the hook at 3000 USDC/ETH (tick 196256 with mUSDC as currency0), adds full-range liquidity (`L = 1e14`, about 1.8 mWETH + 5.5k mUSDC).
-5. Writes `script/out/deploy-1301.json` (`-dryrun` suffix when not broadcasting).
+4. Deploys a `PoolModifyLiquidityTest` router and a `PoolSwapTest` router, initializes a fee 500 / tickSpacing 10 pool with the hook at 3000 USDC/ETH, adds full-range liquidity (`L = 1e14`, about 1.8 mWETH + 5.5k mUSDC).
+5. Writes `script/out/deploy-<chainid>.json` (`-dryrun` suffix when not broadcasting; `DEPLOY_JSON` overrides the path).
 
-Env: `PRIVATE_KEY` (required, env only). `POOL_MANAGER` optional override.
+`script/DeployVaults.s.sol` (step 2, at least 10 minutes later, same key):
 
-`vm.writeJson` needs write access to `script/out/`. `foundry.toml` is not changed; use `FOUNDRY_CONFIG=script/foundry.deploy.toml` (copy of foundry.toml plus that permission). `FOUNDRY_FS_PERMISSIONS` env did not work.
+1. Reads the JSON from step 1 (`DEPLOY_JSON`, default `script/out/deploy-<chainid>.json`) and checks `hook.twapTick` does not revert. If it does it stops with "pool has < 10 min of history".
+2. Deploys Patient (±950 ticks ≈ ±10%) and Chaser (±200 ticks ≈ ±2%) `HurdleVault`s with the deployer as curator and depositor. Parameters: carry 2000 bps (20%), minBond 200 bps (2%), maxTickDeviation 50, epoch 3600 s.
+3. Each vault: `postBond` (5% of the deposit, in token1), first `deposit` of 1 mWETH + 3000 mUSDC, `rebalance` around the current tick.
+4. Adds `patientVault` and `chaserVault` to the JSON. Without `--broadcast` it writes `script/out/deploy-<chainid>-vaults-dryrun.json` instead and leaves the input alone.
 
-## Dry run (no broadcast), passed
+Env: `PRIVATE_KEY` (required, env only). `POOL_MANAGER` optional override (step 1).
+
+Both scripts need `FOUNDRY_CONFIG=script/foundry.deploy.toml`. It is `foundry.toml` plus write access to
+`script/out/` and **`optimizer = true`**: with the default (unoptimized) build the vault's runtime is 28.4 KB,
+over the 24,576-byte EIP-170 limit, and the vault deploy fails with `CreateContractSizeLimit`. With the
+optimizer it is 18.3 KB. The mined hook address depends on the build, so always compile with this config.
+`FOUNDRY_FS_PERMISSIONS` env did not work.
+
+Check the output for `ONCHAIN EXECUTION COMPLETE & SUCCESSFUL` before trusting the JSON: the JSON is
+written during the simulation, before forge sends the transactions.
+
+## Dry run (no broadcast)
 
 ```sh
-PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80   # public anvil key, never fund it
 FOUNDRY_CONFIG=script/foundry.deploy.toml \
 forge script script/DeployHurdleHook.s.sol --fork-url https://sepolia.unichain.org
 ```
 
-(That key is the public anvil key. Never fund it.)
+Step 2 cannot be dry-run against the real chain until step 1 is broadcast and 10 minutes old (it needs the pool).
 
-## Broadcast command (for the user)
+## Tested on a local anvil fork (passed)
 
-Fund the deployer first (faucets above), then:
+```sh
+anvil --fork-url https://sepolia.unichain.org --chain-id 31337 --port 8546 &   # 31337 keeps run-latest.json for 1301 untouched
+export FOUNDRY_CONFIG=script/foundry.deploy.toml DEPLOY_JSON=script/out/deploy-anvil.json
+export PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+forge script script/DeployHurdleHook.s.sol --rpc-url http://127.0.0.1:8546 --broadcast
+forge script script/DeployVaults.s.sol --rpc-url http://127.0.0.1:8546 --broadcast   # fails with "< 10 min of history"
+cast rpc --rpc-url http://127.0.0.1:8546 evm_increaseTime 700 && cast rpc --rpc-url http://127.0.0.1:8546 evm_mine
+forge script script/DeployVaults.s.sol --rpc-url http://127.0.0.1:8546 --broadcast   # succeeds
+```
+
+Result (2026-11-17): step 1 succeeded; step 2 reverted before the time bump with the readable message and
+succeeded after it. Patient range 195300–197200, Chaser 196050–196450, bond 0.1 mWETH (token1) each, not fired.
+
+## Broadcast commands (for the user)
+
+Fund the deployer first (faucets above). **Step 1**:
 
 ```sh
 export PRIVATE_KEY=0x<your key>
@@ -74,15 +115,19 @@ forge script script/DeployHurdleHook.s.sol \
   --broadcast
 ```
 
-Output: `script/out/deploy-1301.json` plus forge's `broadcast/DeployHurdleHook.s.sol/1301/run-latest.json`.
+Wait **at least 10 minutes** (`MIN_TWAP_WINDOW`; 15 is safe given block-time slop). Then **step 2** with the same
+`PRIVATE_KEY`:
+
+```sh
+FOUNDRY_CONFIG=script/foundry.deploy.toml \
+forge script script/DeployVaults.s.sol \
+  --rpc-url https://sepolia.unichain.org \
+  --broadcast
+```
+
+Output: `script/out/deploy-1301.json` (hook, mocks, routers, pool; then vault addresses added by step 2) plus
+forge's `broadcast/<script>/1301/run-latest.json`. If step 2 stops with "< 10 min of history", it failed in the simulation and sent nothing: wait and rerun it.
 No `--verify` set: add `--verify --verifier blockscout --verifier-url https://unichain-sepolia.blockscout.com/api/` only if you have confirmed that explorer endpoint.
 
-Before broadcasting, re-run the dry run: the mined hook address depends on `HurdleHook` bytecode, so any `src/` change moves it.
-
-## Vaults
-
-After the pool, the script deploys two `HurdleVault`s with the deployer as curator and depositor:
-Patient (±950 ticks ≈ ±10%) and Chaser (±200 ticks ≈ ±2%). Each posts a bond of 5% of the
-deposit value in token1, deposits 1 mWETH + 3000 mUSDC, and sets its range. Parameters: carry 20%,
-fire below 2% bond/NAV, max spot–TWAP deviation 300 ticks, hourly epochs. Addresses land in the
-JSON as `patientVault` / `chaserVault`. Dry run on a 1301 fork passed (2026-11-17).
+Before broadcasting, re-run the step 1 dry run: the mined hook address depends on `HurdleHook` bytecode, so any `src/` change moves it.
+After the redeploy, update the addresses in README.md and mark this file's "superseded" table as history.

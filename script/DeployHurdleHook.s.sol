@@ -9,20 +9,21 @@ import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {PoolModifyLiquidityTest} from "v4-core/src/test/PoolModifyLiquidityTest.sol";
+import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
-import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
-import {PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {FixedPointMathLib} from "solmate/src/utils/FixedPointMathLib.sol";
 import {HurdleHook} from "../src/HurdleHook.sol";
-import {HurdleVault} from "../src/HurdleVault.sol";
 import {HookMiner} from "../test/utils/HookMiner.sol";
 
-/// @notice Unichain Sepolia (1301): mine + deploy HurdleHook via the CREATE2 deployer, deploy mock
-///         mUSDC/mWETH, initialize a fee-500 / tickSpacing-10 pool at ~3000 USDC/ETH, seed full-range liquidity.
+/// @notice Step 1 of 2. Unichain Sepolia (1301): mine + deploy HurdleHook via the CREATE2 deployer, deploy mock
+///         mUSDC/mWETH, a swap router and a liquidity router, initialize a fee-500 / tickSpacing-10 pool at
+///         ~3000 USDC/ETH, seed full-range liquidity, write script/out/deploy-<chainid>.json.
+///         The vaults come in step 2 (DeployVaults.s.sol), at least 10 minutes later: the hook's TWAP reverts
+///         until the pool has HurdleHook.MIN_TWAP_WINDOW of history, and vault deposits/rebalances need it.
 /// @dev Env: PRIVATE_KEY (required). POOL_MANAGER optional override; defaults to the Unichain Sepolia
-///      PoolManager (https://developers.uniswap.org/docs/protocols/v4/deployments).
-///      Writing the JSON needs `FOUNDRY_FS_PERMISSIONS='[{"access":"read-write","path":"script/out"}]'`
-///      (foundry.toml only allows .forge-snapshots/). See research/deploy.md.
+///      PoolManager (https://developers.uniswap.org/docs/protocols/v4/deployments). DEPLOY_JSON optional
+///      output path (default script/out/deploy-<chainid>.json, `-dryrun` suffix unless broadcasting).
+///      Run with `FOUNDRY_CONFIG=script/foundry.deploy.toml` (adds write access to script/out). See research/deploy.md.
 contract DeployHurdleHook is Script {
     address constant UNICHAIN_SEPOLIA_POOL_MANAGER = 0x00B036B58a818B1BC34d502D3fE730Db729e62AC;
 
@@ -40,9 +41,8 @@ contract DeployHurdleHook is Script {
         MockERC20 usdc;
         MockERC20 weth;
         PoolModifyLiquidityTest router;
+        PoolSwapTest swapRouter;
         PoolKey key;
-        HurdleVault patient;
-        HurdleVault chaser;
     }
 
     function run() external returns (Deployed memory d) {
@@ -71,6 +71,9 @@ contract DeployHurdleHook is Script {
         d.router = new PoolModifyLiquidityTest(manager);
         d.usdc.approve(address(d.router), type(uint256).max);
         d.weth.approve(address(d.router), type(uint256).max);
+        d.swapRouter = new PoolSwapTest(manager);
+        d.usdc.approve(address(d.swapRouter), type(uint256).max);
+        d.weth.approve(address(d.swapRouter), type(uint256).max);
 
         // currency0 < currency1 by address.
         bool wethIs0 = address(d.weth) < address(d.usdc);
@@ -91,34 +94,9 @@ contract DeployHurdleHook is Script {
             ""
         );
 
-        // Two demo vaults (deployer is curator and depositor): Patient ±10%, Chaser ±2%.
-        // Each: bond 5% of deposit value (token1), 1 mWETH + 3000 mUSDC deposited, hourly epochs.
-        int24 tick = _tick(manager, d.key);
-        d.patient = _vault(manager, d, deployer, wethIs0, tick, 950);
-        d.chaser = _vault(manager, d, deployer, wethIs0, tick, 200);
-
-
         vm.stopBroadcast();
 
         _writeJson(d, deployer);
-    }
-
-    function _vault(IPoolManager manager, Deployed memory d, address curator, bool wethIs0, int24 tick, int24 half)
-        internal
-        returns (HurdleVault v)
-    {
-        v = new HurdleVault(manager, d.key, curator, 2000, 200, 50, 3600);
-        d.usdc.approve(address(v), type(uint256).max);
-        d.weth.approve(address(v), type(uint256).max);
-        v.postBond(wethIs0 ? 300e6 : 0.1e18); // token1 is mUSDC if mWETH is currency0
-        (uint256 a0, uint256 a1) = wethIs0 ? (uint256(1e18), uint256(3000e6)) : (uint256(3000e6), uint256(1e18));
-        v.deposit(a0, a1);
-        int24 c = (tick / TICK_SPACING) * TICK_SPACING;
-        v.rebalance(c - half, c + half);
-    }
-
-    function _tick(IPoolManager manager, PoolKey memory key) internal view returns (int24 t) {
-        (, t,,) = StateLibrary.getSlot0(manager, PoolIdLibrary.toId(key));
     }
 
     /// @dev sqrt(price * 2^192), price = currency1_raw / currency0_raw.
@@ -140,20 +118,23 @@ contract DeployHurdleHook is Script {
         vm.serializeAddress(o, "mUSDC", address(d.usdc));
         vm.serializeAddress(o, "mWETH", address(d.weth));
         vm.serializeAddress(o, "liquidityRouter", address(d.router));
+        vm.serializeAddress(o, "swapRouter", address(d.swapRouter));
+        vm.serializeUint(o, "poolInitializedAt", block.timestamp);
         vm.serializeAddress(o, "currency0", Currency.unwrap(d.key.currency0));
         vm.serializeAddress(o, "currency1", Currency.unwrap(d.key.currency1));
         vm.serializeUint(o, "fee", FEE);
         vm.serializeInt(o, "tickSpacing", TICK_SPACING);
-        vm.serializeAddress(o, "patientVault", address(d.patient));
-        vm.serializeAddress(o, "chaserVault", address(d.chaser));
         string memory json = vm.serializeBool(o, "broadcast", vm.isContext(VmSafe.ForgeContext.ScriptBroadcast));
 
         // Dry runs must not clobber/mimic a real deployment file.
         string memory suffix = vm.isContext(VmSafe.ForgeContext.ScriptBroadcast) ? "" : "-dryrun";
-        string memory path = string.concat("script/out/deploy-", vm.toString(block.chainid), suffix, ".json");
+        string memory path = vm.envOr(
+            "DEPLOY_JSON", string.concat("script/out/deploy-", vm.toString(block.chainid), suffix, ".json")
+        );
         vm.createDir("script/out", true);
         vm.writeJson(json, path);
         console2.log("HurdleHook", address(d.hook));
         console2.log("wrote", path);
+        console2.log("Run script/DeployVaults.s.sol at least 10 minutes after block time", block.timestamp);
     }
 }
