@@ -68,6 +68,10 @@ No `--verify` set: add `--verify --verifier blockscout --verifier-url https://un
 
 Before broadcasting, re-run the dry run: the mined hook address depends on `HurdleHook` bytecode, so any `src/` change moves it.
 
-## TODO: vault deployment
+## Vaults
 
-A vault deployment step will be appended later. Hook point in the script: the block marked `TODO(vault)` right before `vm.stopBroadcast()`. Add the vault address to the JSON in `_writeJson`.
+After the pool, the script deploys two `HurdleVault`s with the deployer as curator and depositor:
+Patient (±950 ticks ≈ ±10%) and Chaser (±200 ticks ≈ ±2%). Each posts a bond of 5% of the
+deposit value in token1, deposits 1 mWETH + 3000 mUSDC, and sets its range. Parameters: carry 20%,
+fire below 2% bond/NAV, max spot–TWAP deviation 300 ticks, hourly epochs. Addresses land in the
+JSON as `patientVault` / `chaserVault`. Dry run on a 1301 fork passed (2026-11-17).

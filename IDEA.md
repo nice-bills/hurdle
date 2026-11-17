@@ -67,10 +67,15 @@ On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
 1. ~~Benchmark math spike~~ DONE: closed form, path-independent, 2 snapshots, ~0 swap gas (`research/benchmark-math.md`). New top risk: settlement-price manipulation, so the hook keeps a TWAP.
 2. ~~Verification harness~~ DONE: formula matches a real v4 full-range position to ~2.5e-18 of capital over 200-300 swaps, 257 fuzz runs (`research/phase2-harness.md`).
 3. ~~Epoch snapshots + TWAP observation~~ DONE: written in `beforeSwap` so same-block manipulation has zero weight; steady-state swap overhead 12k gas (`research/phase3-twap.md`). Real data: 42,280 ETH/USDC swaps, 7 days (`data/`). Open: in that down week both toy curators ended below par, so the demo week must show Patient beating par (pick a range-bound week or tune Patient).
-4. **Vault + settlement**: NAV, carry, bond shortfall payments.
-5. **Fire rule** + passive fallback.
-6. **Demo**: replay script, chart UI, testnet deploy, video.
-7. Stretch: earned capacity.
+4. ~~Vault + settlement~~ DONE (`src/HurdleVault.sol`): TWAP-valued NAV and par, carry, bond pays shortfall, shortfall recouped into the bond before carry (noise nets out), bond-capped AUM, epoch-gated settle, spot–TWAP deviation guard, swap-to-ratio rebalancing.
+5. ~~Fire rule + passive fallback~~ DONE: fired vault parks 50/50 full range and tracks par (test within 10 bp).
+6. Demo: ~~replay~~ (`test/Replay.t.sol`, real weeks) ~~chart UI~~ (`demo/ui`) ~~deploy script~~ (dry run passes). Left: broadcast (needs a funded key), video.
+7. ~~Stretch: earned capacity~~ DONE as AUM cap = bond / minBond.
+
+Replay results (real ETH/USDC swaps, hourly epochs, 5% bond, values in USD):
+- Range week (Oct 31 – Nov 6, selected by a rule fixed in advance): Patient beats par by +1.9% and keeps its bond; Chaser trails par by 2.7%, is fired on day 4, and its depositors end above par.
+- Down week (Nov 7 – 13, ETH −14%): both trail par; Patient's bond runs out on day 6 and it is fired; depositors of both end at or above par.
+- In both weeks depositors never fall below par while bond remains (asserted by `demo/build_json.py`).
 
 Grunt work (scaffold, test fixtures, UI, research sweeps) goes to OpenCode free models (GLM 5.3 Flash / DeepSeek V4.1 Flash); Claude owns the math and reviews every result against the harness.
 
