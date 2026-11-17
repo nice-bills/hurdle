@@ -38,12 +38,21 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
 
 ## Unichain Sepolia (1301)
 
-**Superseded (pre-audit) deployment, do not use:** hook `0xd0d744918B9a2657B6097e034D51B2D93524dA80`,
-Patient `0x72E67e9263E8c60811291d4e3F759612090316ca`, Chaser `0x8e7665e30D6bB124c5Ea7b4D340Cd6F07513603C`.
-These run the code from before the audit fixes (no TWAP history requirement, price-valued deposits,
-uncapped par). They stay on chain; the fixed contracts replace them at the redeploy, which is a two-step
-broadcast (hook + pool, then vaults 10+ minutes later): [research/deploy.md](research/deploy.md). The
-README will list the new addresses once that is done.
+**Live (audit-fixed, deployed 2026-11-17):**
+
+| Contract | Address |
+|---|---|
+| HurdleHook | [`0x9BaaB91A2DFB8fF9b9D86D5067E67435d56090a0`](https://sepolia.uniscan.xyz/address/0x9BaaB91A2DFB8fF9b9D86D5067E67435d56090a0) |
+| Patient vault (±10%) | [`0x448071dAbcF890D6f89FB108803c20461f0D86e8`](https://sepolia.uniscan.xyz/address/0x448071dAbcF890D6f89FB108803c20461f0D86e8) |
+| Chaser vault (±2%) | [`0x0B33F9959107469Fb0913B69f2459Cb07d18d68f`](https://sepolia.uniscan.xyz/address/0x0B33F9959107469Fb0913B69f2459Cb07d18d68f) |
+| mUSDC (currency0) | `0x01b5BFD7756e9f525152D6D62569c33279816b25` |
+| mWETH (currency1) | `0xa30F0653de83907C4B63dcB50cc7d019058f2B14` |
+| Liquidity / swap routers | `0x87805a54151Ae3989442b54244dF3D4517Bf7181` / `0x23af931211dDf6b766b119Db9E086eed0e09C99b` |
+
+Full output: `script/out/deploy-1301.json`.
+
+Superseded pre-audit deployment (do not use): hook `0xd0d744918B9a2657B6097e034D51B2D93524dA80`,
+vaults `0x72E67e9263E8c60811291d4e3F759612090316ca`, `0x8e7665e30D6bB124c5Ea7b4D340Cd6F07513603C`.
 
 ## Layout
 

@@ -1,8 +1,17 @@
 # Unichain Sepolia deploy (chain id 1301)
 
-Status: **the fixed contracts are not deployed yet.** The pre-audit deployment below is **superseded**: it runs
-the code from before the audit fixes (no TWAP history requirement, price-valued deposits, uncapped par,
-no donate block). Do not point anything at it. Redeploy with the two steps in "Broadcast commands".
+Status: **Live (audit-fixed, deployed 2026-11-17):**
+
+| Contract | Address |
+|---|---|
+| HurdleHook | [`0x9BaaB91A2DFB8fF9b9D86D5067E67435d56090a0`](https://sepolia.uniscan.xyz/address/0x9BaaB91A2DFB8fF9b9D86D5067E67435d56090a0) |
+| Patient vault (±10%) | [`0x448071dAbcF890D6f89FB108803c20461f0D86e8`](https://sepolia.uniscan.xyz/address/0x448071dAbcF890D6f89FB108803c20461f0D86e8) |
+| Chaser vault (±2%) | [`0x0B33F9959107469Fb0913B69f2459Cb07d18d68f`](https://sepolia.uniscan.xyz/address/0x0B33F9959107469Fb0913B69f2459Cb07d18d68f) |
+| mUSDC (currency0) | `0x01b5BFD7756e9f525152D6D62569c33279816b25` |
+| mWETH (currency1) | `0xa30F0653de83907C4B63dcB50cc7d019058f2B14` |
+| Liquidity / swap routers | `0x87805a54151Ae3989442b54244dF3D4517Bf7181` / `0x23af931211dDf6b766b119Db9E086eed0e09C99b` |
+
+Full output: `script/out/deploy-1301.json`.
 
 Superseded (pre-audit, deployed 2026-11-17, deployer `0xA9B480C2694aa3F16cd109FCD2C91aCbf3BC689F`, funded by bridging Ethereum Sepolia ETH through the official L1StandardBridge `0xea58fcA6849d79EAd1f26608855c2D6407d54Ce2`):
 
@@ -130,4 +139,4 @@ forge's `broadcast/<script>/1301/run-latest.json`. If step 2 stops with "< 10 mi
 No `--verify` set: add `--verify --verifier blockscout --verifier-url https://unichain-sepolia.blockscout.com/api/` only if you have confirmed that explorer endpoint.
 
 Before broadcasting, re-run the step 1 dry run: the mined hook address depends on `HurdleHook` bytecode, so any `src/` change moves it.
-After the redeploy, update the addresses in README.md and mark this file's "superseded" table as history.
+Redeploy done 2026-11-17 (step 1 11:25 UTC, step 2 12 min later); the superseded table above is history.
