@@ -57,9 +57,9 @@ Prior-art sweep for Hurdle itself: `research/prior-art.md`. No v4 hook found tha
 ## Definition of done (falsifiable)
 
 On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
-1. Onchain benchmark matches an offchain Python reference of the paper's infinitesimal LP within 1 bp.
-2. Chaser's depositors end ≥ benchmark (bond paid the shortfall) and Chaser is fired; Patient is paid exactly `carry × (vaultReturn − benchmark)`.
-3. Swap gas overhead < 40k.
+1. Onchain benchmark matches an offchain Python reference of the paper's infinitesimal LP within 1 bp. **MET:** max 0.99 bp over 167 hourly settlements, 0.001 bp at week end, both weeks (`data/par_check.py --twap`).
+2. Chaser's depositors end ≥ benchmark (bond paid the shortfall) and Chaser is fired; Patient is paid exactly `carry × (vaultReturn − benchmark)` per epoch, after refilling any bond it has paid out. **MET** in the range-week replay; carry exactness is asserted per epoch in `test/HurdleVault.t.sol`.
+3. Swap gas overhead < 40k. **MET:** ~12k steady state, ~34k when a new ring slot is first written.
 4. Testnet deploy (Unichain Sepolia) + demo UI + video.
 
 ## Workflow (riskiest first)

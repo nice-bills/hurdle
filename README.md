@@ -13,7 +13,9 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
   `value1 = L·(2·s1 + dfg0·P1 + dfg1)`, where `s = sqrtPrice`, `P = s²` and `dfg` is the
   `feeGrowthGlobal` delta. It is path-independent, so the swap path pays nothing for it.
   Derivation: [research/benchmark-math.md](research/benchmark-math.md). The formula matches a real v4
-  full-range position to ~2.5e-18 of capital ([research/phase2-harness.md](research/phase2-harness.md)).
+  full-range position to ~2.5e-18 of capital ([research/phase2-harness.md](research/phase2-harness.md)),
+  and on the real-swap replay the on-chain par matches an exact offchain computation to within 1 bp
+  at every hourly settlement (`python3 data/par_check.py data/weeks/2026-10-31.csv demo/out/range-week.csv --twap`).
 - **Manipulation-resistant price.** `HurdleHook` writes a tick accumulator in `beforeSwap`, before the
   price moves, so same-block manipulation has zero weight. All NAV and par valuations use the TWAP.
   Overhead is ~12k gas per swap in steady state ([research/phase3-twap.md](research/phase3-twap.md)).
@@ -38,7 +40,7 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
 ## Run
 
 ```sh
-forge test                                     # 24 tests
+forge test                                     # 25 tests
 # replay a real week through the hook + two vaults (~30 s), then build the UI data
 REPLAY_CSV=data/weeks/2026-10-31.csv REPLAY_OUT=demo/out/range-week.csv forge test --match-contract ReplayTest -vv
 python3 demo/build_json.py demo/out/range-week.csv "Range-bound week (Oct 31 – Nov 6)"
@@ -50,4 +52,9 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
 - The TWAP ring holds 32 blocks with swaps, so on a busy pool the window is shorter than 30 minutes.
 - A withdrawal mid-epoch leaves without that partial epoch's guarantee.
 - NAV is valued at TWAP. When spot is far from TWAP this errs against the curator, never depositors.
+- The curator cannot withdraw the bond or bond shares; they stay as collateral for the vault's life.
+- After firing, `rebalance` is permissionless and swaps to 50/50; price impact is bounded to
+  `maxTickDeviation` around TWAP.
+- Par is valued at the TWAP, not spot. Over a trending week the two differ by up to ~22 bp at the
+  endpoints (`data/par_check.py` without `--twap`).
 - Not audited. Testnet only.

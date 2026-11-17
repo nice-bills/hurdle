@@ -183,8 +183,10 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         _settle();
     }
 
+    /// Settles if the epoch is over; otherwise realizes accrued fees so NAV and pro-rata payouts include them.
     function _maybeSettle() private {
         if (block.timestamp >= start.timestamp + epochSeconds) _settle();
+        else if (_liquidity > 0) _modify(_tickLower, _tickUpper, 0);
     }
 
     function _settle() private {
@@ -249,6 +251,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     function _payShortfall(uint256 navNow, uint256 shortfall) private returns (uint256 paid, uint256 tokens) {
         uint256 t = totalSupply;
         uint256 b = bondShares;
+        if (t == b) return (0, 0); // only bond shares left: no depositors to make whole
         uint256 owed = FullMath.mulDiv(shortfall, t - b, t); // bond shares absorb their own share of the miss
         if (b > 0) {
             // Burning k shares lifts the other (t-b) shares' value by (t-b)*nav*k / (t*(t-k)).

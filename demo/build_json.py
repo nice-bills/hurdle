@@ -25,7 +25,7 @@ for r in rows:
             "nav": int(r[p + "_nav"]) / E18 * k,
             "depositor": int(r[p + "_dep"]) / E18 * k,
             "bond": int(r[p + "_bond"]) / E18 * k,
-            "carry": int(r[p + "_take"]) / E18 * k,
+            "carry": int(r[p + "_carry"]) / E18 * k,
             "shortfall": int(r[p + "_paid"]) / E18 * k,
             "fired": fired,
         }

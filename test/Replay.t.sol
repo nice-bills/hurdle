@@ -68,7 +68,7 @@ contract ReplayTest is Test, Deployers {
         vm.warp(t0);
         _setUp(s0);
 
-        vm.writeFile(out, "t,sqrtPriceX96,par,p_nav,p_dep,p_bond,p_take,p_paid,p_fired,c_nav,c_dep,c_bond,c_take,c_paid,c_fired\n");
+        vm.writeFile(out, "t,sqrtPriceX96,twapSqrtPriceX96,par,p_nav,p_dep,p_bond,p_carry,p_paid,p_fired,c_nav,c_dep,c_bond,c_carry,c_paid,c_fired\n");
         _writeRow(out, t0);
 
         uint256 nextSettle = t0 + EPOCH;
@@ -193,6 +193,7 @@ contract ReplayTest is Test, Deployers {
 
     function _settle(HurdleVault v, Track storage tr) internal {
         (,,,, uint256 startNav) = v.start();
+        uint256 deficitBefore = v.deficit();
         vm.recordLogs();
         v.settle();
         Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -202,7 +203,8 @@ contract ReplayTest is Test, Deployers {
                 abi.decode(logs[i].data, (uint256, uint256, uint256, uint256, uint256, uint160));
             tr.par = FullMath.mulDiv(tr.par, bench, startNav);
             tr.produced = FullMath.mulDiv(tr.produced, nav, startNav);
-            tr.take += take;
+            uint256 recoup = paid == 0 && deficitBefore > v.deficit() ? deficitBefore - v.deficit() : 0;
+            tr.take += take - recoup; // carry only; the recoup shows up as bond refill
             tr.paid += paid;
         }
     }
@@ -214,7 +216,9 @@ contract ReplayTest is Test, Deployers {
 
     function _writeRow(string memory out, uint256 t) internal {
         (uint160 sp,,,) = manager.getSlot0(key.toId());
-        string memory row = string.concat(vm.toString(t), ",", vm.toString(uint256(sp)), ",", vm.toString(tp.par));
+        uint160 tw = TickMath.getSqrtPriceAtTick(hook.twapTick(key.toId()));
+        string memory row = string.concat(vm.toString(t), ",", vm.toString(uint256(sp)), ",", vm.toString(uint256(tw)));
+        row = string.concat(row, ",", vm.toString(tp.par));
         row = string.concat(row, ",", _vaultCols(patient, tp), ",", _vaultCols(chaser, tc));
         vm.writeLine(out, row);
     }

@@ -246,10 +246,23 @@ contract HurdleVaultTest is Test, Deployers {
         uint256 recoup = excess < paid ? excess : paid;
         assertEq(vault.deficit(), paid - recoup);
         assertApproxEqAbs(carry, recoup + (excess - recoup) * 2000 / 10_000, 1);
+        // The recoup refilled the bond as locked shares, not free curator shares.
+        assertGt(vault.bondShares(), 0, "recoup should mint bond shares");
+
+        // Epoch 3 loses again: bond shares are burned before any bond tokens move.
+        uint256 bondTokens = vault.bond();
+        uint256 bShares = vault.bondShares();
+        _recenter(vault, 120);
+        for (uint256 i = 1; i <= 10; ++i) _moveTo(c + int24(int256(i) * 100));
+        (,,, uint256 paid3) = _settled(vault);
+        assertGt(paid3, 0, "epoch 3 should trail par");
+        assertLt(vault.bondShares(), bShares, "bond shares not burned first");
+        if (vault.bondShares() > 0) assertEq(vault.bond(), bondTokens, "tokens moved before shares ran out");
     }
 
-    /// Noise around par must net out: a passive-ish curator settling every epoch keeps its bond.
-    function test_noiseAroundParKeepsBond() public {
+    /// Sanity: a par-tracking (full range) curator settling every epoch keeps its bond.
+    /// The refill path itself is covered by test_deficitRecoupedBeforeCarry.
+    function test_parTrackingCuratorKeepsBond() public {
         vault = _newVault(1e18);
         vm.prank(CURATOR);
         vault.rebalance(TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING));
@@ -308,6 +321,31 @@ contract HurdleVaultTest is Test, Deployers {
             sp, TickMath.getSqrtPriceAtTick(lo), TickMath.getSqrtPriceAtTick(hi), liq
         );
         return a0 * uint256(sp) / (1 << 96) * uint256(sp) / (1 << 96) + a1;
+    }
+
+    /// Mid-epoch withdrawal gets its pro-rata share of accrued fees, not all of them.
+    function test_midEpochWithdrawGetsProRataFees() public {
+        vault = _newVault(1e18);
+        address bob = address(0xB0B);
+        _fund(bob, address(vault), 10e18, 10e18);
+        vm.prank(bob);
+        vault.deposit(10e18, 10e18);
+        _recenter(vault, 600);
+        vm.warp(block.timestamp + 600);
+        vault.settle();
+        for (uint256 i; i < 6; ++i) _moveTo(i % 2 == 0 ? int24(300) : int24(-300));
+        _moveTo(0);
+
+        // Two equal withdrawals back to back must be worth the same: the first must not take all accrued fees.
+        uint256 shares = vault.balanceOf(bob) / 100;
+        vm.prank(bob);
+        (uint256 b0, uint256 b1) = vault.withdraw(shares);
+        vm.prank(ALICE);
+        (uint256 c0, uint256 c1) = vault.withdraw(shares);
+        (uint160 sp,,,) = manager.getSlot0(key.toId());
+        uint256 first = b0 * uint256(sp) / (1 << 96) * uint256(sp) / (1 << 96) + b1;
+        uint256 second = c0 * uint256(sp) / (1 << 96) * uint256(sp) / (1 << 96) + c1;
+        assertApproxEqRel(first, second, 1e12);
     }
 
     function test_depositCappedByBond() public {
