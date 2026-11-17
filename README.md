@@ -26,6 +26,13 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
   - bond below `minBondBps` of NAV: the curator is fired, the vault swaps to 50/50 and parks full range.
 - **Earned capacity:** deposits are capped at `bond / minBondBps`.
 
+## Live on Unichain Sepolia (1301)
+
+Hook [`0xd0d7…dA80`](https://sepolia.uniscan.xyz/address/0xd0d744918B9a2657B6097e034D51B2D93524dA80),
+Patient vault [`0x72E6…16ca`](https://sepolia.uniscan.xyz/address/0x72E67e9263E8c60811291d4e3F759612090316ca),
+Chaser vault [`0x8e76…603C`](https://sepolia.uniscan.xyz/address/0x8e7665e30D6bB124c5Ea7b4D340Cd6F07513603C).
+All addresses: [research/deploy.md](research/deploy.md).
+
 ## Layout
 
 | Path | What |
@@ -57,4 +64,4 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   `maxTickDeviation` around TWAP.
 - Par is valued at the TWAP, not spot. Over a trending week the two differ by up to ~22 bp at the
   endpoints (`data/par_check.py` without `--twap`).
-- Not audited. Testnet only.
+- Not audited. Testnet only (mock tokens).

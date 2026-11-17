@@ -1,6 +1,17 @@
 # Unichain Sepolia deploy (chain id 1301)
 
-Status: dry-run only. Nothing broadcast.
+Status: **deployed 2026-11-17** (deployer `0xA9B480C2694aa3F16cd109FCD2C91aCbf3BC689F`, funded by bridging Ethereum Sepolia ETH through the official L1StandardBridge `0xea58fcA6849d79EAd1f26608855c2D6407d54Ce2`).
+
+| Contract | Address |
+|---|---|
+| HurdleHook | [`0xd0d744918B9a2657B6097e034D51B2D93524dA80`](https://sepolia.uniscan.xyz/address/0xd0d744918B9a2657B6097e034D51B2D93524dA80) |
+| Patient vault (±10%) | [`0x72E67e9263E8c60811291d4e3F759612090316ca`](https://sepolia.uniscan.xyz/address/0x72E67e9263E8c60811291d4e3F759612090316ca) |
+| Chaser vault (±2%) | [`0x8e7665e30D6bB124c5Ea7b4D340Cd6F07513603C`](https://sepolia.uniscan.xyz/address/0x8e7665e30D6bB124c5Ea7b4D340Cd6F07513603C) |
+| mUSDC (currency0) | `0xAFdaE2704a1B9F3404125c2F7fbDB07fC427eB1c` |
+| mWETH (currency1) | `0xd6BfbD3eb5ED7C718Ca6579E61034669Bc8a4349` |
+| Liquidity router | `0xBFF633e3b4e1F0C9bD76F734062AeD0fa677ce8E` |
+
+Full output: `script/out/deploy-1301.json`, `broadcast/DeployHurdleHook.s.sol/1301/run-latest.json`.
 
 ## Addresses and sources
 

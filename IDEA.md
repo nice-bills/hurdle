@@ -60,7 +60,7 @@ On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
 1. Onchain benchmark matches an offchain Python reference of the paper's infinitesimal LP within 1 bp. **MET:** max 0.99 bp over 167 hourly settlements, 0.001 bp at week end, both weeks (`data/par_check.py --twap`).
 2. Chaser's depositors end ≥ benchmark (bond paid the shortfall) and Chaser is fired; Patient is paid exactly `carry × (vaultReturn − benchmark)` per epoch, after refilling any bond it has paid out. **MET** in the range-week replay; carry exactness is asserted per epoch in `test/HurdleVault.t.sol`.
 3. Swap gas overhead < 40k. **MET:** ~12k steady state, ~34k when a new ring slot is first written.
-4. Testnet deploy (Unichain Sepolia) + demo UI + video.
+4. Testnet deploy (Unichain Sepolia) + demo UI + video. **Deploy + UI MET**; video left.
 
 ## Workflow (riskiest first)
 
@@ -69,7 +69,7 @@ On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
 3. ~~Epoch snapshots + TWAP observation~~ DONE: written in `beforeSwap` so same-block manipulation has zero weight; steady-state swap overhead 12k gas (`research/phase3-twap.md`). Real data: 42,280 ETH/USDC swaps, 7 days (`data/`). Open: in that down week both toy curators ended below par, so the demo week must show Patient beating par (pick a range-bound week or tune Patient).
 4. ~~Vault + settlement~~ DONE (`src/HurdleVault.sol`): TWAP-valued NAV and par, carry, bond pays shortfall, shortfall recouped into the bond before carry (noise nets out), bond-capped AUM, epoch-gated settle, spot–TWAP deviation guard, swap-to-ratio rebalancing.
 5. ~~Fire rule + passive fallback~~ DONE: fired vault parks 50/50 full range and tracks par (test within 10 bp).
-6. Demo: ~~replay~~ (`test/Replay.t.sol`, real weeks) ~~chart UI~~ (`demo/ui`) ~~deploy script~~ (dry run passes). Left: broadcast (needs a funded key), video.
+6. Demo: ~~replay~~ (`test/Replay.t.sol`, real weeks) ~~chart UI~~ (`demo/ui`) ~~deploy script~~ (dry run passes). ~~broadcast~~ (live on Unichain Sepolia, see `research/deploy.md`). Left: video.
 7. ~~Stretch: earned capacity~~ DONE as AUM cap = bond / minBond.
 
 Replay results (real ETH/USDC swaps, hourly epochs, 5% bond, values in USD):
