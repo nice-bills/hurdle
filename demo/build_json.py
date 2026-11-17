@@ -30,7 +30,7 @@ for r in rows:
             "fired": fired,
         }
         if fired and not was_fired[name]:
-            events.append({"t": int(r["t"]), "vault": name, "type": "fired", "note": "bond below 2% of NAV"})
+            events.append({"t": int(r["t"]), "vault": name, "type": "fired", "note": "a miss left the bond below 1% of NAV"})
         was_fired[name] = fired
     points.append(pt)
 

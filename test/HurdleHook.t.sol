@@ -8,6 +8,8 @@ import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
+import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {HurdleHook} from "../src/HurdleHook.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
@@ -90,12 +92,20 @@ contract HurdleHookTest is Test, Deployers {
         // which the post-swap ticks were live.
         int56 cumulativeAtT3 = int56(tickA) * int56(uint56(T2 - T1)) + int56(tickB) * int56(uint56(T3 - T2));
 
-        int24 expectedFullWindow = int24(cumulativeAtT3 / int56(uint56(T3)));
+        // Pin the swap ticks so the expected means below are plain constants, not contract formulas.
+        assertEq(tickA, -199);
+        assertEq(tickB, 1);
+        assertEq(cumulativeAtT3, -29_700); // -199*150 + 1*150
+
+        // -29700 / 400 = -74.25, rounded toward negative infinity (v3 OracleLibrary) = -75.
+        int24 expectedFullWindow = -75;
         assertEq(hook.consult(key, T3), expectedFullWindow, "400s mean tick");
 
         // 250s window starts at T3 - 250 = 150, which is interpolated inside the T1..T2 interval.
         int56 cumulativeAt150 = int56(tickA) * int56(uint56(150 - T1));
-        int24 expectedPartialWindow = int24((cumulativeAtT3 - cumulativeAt150) / int56(uint56(T3 - 150)));
+        assertEq(cumulativeAt150, -9_950); // -199*50
+        // (-29700 + 9950) / 250 = -19750 / 250 = -79 exactly, so no rounding.
+        int24 expectedPartialWindow = -79;
         assertEq(hook.consult(key, T3 - 150), expectedPartialWindow, "250s interpolated mean tick");
 
         // Sanity: the mean is not the spot tick (otherwise the assertions above are vacuous).
@@ -163,7 +173,9 @@ contract HurdleHookTest is Test, Deployers {
         for (uint256 k = 9; k <= 39; ++k) {
             tickSum += int56(ticksAfter[k]);
         }
-        assertEq(hook.consult(key, 31 * 60), int24(tickSum / 31), "mean over wrapped history");
+        assertEq(tickSum, -15, "sum of the 31 live ticks");
+        // -15 / 31 = -0.48, rounded toward negative infinity = -1 (truncation would give 0).
+        assertEq(hook.consult(key, 31 * 60), -1, "mean over wrapped history");
 
         // One second more than the retained history is a revert, not a silent short window.
         vm.expectRevert(HurdleHook.InsufficientHistory.selector);
@@ -187,6 +199,73 @@ contract HurdleHookTest is Test, Deployers {
         assertEq(hook.consult(key, 72), int24(tickSum / 6));
         (uint32 cardinality,,,) = hook.oracleState(key.toId());
         assertEq(cardinality, 3, "ring entries at t=0, 60, 120 only");
+    }
+
+    /// Moves the pool to exactly tick `a` at START+60, then `b` at START+120, and returns the 120s mean
+    /// at START+180 (a live for 60s, b live for 60s). Steps are OBSERVATION_INTERVAL apart so both
+    /// window edges are ring entries and nothing is interpolated.
+    function _twoSecondMean(int24 a, int24 b) internal returns (int24) {
+        vm.warp(START + 60);
+        _moveTo(a);
+        vm.warp(START + 120);
+        _moveTo(b);
+        vm.warp(START + 180);
+        return hook.consult(key, 120);
+    }
+
+    function _moveTo(int24 tick) internal {
+        (uint160 sqrtNow,,,) = manager.getSlot0(key.toId());
+        uint160 target = TickMath.getSqrtPriceAtTick(tick);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(target < sqrtNow, -int256(1e30), target),
+            PoolSwapTest.TestSettings(false, false),
+            ZERO_BYTES
+        );
+        assertEq(_tick(key), tick, "pool should sit exactly on the target tick");
+    }
+
+    /// Mean of ticks -150 and 1 is -149/2 = -74.5: rounds DOWN to -75 (truncation would give -74).
+    function test_negativeNonIntegerMeanRoundsDown() public {
+        assertEq(_twoSecondMean(-150, 1), -75);
+    }
+
+    /// Mean of ticks 150 and -1 is 149/2 = 74.5: truncates to 74 (floor and truncation agree).
+    function test_positiveNonIntegerMeanTruncates() public {
+        assertEq(_twoSecondMean(150, -1), 74);
+    }
+
+    /// A negative mean that divides exactly must not be decremented: (-150 + -2)/2 = -76.
+    function test_negativeExactMeanNotDecremented() public {
+        assertEq(_twoSecondMean(-150, -2), -76);
+    }
+
+    function test_referenceFeeGrowthIgnoresSameBlockSwaps() public {
+        (uint256 fg0Open, uint256 fg1Open) = manager.getFeeGrowthGlobals(key.toId());
+        vm.warp(START + 100);
+        (uint256 r0, uint256 r1) = hook.referenceFeeGrowth(key.toId());
+        assertEq(r0, fg0Open, "no swap yet: live fee growth");
+        assertEq(r1, fg1Open);
+
+        swap(key, true, -1e16, ZERO_BYTES); // block N, first swap (fee in token0)
+        (uint256 l0,) = manager.getFeeGrowthGlobals(key.toId());
+        assertGt(l0, fg0Open, "swap should raise fee growth");
+        (r0, r1) = hook.referenceFeeGrowth(key.toId());
+        assertEq(r0, fg0Open, "reference = value before block N's first swap");
+        assertEq(r1, fg1Open);
+
+        swap(key, false, -1e16, ZERO_BYTES); // more swaps in the same block, both directions
+        swap(key, true, -1e16, ZERO_BYTES);
+        (uint256 live0, uint256 live1) = manager.getFeeGrowthGlobals(key.toId());
+        assertGt(live1, fg1Open, "live fee growth moved");
+        (r0, r1) = hook.referenceFeeGrowth(key.toId());
+        assertEq(r0, fg0Open, "same-block swaps must not move the reference");
+        assertEq(r1, fg1Open);
+
+        vm.warp(START + 101); // block N+1, before any swap: reference = live
+        (r0, r1) = hook.referenceFeeGrowth(key.toId());
+        assertEq(r0, live0, "next block: reference = live fee growth");
+        assertEq(r1, live1);
     }
 
     function test_donateReverts() public {

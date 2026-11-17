@@ -22,6 +22,8 @@ import {HurdleVault} from "../src/HurdleVault.sol";
 ///      it holds the minted mocks), DEPLOY_JSON optional (default script/out/deploy-<chainid>.json). Without
 ///      --broadcast the result goes to script/out/deploy-<chainid>-vaults-dryrun.json, never over the input.
 ///      Params: carry 20%, minBond 2%, maxTickDeviation 50, epoch 3600 s. Bond 5% of the deposit.
+///      The curator (deployer) funds the first deposit; shares go to a separate depositor address, so the
+///      bond really covers them.
 contract DeployVaults is Script {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -55,11 +57,12 @@ contract DeployVaults is Script {
 
         vm.startBroadcast(pk);
         (, int24 tick,,) = c.manager.getSlot0(c.key.toId());
-        patient = _vault(c, vm.addr(pk), tick, 950);
-        chaser = _vault(c, vm.addr(pk), tick, 200);
+        address depositor = _depositor(pk);
+        patient = _vault(c, vm.addr(pk), depositor, tick, 950);
+        chaser = _vault(c, vm.addr(pk), depositor, tick, 200);
         vm.stopBroadcast();
 
-        _write(c, patient, chaser);
+        _write(c, patient, chaser, depositor);
     }
 
     function _load() internal view returns (Ctx memory c) {
@@ -83,8 +86,19 @@ contract DeployVaults is Script {
             : string.concat("script/out/deploy-", vm.toString(block.chainid), "-vaults-dryrun.json");
     }
 
-    /// Deployer is curator and depositor. Bond 5% of the deposit (token1); deposit 1 mWETH + 3000 mUSDC.
-    function _vault(Ctx memory c, address curator, int24 tick, int24 half) internal returns (HurdleVault v) {
+    /// The depositor must not be the curator: the bond covers only non-curator shares. Derived from the
+    /// deployer key (keccak256(pk, "hurdle-depositor")), so the deployer can rebuild its key to withdraw.
+    /// Only the address is ever logged or written.
+    function _depositor(uint256 pk) internal pure returns (address) {
+        return vm.addr(uint256(keccak256(abi.encode(pk, "hurdle-depositor"))));
+    }
+
+    /// Deployer is curator; it funds the first deposit with shares minted to `depositor`.
+    /// Bond 5% of the deposit (token1); deposit 1 mWETH + 3000 mUSDC.
+    function _vault(Ctx memory c, address curator, address depositor, int24 tick, int24 half)
+        internal
+        returns (HurdleVault v)
+    {
         v = new HurdleVault(
             c.manager, c.key, curator, CARRY_BPS, MIN_BOND_BPS, MAX_TICK_DEVIATION, EPOCH
         );
@@ -92,13 +106,13 @@ contract DeployVaults is Script {
         c.weth.approve(address(v), type(uint256).max);
         v.postBond(c.wethIs0 ? 300e6 : 0.1e18); // token1 is mUSDC if mWETH is currency0
         (uint256 a0, uint256 a1) = c.wethIs0 ? (uint256(1e18), uint256(3000e6)) : (uint256(3000e6), uint256(1e18));
-        v.deposit(a0, a1);
+        v.deposit(a0, a1, depositor);
         int24 mid = (tick / TICK_SPACING) * TICK_SPACING;
         v.rebalance(mid - half, mid + half);
     }
 
     /// Re-serializes the input JSON (every key step 1 wrote) plus the two vault addresses.
-    function _write(Ctx memory c, HurdleVault patient, HurdleVault chaser) internal {
+    function _write(Ctx memory c, HurdleVault patient, HurdleVault chaser, address depositor) internal {
         string memory o = "vaults";
         vm.serializeUint(o, "chainId", vm.parseJsonUint(c.json, ".chainId"));
         vm.serializeAddress(o, "deployer", vm.parseJsonAddress(c.json, ".deployer"));
@@ -115,6 +129,7 @@ contract DeployVaults is Script {
         vm.serializeInt(o, "tickSpacing", TICK_SPACING);
         vm.serializeAddress(o, "patientVault", address(patient));
         vm.serializeAddress(o, "chaserVault", address(chaser));
+        vm.serializeAddress(o, "depositor", depositor);
         string memory json = vm.serializeBool(o, "broadcast", vm.isContext(VmSafe.ForgeContext.ScriptBroadcast));
         vm.writeJson(json, c.path);
         console2.log("Patient vault", address(patient));

@@ -52,8 +52,15 @@ contract HurdleHook is BaseHook {
         int24 blockOpenTick; // tick before the first swap of the block at lastTimestamp
     }
 
+    /// @notice feeGrowthGlobal0/1 before the first swap of the block at lastTimestamp.
+    struct FeeGrowth {
+        uint256 global0X128;
+        uint256 global1X128;
+    }
+
     mapping(PoolId => OracleState) private _oracle;
     mapping(PoolId => Observation[OBSERVATION_CARDINALITY]) private _observations;
+    mapping(PoolId => FeeGrowth) private _blockOpenFeeGrowth;
 
 
     error InvalidTwapWindow();
@@ -138,6 +145,8 @@ contract HurdleHook is BaseHook {
         // At most one observation per block. This is also the same-block manipulation guard.
         if (oracle.cardinality != 0 && timestamp <= lastTimestamp) return;
         oracle.blockOpenTick = tick;
+        (uint256 fg0, uint256 fg1) = poolManager.getFeeGrowthGlobals(id);
+        _blockOpenFeeGrowth[id] = FeeGrowth(fg0, fg1);
 
         if (oracle.cardinality != 0) {
             unchecked {
@@ -194,7 +203,10 @@ contract HurdleHook is BaseHook {
         int56 cumulativeTarget = _cumulativeAt(id, target, latestTimestamp, latestCumulative, currentTick);
 
         unchecked {
-            meanTick = int24((cumulativeNow - cumulativeTarget) / int56(uint56(secondsAgo)));
+            int56 delta = cumulativeNow - cumulativeTarget;
+            meanTick = int24(delta / int56(uint56(secondsAgo)));
+            // Round toward negative infinity, as Uniswap v3's OracleLibrary does.
+            if (delta < 0 && delta % int56(uint56(secondsAgo)) != 0) meanTick--;
         }
     }
 
@@ -287,6 +299,17 @@ contract HurdleHook is BaseHook {
         OracleState storage oracle = _oracle[id];
         if (oracle.cardinality != 0 && oracle.lastTimestamp == uint32(block.timestamp)) return oracle.blockOpenTick;
         (, tick,,) = poolManager.getSlot0(id); // no swap yet this block: spot is the last close
+    }
+
+    /// @notice feeGrowthGlobal0/1 at the start of the current block. Same-block swaps (e.g. wash
+    /// trades) cannot move it; donations are blocked, so only swaps move fee growth.
+    function referenceFeeGrowth(PoolId id) external view returns (uint256 global0X128, uint256 global1X128) {
+        OracleState storage oracle = _oracle[id];
+        if (oracle.cardinality != 0 && oracle.lastTimestamp == uint32(block.timestamp)) {
+            FeeGrowth storage fg = _blockOpenFeeGrowth[id];
+            return (fg.global0X128, fg.global1X128);
+        }
+        return poolManager.getFeeGrowthGlobals(id); // no swap yet this block
     }
 
     /// @notice Raw accumulator state, for debugging and research tooling.

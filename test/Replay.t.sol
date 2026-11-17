@@ -53,20 +53,26 @@ contract ReplayTest is Test, Deployers {
         uint256 initialValue;
         uint256 initialCapital;
         bool firedLogged;
+        uint256 firedDay; // days since replay start, x100, when the vault fired (0 = never)
     }
 
     Track tp;
     Track tc;
     uint256 lastChase;
+    uint256 settlements;
+    uint256 minDepositorVsPar; // lowest depositor_value / par seen at any settlement, 1e18 scale
+    uint256 t0_;
 
     function test_replay() public {
         string memory csv = vm.envOr("REPLAY_CSV", string(""));
-        if (bytes(csv).length == 0) return; // opt-in: not part of the normal suite
+        if (bytes(csv).length == 0) vm.skip(true); // opt-in: shows as skipped, not as a silent pass
         string memory out = vm.envOr("REPLAY_OUT", string("demo/out/replay.csv"));
 
         vm.readLine(csv); // header
         (uint256 t0, uint160 s0) = _row(vm.readLine(csv));
         _setUp(t0, s0);
+        t0_ = t0;
+        minDepositorVsPar = type(uint256).max;
 
         vm.writeFile(out, "t,sqrtPriceX96,twapSqrtPriceX96,par,p_nav,p_dep,p_bond,p_carry,p_paid,p_fired,c_nav,c_dep,c_bond,c_carry,c_paid,c_fired\n");
         _writeRow(out, t0);
@@ -91,6 +97,21 @@ contract ReplayTest is Test, Deployers {
         emit log_named_uint("patient depositor 1e18", _depositorRatio(patient, tp));
         emit log_named_uint("chaser depositor 1e18", _depositorRatio(chaser, tc));
         emit log_named_uint("par 1e18", tp.par);
+        emit log_named_uint("settlements", settlements);
+        emit log_named_uint("patient fired", patient.fired() ? 1 : 0);
+        emit log_named_uint("chaser fired", chaser.fired() ? 1 : 0);
+        emit log_named_uint("patient day fired (x100)", tp.firedDay);
+        emit log_named_uint("chaser day fired (x100)", tc.firedDay);
+        emit log_named_uint("chaser par 1e18", tc.par);
+        emit log_named_uint("min depositor/par 1e18 over all settlements", minDepositorVsPar);
+
+        // A settle() revert would have aborted the replay above; make sure settlements really ran.
+        assertGt(settlements, 0, "no settlement happened");
+        // Final depositor value covers par (benchmark) within 1 bp, for each vault.
+        assertGe(_depositorRatio(patient, tp) * 10_000, tp.par * 9_999, "patient depositor below par");
+        assertGe(_depositorRatio(chaser, tc) * 10_000, tc.par * 9_999, "chaser depositor below par");
+        // ...and at every settlement along the way.
+        assertGe(minDepositorVsPar, 0.9999e18, "depositor fell below par at a settlement");
     }
 
     // ---------------------------------------------------------------------
@@ -132,12 +153,11 @@ contract ReplayTest is Test, Deployers {
 
     function _vault(address curator, uint256 a0, uint256 a1, uint256 bondAmt) internal returns (HurdleVault v) {
         v = new HurdleVault(manager, key, curator, 2000, 200, 50, EPOCH);
-        _give(curator, address(v), 0, bondAmt);
-        vm.prank(curator);
+        _give(curator, address(v), a0, a1 + bondAmt);
+        vm.startPrank(curator);
         v.postBond(bondAmt);
-        _give(DEPOSITOR, address(v), a0, a1);
-        vm.prank(DEPOSITOR);
-        v.deposit(a0, a1);
+        v.deposit(a0, a1, DEPOSITOR); // curator pays, shares go to a non-curator depositor the bond covers
+        vm.stopPrank();
     }
 
     function _track(HurdleVault v) internal view returns (Track memory t) {
@@ -189,6 +209,9 @@ contract ReplayTest is Test, Deployers {
     function _settleBoth() internal {
         _settle(patient, tp);
         _settle(chaser, tc);
+        settlements++;
+        _checkVsPar(patient, tp);
+        _checkVsPar(chaser, tc);
         // Keeper: a fired vault is re-parked full range once spot is near TWAP again.
         if (patient.fired()) try patient.rebalance(0, 0) {} catch {}
         if (chaser.fired()) try chaser.rebalance(0, 0) {} catch {}
@@ -210,6 +233,12 @@ contract ReplayTest is Test, Deployers {
             tr.take += take - recoup; // carry only; the recoup shows up as bond refill
             tr.paid += paid;
         }
+    }
+
+    function _checkVsPar(HurdleVault v, Track storage tr) internal {
+        if (v.fired() && tr.firedDay == 0) tr.firedDay = (block.timestamp - t0_) * 100 / 1 days;
+        uint256 r = FullMath.mulDiv(_depositorRatio(v, tr), 1e18, tr.par);
+        if (r < minDepositorVsPar) minDepositorVsPar = r;
     }
 
     function _depositorRatio(HurdleVault v, Track storage tr) internal view returns (uint256) {

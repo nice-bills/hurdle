@@ -17,13 +17,15 @@ interface IHurdleVault {
     error CuratorFired();
     error ZeroShares();
 
-    /// First deposit only (TWAP-valued, idle).
-    function deposit(uint256 amount0, uint256 amount1) external returns (uint256 shares);
+    /// First deposit only, curator-only, shares to `receiver` (TWAP-valued, idle).
+    function deposit(uint256 amount0, uint256 amount1, address receiver) external returns (uint256 shares);
     /// In kind, only in the settlement block: pays what withdraw(shares) would pay, rounded up.
     function deposit(uint256 shares, uint256 max0, uint256 max1) external returns (uint256 amount0, uint256 amount1);
     function withdraw(uint256 shares) external returns (uint256 amount0, uint256 amount1);
     function postBond(uint256 amount1) external;
     function rebalance(int24 tickLower, int24 tickUpper) external;
+    /// Reverts if more than maxIdleBps of NAV is left outside the position.
+    function rebalance(int24 tickLower, int24 tickUpper, uint16 maxIdleBps) external;
     function settle() external;
 
     function curator() external view returns (address);

@@ -66,9 +66,9 @@ contract HurdleVaultTest is Test, Deployers {
         _fund(CURATOR, address(v), 0, bondAmount);
         vm.prank(CURATOR);
         v.postBond(bondAmount);
-        _fund(ALICE, address(v), 10e18, 10e18);
-        vm.prank(ALICE);
-        v.deposit(10e18, 10e18);
+        _fund(CURATOR, address(v), 10e18, 10e18);
+        vm.prank(CURATOR);
+        v.deposit(10e18, 10e18, ALICE);
     }
 
     function _fund(address who, address spender, uint256 a0, uint256 a1) internal {
@@ -236,16 +236,34 @@ contract HurdleVaultTest is Test, Deployers {
         return tick;
     }
 
-    /// Multi-epoch: every settle pays min(shortfall, bond); bond exhausted => fired, parked full range,
-    /// curator locked out; anyone can finish the park once, then it is closed.
+    /// Multi-epoch: every shortfall settle pays min(shortfall, bond); a payment that leaves the bond below
+    /// half the floor fires the curator. The epoch-ending call is the curator's own rebalance: it settles,
+    /// fires, and returns without moving to the curator's range. Parked full range, curator locked out;
+    /// anyone can finish the park, then it is closed.
     function test_fireRule() public {
         vault = _newVault(0.6e18);
         vm.recordLogs();
+        _recenter(vault, 120);
         int24 tick;
-        for (uint256 epoch; epoch < 12 && !vault.fired(); ++epoch) tick = _losingEpoch(tick);
+        bool firedByRebalance;
+        for (uint256 epoch; epoch < 12 && !vault.fired(); ++epoch) {
+            for (uint256 i; i < 10; ++i) {
+                tick += 100;
+                _moveTo(tick);
+            }
+            vm.warp(block.timestamp + 600);
+            int24 c = _floorTick();
+            vm.prank(CURATOR);
+            try vault.rebalance(c - 120, c + 120) {
+                firedByRebalance = vault.fired();
+            } catch {
+                vault.settle(); // below the floor the curator's rebalance reverts; anyone can still settle
+            }
+        }
         (uint256 totalPaid,) = _checkSettlements();
         assertGt(totalPaid, 0);
         assertTrue(vault.fired(), "never fired");
+        assertTrue(firedByRebalance, "should fire inside the curator's epoch-ending rebalance");
         (int24 lo, int24 hi,) = vault.position();
         assertEq(lo, TickMath.minUsableTick(SPACING));
         assertEq(hi, TickMath.maxUsableTick(SPACING));
@@ -264,6 +282,19 @@ contract HurdleVaultTest is Test, Deployers {
         }
         vm.expectRevert(HurdleVault.AlreadyParked.selector);
         vault.rebalance(0, 0);
+    }
+
+    /// Beating par never fires: NAV growth that drops the bond below the floor only blocks deposits and
+    /// curator rebalances until postBond tops up.
+    function test_beatingParNeverFires() public {
+        vault = _newVault(0.4e18); // 20e18 NAV, bond exactly at the 2% floor
+        vm.prank(CURATOR);
+        vault.rebalance(TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING));
+        _moveTo(400); // NAV in token1 grows, bond does not
+        (uint256 nav, uint256 bench,, uint256 paid) = _settled(vault);
+        assertLt(paid * 1e6, nav, "only rounding dust paid");
+        assertGe(nav + nav / 1e6, bench);
+        assertFalse(vault.fired());
     }
 
     /// A curator who loses one epoch then wins earns the shortfall back before any carry.
@@ -415,9 +446,30 @@ contract HurdleVaultTest is Test, Deployers {
         vm.startPrank(bob);
         vm.expectRevert(HurdleVault.Slippage.selector);
         vault.deposit(aliceShares, 11e18, 9e18); // needs ~10e18 of each
-        vm.expectRevert(HurdleVault.NotFirstDeposit.selector);
-        vault.deposit(1e18, 1e18);
+        vm.expectRevert(IHurdleVault.NotCurator.selector);
+        vault.deposit(1e18, 1e18, bob);
         vm.stopPrank();
+        _fund(CURATOR, address(vault), 1e18, 1e18);
+        vm.prank(CURATOR);
+        vm.expectRevert(HurdleVault.NotFirstDeposit.selector);
+        vault.deposit(1e18, 1e18, ALICE);
+    }
+
+    /// [6] The first deposit is curator-only: anyone else reverts NotCurator; the curator pays, `receiver` gets the shares.
+    function test_firstDepositCuratorOnly() public {
+        HurdleVault v = new HurdleVault(manager, key, CURATOR, 2000, 200, 50, 600);
+        _fund(ALICE, address(v), 10e18, 10e18);
+        vm.prank(ALICE);
+        vm.expectRevert(IHurdleVault.NotCurator.selector);
+        v.deposit(10e18, 10e18, ALICE);
+        _fund(CURATOR, address(v), 10e18, 11e18);
+        vm.prank(CURATOR);
+        v.postBond(1e18);
+        vm.prank(CURATOR);
+        uint256 shares = v.deposit(10e18, 10e18, ALICE);
+        assertEq(v.balanceOf(ALICE), shares);
+        assertEq(v.balanceOf(CURATOR), 0);
+        assertEq(MockERC20(Currency.unwrap(currency0)).balanceOf(CURATOR), 0);
     }
 
     /// F5: a mid-epoch exit while ahead of par pays its pro-rata share of the pending carry.
@@ -487,7 +539,7 @@ contract HurdleVaultTest is Test, Deployers {
         d = vault.deficit();
         vm.prank(bob);
         vault.withdraw(shares);
-        assertEq(d - vault.deficit(), recoup, "deficit not reduced by the pro-rata recoup");
+        assertEq(d - vault.deficit(), owedD, "deficit not reduced by exactly the pro-rata share");
         assertGt(recoup, 0);
         assertApproxEqAbs(vault.bondShares() * navNow / t, recoup, 10, "recoup not locked as bond shares");
         assertApproxEqAbs(vault.balanceOf(CURATOR) * navNow / t, carry, 10, "carry not on the remainder only");

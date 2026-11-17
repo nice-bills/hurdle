@@ -122,9 +122,9 @@ contract AuditPoC is Test, Deployers {
         _fund(CURATOR, address(vault), 0, 2e18);
         vm.prank(CURATOR);
         vault.postBond(2e18);
-        _fund(ALICE, address(vault), 30e18, 30e18);
-        vm.prank(ALICE);
-        vault.deposit(30e18, 30e18);
+        _fund(CURATOR, address(vault), 30e18, 30e18);
+        vm.prank(CURATOR);
+        vault.deposit(30e18, 30e18, ALICE);
         vm.prank(CURATOR);
         vault.rebalance(TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING));
         _fund(ARB, address(vault), 40e18, 40e18);
@@ -170,9 +170,9 @@ contract AuditPoC is Test, Deployers {
         _fund(CURATOR, address(vault), 0, 0.5e18);
         vm.prank(CURATOR);
         vault.postBond(0.5e18); // 2.5% of 20e18 NAV, above the 2% floor
-        _fund(ALICE, address(vault), 10e18, 10e18);
-        vm.prank(ALICE);
-        vault.deposit(10e18, 10e18);
+        _fund(CURATOR, address(vault), 10e18, 10e18);
+        vm.prank(CURATOR);
+        vault.deposit(10e18, 10e18, ALICE);
         vm.prank(CURATOR);
         vault.rebalance(TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING));
 
@@ -237,9 +237,9 @@ contract AuditPoC is Test, Deployers {
         _fund(CURATOR, address(vault), 0, 0.5e18);
         vm.prank(CURATOR);
         vault.postBond(0.5e18);
-        _fund(ALICE, address(vault), 10e18, 10e18);
-        vm.prank(ALICE);
-        vault.deposit(10e18, 10e18);
+        _fund(CURATOR, address(vault), 10e18, 10e18);
+        vm.prank(CURATOR);
+        vault.deposit(10e18, 10e18, ALICE);
         vm.prank(CURATOR);
         vault.rebalance(-60, 60);
         _swapTo(800);
@@ -253,12 +253,12 @@ contract AuditPoC is Test, Deployers {
         vm.expectRevert(HurdleVault.DepositsOnlyAtSettlement.selector);
         vault.deposit(1e18, 5e18, 5e18);
 
-        // At the settlement the bond pays what it can and the curator is fired: with no bond left,
-        // capacity is zero, so the newcomer cannot buy into the uncollateralized guarantee at all.
+        // At the settlement the bond pays what it can and the curator is fired: the shortfall it paid is
+        // still owed to the bond (deficit), so the newcomer cannot buy into the guarantee at all.
         vm.warp(block.timestamp + 7200);
         uint256 shares = vault.totalSupply() / 10;
         vm.prank(bob);
-        vm.expectRevert(HurdleVault.CapacityExceeded.selector);
+        vm.expectRevert(HurdleVault.DeficitOutstanding.selector);
         vault.deposit(shares, 5e18, 5e18);
         vault.settle();
         assertTrue(vault.fired());
@@ -298,9 +298,9 @@ contract AuditPoC is Test, Deployers {
         _fund(CURATOR, address(vault), 0, 2e18);
         vm.prank(CURATOR);
         vault.postBond(2e18);
-        _fund(ALICE, address(vault), 5e18, 5e18);
-        vm.prank(ALICE);
-        vault.deposit(5e18, 5e18);
+        _fund(CURATOR, address(vault), 5e18, 5e18);
+        vm.prank(CURATOR);
+        vault.deposit(5e18, 5e18, ALICE);
         // Attacker = this contract (it also does the swaps). Joins in kind in the same (settlement) block.
         t0.approve(address(vault), type(uint256).max);
         t1.approve(address(vault), type(uint256).max);

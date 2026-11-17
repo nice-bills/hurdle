@@ -11,6 +11,7 @@ import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {PoolId} from "v4-core/src/types/PoolId.sol";
 import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+import {HurdleVault} from "../src/HurdleVault.sol";
 import {PoolModifyLiquidityTest} from "v4-core/src/test/PoolModifyLiquidityTest.sol";
 
 contract BenchmarkTest is Test, Deployers {
@@ -25,10 +26,18 @@ contract BenchmarkTest is Test, Deployers {
         uint256 feeGrowth1X128;
     }
 
+    /// The deployed contract's `benchmark` (public pure): the test checks the real code, not a copy.
+    HurdleVault vault;
+    /// Large enough that MAX_FEE_APR_BPS never binds: fees are credited in full.
+    uint256 constant UNCAPPED = 100_000 * 365 days;
+    uint256 public maxErrQ27; // worst relative error seen, 1e27 scale (1e27 = 100% of capital)
+
     function setUp() public {
         deployFreshManagerAndRouters();
         deployMintAndApprove2Currencies();
         (key,) = initPool(currency0, currency1, IHooks(address(0)), 3000, 60, SQRT_1_1);
+        // benchmark() reads no state, so the oracle (key.hooks = 0) is never touched.
+        vault = new HurdleVault(manager, key, address(0xC0), 2000, 100, 1, 3600);
     }
 
     function test_realAccounting_matchesFormula() public {
@@ -42,6 +51,8 @@ contract BenchmarkTest is Test, Deployers {
             if (relativeErrorQ27 > maxRelativeErrorQ27) maxRelativeErrorQ27 = relativeErrorQ27;
         }
         emit log_named_uint("max relative error (1e27 scale)", maxRelativeErrorQ27);
+        // Observed max 1.43e-18 of capital over these 8 seeds; README claims ~2.5e-18.
+        assertLe(maxRelativeErrorQ27, 2.5e9, "error above the README's 2.5e-18 claim");
     }
 
     function testFuzz_realAccounting_matchesFormula(uint256 seed, uint8 count) public {
@@ -54,13 +65,18 @@ contract BenchmarkTest is Test, Deployers {
         _runSwaps(seed, n);
         Snapshot memory after_ = _snapshot();
         uint256 p1Q64 = FullMath.mulDiv(uint256(after_.sqrtPriceX96), uint256(after_.sqrtPriceX96), 1 << 128);
-        int256 excessQ64 = _formulaQ64(
+        // benchmark() values a full-range position worth nav0 at s0 once moved to s1 plus fees; the
+        // passive position here holds (x0,y0), so excess over holding them = benchmark - hold value.
+        uint256 nav0 = FullMath.mulDiv(FullMath.mulDiv(x0, before_.sqrtPriceX96, 1 << 96), before_.sqrtPriceX96, 1 << 96) + y0;
+        uint256 bench = vault.benchmark(
+            nav0,
+            before_.sqrtPriceX96,
+            after_.sqrtPriceX96,
             after_.feeGrowth0X128 - before_.feeGrowth0X128,
             after_.feeGrowth1X128 - before_.feeGrowth1X128,
-            p1Q64,
-            before_.sqrtPriceX96,
-            after_.sqrtPriceX96
+            UNCAPPED
         );
+        int256 excessQ64 = int256(bench << 64) - int256(_valueQ64(x0, y0, p1Q64));
 
         (uint256 x1, uint256 y1) = _withdraw();
         int256 truth = int256(_valueQ64(x1, y1, p1Q64)) - int256(_valueQ64(x0, y0, p1Q64));
@@ -69,6 +85,7 @@ contract BenchmarkTest is Test, Deployers {
         emit log_named_uint("absolute error token1-wei Q64", errQ64);
         emit log_named_uint("initial capital token1-wei Q64", capitalQ64);
         relativeErrorQ27 = FullMath.mulDiv(errQ64, 1e27, capitalQ64);
+        if (relativeErrorQ27 > maxErrQ27) maxErrQ27 = relativeErrorQ27;
         emit log_named_uint("relative error (1e27 scale)", relativeErrorQ27);
         emit log_named_uint(
             "ending price (1e6 scale)", FullMath.mulDiv(p1Q64, 1e6, 1 << 64)
@@ -122,22 +139,26 @@ contract BenchmarkTest is Test, Deployers {
         y1 = currency1.balanceOf(address(this)) - b1;
     }
 
-    function _formulaQ64(uint256 dfg0, uint256 dfg1, uint256 p1Q64, uint160 s0, uint160 s1)
-        internal
-        pure
-        returns (int256)
-    {
-        uint256 fee0PerLQ64 = FullMath.mulDiv(dfg0, p1Q64, 1 << 128);
-        uint256 fee0Q64 = uint256(L) * fee0PerLQ64;
-        uint256 fee1Q64 = FullMath.mulDiv(uint256(L), dfg1, 1 << 64);
-        uint256 ds = uint256(s1) > s0 ? uint256(s1) - s0 : uint256(s0) - uint256(s1);
-        // ds^2 / s0 is Q96-scaled; divide by 2^32 to express the loss in Q64.
-        uint256 lossQ64 = FullMath.mulDiv(uint256(L), FullMath.mulDiv(ds, ds, s0), 1 << 32);
-        return int256(fee0Q64 + fee1Q64) - int256(lossQ64);
-    }
-
     function _valueQ64(uint256 amount0, uint256 amount1, uint256 p1Q64) internal pure returns (uint256) {
         return amount0 * p1Q64 + amount1 * (1 << 64);
+    }
+
+    /// With a tiny `elapsed` the fee credit is clamped to nav0 * MAX_FEE_APR_BPS * elapsed / (1e4 * 1 year).
+    function test_feeCapBindsWhenElapsedTiny() public {
+        (uint256 x0, uint256 y0) = _deposit();
+        Snapshot memory a = _snapshot();
+        _runSwaps(1, 200);
+        Snapshot memory b = _snapshot();
+        uint256 nav0 = FullMath.mulDiv(FullMath.mulDiv(x0, a.sqrtPriceX96, 1 << 96), a.sqrtPriceX96, 1 << 96) + y0;
+        uint256 d0 = b.feeGrowth0X128 - a.feeGrowth0X128;
+        uint256 d1 = b.feeGrowth1X128 - a.feeGrowth1X128;
+        uint256 principal = vault.benchmark(nav0, a.sqrtPriceX96, b.sqrtPriceX96, 0, 0, 1);
+        uint256 full = vault.benchmark(nav0, a.sqrtPriceX96, b.sqrtPriceX96, d0, d1, UNCAPPED) - principal;
+        uint256 capped = vault.benchmark(nav0, a.sqrtPriceX96, b.sqrtPriceX96, d0, d1, 1) - principal;
+        // 30_000 bps APR over 1 second, written out: nav0 * 3 / 31_536_000.
+        assertEq(capped, nav0 * 30_000 / (10_000 * 365 days), "capped credit = cap");
+        assertGt(capped, 0);
+        assertLt(capped, full, "cap must bind");
     }
 
     function test_plainSwapGasBaseline() public {

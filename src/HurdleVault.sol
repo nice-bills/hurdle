@@ -18,6 +18,7 @@ import {IHurdleVault} from "./IHurdleVault.sol";
 interface IHurdleOracle {
     function twapTick(PoolId id) external view returns (int24);
     function referenceTick(PoolId id) external view returns (int24);
+    function referenceFeeGrowth(PoolId id) external view returns (uint256, uint256);
 }
 
 /// A curator vault settled against the passive full-range benchmark ("par").
@@ -25,8 +26,10 @@ interface IHurdleOracle {
 /// Miss par: the bond pays depositors the shortfall (locked bond shares first, then bond tokens) and
 /// the amount is recorded as `deficit`. Beat par: the excess first refills the bond (as locked bond
 /// shares) up to `deficit`, then the curator gets `carryBps` of the rest as free shares. So noise
-/// around par nets out instead of draining the bond. Bond value below `minBondBps` of NAV: the
-/// curator is fired and the vault is parked full range (50/50) — i.e. it becomes par.
+/// around par nets out instead of draining the bond. Bond value below `minBondBps` of NAV (e.g. after
+/// NAV grew): deposits and curator rebalances are blocked until the curator tops up. A shortfall
+/// payment that leaves the bond below half of `minBondBps`: the curator is fired and the vault is
+/// parked full range (50/50) — i.e. it becomes par. Beating par never fires the curator.
 /// Tokens: plain ERC20 only. Native ETH (currency0 = 0) and fee-on-transfer/rebasing tokens are unsupported.
 /// The oracle is the pool's hook and is not checked here: depositors must check that `poolKey.hooks`
 /// is the canonical HurdleHook (README lists its address).
@@ -43,6 +46,9 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     uint256 public constant MAX_REBALANCES_PER_EPOCH = 4;
     /// Cap on the benchmark's fee credit, as an APR on the epoch's starting NAV (300%).
     uint256 public constant MAX_FEE_APR_BPS = 30_000;
+    /// In-kind deposits are refused while `deficit` exceeds this share of NAV (1 bp): a newcomer would
+    /// otherwise help refill the bond for payouts that earlier holders received.
+    uint256 private constant DEFICIT_TOLERANCE_BPS = 1;
     /// Shares burned on the first deposit so a donation cannot inflate the share price.
     uint256 private constant DEAD_SHARES = 1000;
     uint256 private constant Q96 = 1 << 96;
@@ -98,6 +104,13 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     error AlreadyParked();
     /// In-kind deposits are only accepted in the block the vault settled (deposit() settles a finished epoch).
     error DepositsOnlyAtSettlement();
+    /// The bond has not yet been refilled for past shortfall payments (see `deficit`).
+    error DeficitOutstanding();
+    /// Bond value is below `minBondBps` of NAV: the curator must postBond before rebalancing.
+    error BondBelowFloor();
+    /// More than the curator's `maxIdleBps` of NAV was left outside the position (e.g. a front-run
+    /// pushed spot to the swap bound). Reverting keeps the epoch's rebalance count.
+    error RebalanceIncomplete();
     error NotFirstDeposit();
     error Slippage();
     error OnlySelf();
@@ -133,9 +146,11 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     // Depositors
     // ---------------------------------------------------------------------
 
-    /// First deposit only: valued at TWAP (spot/reference checked), idle until the curator rebalances.
-    /// Starts the benchmark from this block.
-    function deposit(uint256 amount0, uint256 amount1) external returns (uint256 shares) {
+    /// First deposit only, by the curator (so nobody can front-run the vault's start), with shares
+    /// minted to `receiver` (a depositor, covered by the bond unless it is the curator). Valued at TWAP
+    /// (spot/reference checked), idle until the curator rebalances. Starts the benchmark from this block.
+    function deposit(uint256 amount0, uint256 amount1, address receiver) external returns (uint256 shares) {
+        if (msg.sender != curator) revert NotCurator();
         if (totalSupply != 0) revert NotFirstDeposit();
         uint160 sqrtP = _checkedTwapSqrtPrice();
         uint256 value = _value(amount0, amount1, sqrtP);
@@ -144,24 +159,28 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         balanceOf[address(0)] += DEAD_SHARES;
         if (amount0 > 0) require(token0.transferFrom(msg.sender, address(this), amount0), "T0");
         if (amount1 > 0) require(token1.transferFrom(msg.sender, address(this), amount1), "T1");
-        balanceOf[msg.sender] += shares;
+        balanceOf[receiver] += shares;
         totalSupply = DEAD_SHARES + shares;
-        (uint256 fg0, uint256 fg1) = manager.getFeeGrowthGlobals(poolId);
+        (uint256 fg0, uint256 fg1) = oracle.referenceFeeGrowth(poolId);
         _resetStart(sqrtP, fg0, fg1, navAt(sqrtP));
         if (bondValue() * 10_000 < uint256(minBondBps) * value) revert CapacityExceeded();
-        emit Deposited(msg.sender, amount0, amount1, shares);
+        emit Deposited(receiver, amount0, amount1, shares);
     }
 
     /// Buy `shares` in kind: pays exactly what withdraw(shares) would pay out, rounded up (idle pro rata
     /// plus the same fraction of the position's liquidity, added at spot). No price is used, so a
-    /// deposit/withdraw round trip cannot trade with the vault. Only in the settlement block, when no
-    /// carry or shortfall is pending, so a newcomer neither pays for nor collects past performance.
+    /// deposit/withdraw round trip cannot trade with the vault. Only in the settlement block (no carry
+    /// pending) and only while no shortfall is still owed to the bond (`deficit` within 1 bp of NAV),
+    /// so a newcomer neither pays for nor collects past performance. Spot, block-open price and TWAP
+    /// must agree, so a same-block sandwich cannot skew the liquidity it adds.
     function deposit(uint256 shares, uint256 max0, uint256 max1) external returns (uint256 amount0, uint256 amount1) {
         if (shares == 0) revert ZeroShares();
         _maybeSettle(); // also realizes accrued fees, so the add below carries none
         if (start.timestamp != block.timestamp) revert DepositsOnlyAtSettlement();
         uint256 supply = totalSupply;
         if (supply == 0) revert ZeroShares();
+        uint256 navBefore = navAt(_checkedTwapSqrtPrice());
+        if (deficit * 10_000 > navBefore * DEFICIT_TOLERANCE_BPS) revert DeficitOutstanding();
         amount0 = FullMath.mulDivRoundingUp(token0.balanceOf(address(this)), shares, supply);
         amount1 = FullMath.mulDivRoundingUp(_idle1(), shares, supply);
         if (amount0 > 0) require(token0.transferFrom(msg.sender, address(this), amount0), "T0");
@@ -179,7 +198,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         start.nav = FullMath.mulDiv(start.nav, supply + shares, supply);
         balanceOf[msg.sender] += shares;
         totalSupply = supply + shares;
-        if (bondValue() * 10_000 < uint256(minBondBps) * navAt(_twapSqrtPrice())) revert CapacityExceeded();
+        if (_belowFloor()) revert CapacityExceeded();
         emit Deposited(msg.sender, amount0, amount1, shares);
     }
 
@@ -195,12 +214,17 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         catch {
             if (_liquidity > 0) _modify(_tickLower, _tickUpper, 0); // still realize fees: removal would hand them all over
         }
+        // The withdrawer's pro-rata share of the deficit leaves with them (recouped by crystallize when
+        // ahead of par, forgiven otherwise), so remaining holders' per-share charge is unchanged.
+        uint256 deficitBefore = deficit;
+        uint256 owedDeficit = FullMath.mulDiv(deficitBefore, shares, totalSupply);
         uint256 burn = shares;
         if (!fired && start.timestamp != block.timestamp) {
             try this.crystallize(msg.sender, shares) returns (uint256 paidShares) {
                 burn -= paidShares;
             } catch {}
         }
+        deficit = deficitBefore - owedDeficit;
         uint256 supply = totalSupply;
         balanceOf[msg.sender] -= burn;
 
@@ -270,25 +294,49 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     /// Move all liquidity to [tickLower, tickUpper], swapping idle balances to the range's ratio.
-    /// After firing, anyone may call it to finish parking full range, until it is parked.
+    /// No bound on what is left idle; see the overload.
     function rebalance(int24 tickLower, int24 tickUpper) external {
-        if (fired) {
-            tickLower = TickMath.minUsableTick(poolKey.tickSpacing);
-            tickUpper = TickMath.maxUsableTick(poolKey.tickSpacing);
-            if (_tickLower == tickLower && _tickUpper == tickUpper && !_mostlyIdle()) revert AlreadyParked();
-        } else if (msg.sender != curator) {
-            revert NotCurator();
-        }
-        _maybeSettle(); // a finished epoch is settled (and the counter reset) before new risk is taken
-        if (++rebalancesThisEpoch > MAX_REBALANCES_PER_EPOCH) revert TooManyRebalances();
-        _checkedTwapSqrtPrice();
-        _redeploy(tickLower, tickUpper);
+        _rebalance(tickLower, tickUpper, 10_000);
     }
 
-    /// More than 2% of NAV sits outside the position (e.g. a park that hit its price bound).
-    function _mostlyIdle() private view returns (bool) {
+    /// As above, but reverts RebalanceIncomplete if more than `maxIdleBps` of NAV is left outside the
+    /// position, so a front-run that pins spot at the swap bound costs the curator no rebalance slot.
+    /// After firing, anyone may call either overload to finish parking full range, until it is parked;
+    /// those calls are not counted (they only move toward 50/50, so repeating them cannot add risk).
+    function rebalance(int24 tickLower, int24 tickUpper, uint16 maxIdleBps) external {
+        _rebalance(tickLower, tickUpper, maxIdleBps);
+    }
+
+    function _rebalance(int24 tickLower, int24 tickUpper, uint16 maxIdleBps) private {
+        bool wasFired = fired;
+        if (!wasFired && msg.sender != curator) revert NotCurator();
+        _maybeSettle(); // a finished epoch is settled (and the counter reset) before new risk is taken
+        if (fired) {
+            if (!wasFired) return; // this settle fired the curator and parked: the curator's range is void
+            tickLower = TickMath.minUsableTick(poolKey.tickSpacing);
+            tickUpper = TickMath.maxUsableTick(poolKey.tickSpacing);
+            if (_tickLower == tickLower && _tickUpper == tickUpper && _idleBps() * 50 <= 10_000) revert AlreadyParked();
+        } else {
+            // Below the floor the bond no longer covers MAX_REBALANCES_PER_EPOCH worst-case swaps.
+            if (_belowFloor()) revert BondBelowFloor();
+            if (++rebalancesThisEpoch > MAX_REBALANCES_PER_EPOCH) revert TooManyRebalances();
+        }
+        _checkedTwapSqrtPrice();
+        _redeploy(tickLower, tickUpper);
+        if (_idleBps() > maxIdleBps) revert RebalanceIncomplete();
+    }
+
+    /// Share of NAV (bps) sitting outside the position (e.g. a swap that hit its price bound).
+    function _idleBps() private view returns (uint256) {
         uint160 s = _twapSqrtPrice();
-        return _value(token0.balanceOf(address(this)), _idle1(), s) * 50 > navAt(s);
+        uint256 navNow = navAt(s);
+        if (navNow == 0) return 0;
+        return FullMath.mulDiv(_value(token0.balanceOf(address(this)), _idle1(), s), 10_000, navNow);
+    }
+
+    /// Bond value below `minBondBps` of NAV.
+    function _belowFloor() private view returns (bool) {
+        return bondValue() * 10_000 < uint256(minBondBps) * navAt(_twapSqrtPrice());
     }
 
     // ---------------------------------------------------------------------
@@ -309,7 +357,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     function _settle() private {
         Start memory st = start;
         uint160 s1 = _twapSqrtPrice();
-        (uint256 fg0, uint256 fg1) = manager.getFeeGrowthGlobals(poolId);
+        (uint256 fg0, uint256 fg1) = oracle.referenceFeeGrowth(poolId);
 
         if (totalSupply == 0 || st.timestamp == block.timestamp) {
             if (totalSupply == 0) _resetStart(s1, fg0, fg1, 0);
@@ -340,7 +388,10 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         }
         emit Settled(navNow, bench, take, paid, bondValue(), s1);
 
-        if (!fired && bondValue() * 10_000 < uint256(minBondBps) * navAfter) {
+        // Fire only on a miss that leaves the bond below half the floor. NAV growth alone (price, fees,
+        // carry, deposits up to capacity) can push the bond under the floor; that blocks deposits and
+        // rebalances until the curator tops up, but never forfeits the bond of a curator at or above par.
+        if (!fired && paid > 0 && bondValue() * 20_000 < uint256(minBondBps) * navAfter) {
             fired = true;
             emit Fired(bondValue(), navAfter);
             // Park passively if the price is sane now; otherwise (or if the park reverts) anyone can call rebalance later.
@@ -434,8 +485,9 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         return bond + FullMath.mulDiv(bondShares, navAt(_twapSqrtPrice()), totalSupply);
     }
 
+    /// Uses block-open fee growth, so same-block wash swaps cannot lift par (e.g. to dodge carry on exit).
     function _benchNow(uint160 s1) private view returns (uint256) {
-        (uint256 fg0, uint256 fg1) = manager.getFeeGrowthGlobals(poolId);
+        (uint256 fg0, uint256 fg1) = oracle.referenceFeeGrowth(poolId);
         unchecked {
             return benchmark(
                 start.nav,
