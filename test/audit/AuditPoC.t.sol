@@ -232,7 +232,7 @@ contract AuditPoC is Test, Deployers {
     // The F2 extraction that set up the under-bonded state now reverts, so a
     // narrow range trended out of range produces the same ~4% miss vs a 2.5% bond.
     // -----------------------------------------------------------------------
-    function test_F4_depositIntoUnderBondedVaultIsFair() public {
+    function test_F4_noDepositIntoUnderBondedVault() public {
         vault = new HurdleVault(manager, key, CURATOR, 2000, 200, 50, 7200);
         _fund(CURATOR, address(vault), 0, 0.5e18);
         vm.prank(CURATOR);

@@ -47,7 +47,7 @@ All addresses: [research/deploy.md](research/deploy.md).
 ## Run
 
 ```sh
-forge test                                     # 42 tests
+forge test                                     # 46 tests
 # replay a real week through the hook + two vaults (~30 s), then build the UI data
 REPLAY_CSV=data/weeks/2026-10-31.csv REPLAY_OUT=demo/out/range-week.csv forge test --match-contract ReplayTest -vv
 python3 demo/build_json.py demo/out/range-week.csv "Range-bound week (Oct 31 – Nov 6)"

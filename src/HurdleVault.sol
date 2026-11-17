@@ -166,7 +166,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         amount1 = FullMath.mulDivRoundingUp(_idle1(), shares, supply);
         if (amount0 > 0) require(token0.transferFrom(msg.sender, address(this), amount0), "T0");
         if (amount1 > 0) require(token1.transferFrom(msg.sender, address(this), amount1), "T1");
-        uint128 liq = uint128(FullMath.mulDivRoundingUp(_liquidity, shares, supply));
+        uint128 liq = SafeCast.toUint128(FullMath.mulDivRoundingUp(_liquidity, shares, supply));
         if (liq > 0) {
             (int256 d0, int256 d1) = _modify(_tickLower, _tickUpper, int256(uint256(liq)), msg.sender);
             _liquidity += liq;

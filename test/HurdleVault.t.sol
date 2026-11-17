@@ -448,6 +448,111 @@ contract HurdleVaultTest is Test, Deployers {
         assertEq(vault.balanceOf(bob), 0);
     }
 
+    /// F5: with a deficit outstanding, a mid-epoch exit's take first recoups its pro-rata share of the
+    /// deficit into bond shares; only the remainder pays carry.
+    function test_midEpochWithdrawRecoupsDeficitFirst() public {
+        vault = _newVault(6e18, 50, 1 days);
+        address bob = address(0xB0B);
+        _fund(bob, address(vault), 11e18, 11e18);
+        uint256 aliceShares = vault.balanceOf(ALICE);
+        vm.prank(bob);
+        vault.deposit(aliceShares, 11e18, 11e18);
+        _recenter(vault, 120);
+        int24 tick;
+        for (uint256 i; i < 10; ++i) {
+            tick += 100;
+            _moveTo(tick);
+        }
+        vm.warp(block.timestamp + 1 days);
+        vault.settle(); // losing epoch: deficit, no curator shares
+        uint256 d = vault.deficit();
+        assertGt(d, 0);
+        int24 c = _floorTick();
+        vm.prank(CURATOR);
+        vault.rebalance(c - 600, c + 600);
+        for (uint256 i; i < 20; ++i) _moveTo(i % 2 == 0 ? c + 300 : c - 300);
+        _moveTo(c);
+        vm.prank(ALICE);
+        vault.withdraw(1); // realize fees
+
+        uint256 navNow = vault.nav();
+        uint256 benchNow = _benchNow();
+        assertGt(navNow, benchNow, "should be ahead mid-epoch");
+        uint256 t = vault.totalSupply();
+        uint256 shares = vault.balanceOf(bob) / 2;
+        uint256 excess = (navNow - benchNow) * shares / t;
+        uint256 owedD = vault.deficit() * shares / t;
+        uint256 recoup = excess < owedD ? excess : owedD;
+        uint256 carry = (excess - recoup) * 2000 / 10_000;
+        d = vault.deficit();
+        vm.prank(bob);
+        vault.withdraw(shares);
+        assertEq(d - vault.deficit(), recoup, "deficit not reduced by the pro-rata recoup");
+        assertGt(recoup, 0);
+        assertApproxEqAbs(vault.bondShares() * navNow / t, recoup, 10, "recoup not locked as bond shares");
+        assertApproxEqAbs(vault.balanceOf(CURATOR) * navNow / t, carry, 10, "carry not on the remainder only");
+    }
+
+    function test_selfCallsGuarded() public {
+        vault = _newVault(1e18);
+        vm.expectRevert(HurdleVault.OnlySelf.selector);
+        vault.settleForWithdraw();
+        vm.expectRevert(HurdleVault.OnlySelf.selector);
+        vault.crystallize(ALICE, 1);
+        vm.expectRevert(HurdleVault.OnlySelf.selector);
+        vault.park();
+    }
+
+    /// F2: the rebalance swap stops at the intersection of reference ± dev and TWAP ± dev.
+    /// Spot = reference = 30 after a fresh move, TWAP ~0: selling token0 stops at 30 - 50, buying at TWAP + 50.
+    function test_swapBoundedByReferenceAndTwap() public {
+        vault = _newVault(1e18);
+        _moveTo(0);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(false, -int256(1e30), TickMath.getSqrtPriceAtTick(30)),
+            PoolSwapTest.TestSettings(false, false),
+            ZERO_BYTES
+        );
+        vm.warp(block.timestamp + 12);
+        int24 twap = hook.twapTick(key.toId());
+        assertLt(twap, 5);
+        assertEq(hook.referenceTick(key.toId()), 30);
+        uint256 snap = vm.snapshotState();
+        vm.prank(CURATOR);
+        vault.rebalance(-6000, -3000); // needs all token1: sells token0
+        assertGe(_currentTick(), 30 - 50 - 1, "sold below reference - dev");
+        assertLe(_currentTick(), 30 - 50 + 1, "swap not bounded where expected");
+        vm.revertToState(snap);
+        vm.prank(CURATOR);
+        vault.rebalance(3000, 6000); // needs all token0: buys token0
+        assertLe(_currentTick(), twap + 50, "bought above TWAP + dev");
+        assertGe(_currentTick(), twap + 50 - 1, "swap not bounded where expected");
+    }
+
+    /// F2: with spot inside both bands, a reference far from TWAP (TWAP lagging) still blocks rebalances.
+    function test_rebalanceRevertsWhenTwapLagsReference() public {
+        vault = _newVault(1e18);
+        _moveTo(0);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(false, -int256(1e30), TickMath.getSqrtPriceAtTick(60)),
+            PoolSwapTest.TestSettings(false, false),
+            ZERO_BYTES
+        );
+        vm.warp(block.timestamp + 12);
+        swapRouter.swap(
+            key,
+            IPoolManager.SwapParams(true, -int256(1e30), TickMath.getSqrtPriceAtTick(30)),
+            PoolSwapTest.TestSettings(false, false),
+            ZERO_BYTES
+        );
+        assertEq(hook.referenceTick(key.toId()), 60);
+        vm.prank(CURATOR);
+        vm.expectRevert(HurdleVault.PriceDeviation.selector);
+        vault.rebalance(-600, 600);
+    }
+
     function _benchNow() internal view returns (uint256) {
         (uint64 ts, uint160 s0, uint256 f0, uint256 f1, uint256 n) = vault.start();
         (uint256 g0, uint256 g1) = manager.getFeeGrowthGlobals(key.toId());
