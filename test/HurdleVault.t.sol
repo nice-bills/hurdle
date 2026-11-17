@@ -68,7 +68,7 @@ contract HurdleVaultTest is Test, Deployers {
         v.postBond(bondAmount);
         _fund(CURATOR, address(v), 10e18, 10e18);
         vm.prank(CURATOR);
-        v.deposit(10e18, 10e18, ALICE);
+        v.firstDeposit(10e18, 10e18, ALICE);
     }
 
     function _fund(address who, address spender, uint256 a0, uint256 a1) internal {
@@ -400,20 +400,36 @@ contract HurdleVaultTest is Test, Deployers {
 
     /// In-kind deposits only in the settlement block: mid-epoch reverts; once the epoch is over,
     /// deposit() settles and goes through.
+    /// Deposits are open for DEPOSIT_WINDOW (300 s) after an epoch settlement, then closed until the next one.
     function test_depositOnlyAtSettlement() public {
         vault = _newVault(1e18);
         _recenter(vault, 600);
-        vm.warp(block.timestamp + 300);
+        vm.warp(block.timestamp + 301);
         address bob = address(0xB0B);
         _fund(bob, address(vault), 2e18, 2e18);
         vm.prank(bob);
-        vm.expectRevert(HurdleVault.DepositsOnlyAtSettlement.selector);
+        vm.expectRevert(HurdleVault.DepositWindowClosed.selector);
         vault.deposit(1e18, 2e18, 2e18);
-        vm.warp(block.timestamp + 300);
+        vm.warp(block.timestamp + 299); // epoch (600 s) over: deposit settles it, then joins
         vm.prank(bob);
         vault.deposit(1e18, 2e18, 2e18);
         (uint64 ts,,,,) = vault.start();
         assertEq(ts, block.timestamp, "deposit did not settle");
+        assertEq(vault.balanceOf(bob), 1e18);
+    }
+
+    /// v2 council: a third party settling one block earlier must not lock new deposits out for an epoch.
+    function test_depositAfterThirdPartySettle() public {
+        vault = _newVault(1e18);
+        _recenter(vault, 600);
+        vm.warp(block.timestamp + 600);
+        vault.settle(); // keeper / griefer settles first
+        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 2);
+        address bob = address(0xB0B);
+        _fund(bob, address(vault), 2e18, 2e18);
+        vm.prank(bob);
+        vault.deposit(1e18, 2e18, 2e18);
         assertEq(vault.balanceOf(bob), 1e18);
     }
 
@@ -447,12 +463,12 @@ contract HurdleVaultTest is Test, Deployers {
         vm.expectRevert(HurdleVault.Slippage.selector);
         vault.deposit(aliceShares, 11e18, 9e18); // needs ~10e18 of each
         vm.expectRevert(IHurdleVault.NotCurator.selector);
-        vault.deposit(1e18, 1e18, bob);
+        vault.firstDeposit(1e18, 1e18, bob);
         vm.stopPrank();
         _fund(CURATOR, address(vault), 1e18, 1e18);
         vm.prank(CURATOR);
         vm.expectRevert(HurdleVault.NotFirstDeposit.selector);
-        vault.deposit(1e18, 1e18, ALICE);
+        vault.firstDeposit(1e18, 1e18, ALICE);
     }
 
     /// [6] The first deposit is curator-only: anyone else reverts NotCurator; the curator pays, `receiver` gets the shares.
@@ -461,12 +477,12 @@ contract HurdleVaultTest is Test, Deployers {
         _fund(ALICE, address(v), 10e18, 10e18);
         vm.prank(ALICE);
         vm.expectRevert(IHurdleVault.NotCurator.selector);
-        v.deposit(10e18, 10e18, ALICE);
+        v.firstDeposit(10e18, 10e18, ALICE);
         _fund(CURATOR, address(v), 10e18, 11e18);
         vm.prank(CURATOR);
         v.postBond(1e18);
         vm.prank(CURATOR);
-        uint256 shares = v.deposit(10e18, 10e18, ALICE);
+        uint256 shares = v.firstDeposit(10e18, 10e18, ALICE);
         assertEq(v.balanceOf(ALICE), shares);
         assertEq(v.balanceOf(CURATOR), 0);
         assertEq(MockERC20(Currency.unwrap(currency0)).balanceOf(CURATOR), 0);

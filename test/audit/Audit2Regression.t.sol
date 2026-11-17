@@ -250,7 +250,7 @@ contract Audit2Regression is HurdleVaultTest {
 
     /// Storage slot of `rebalancesThisEpoch` (`forge inspect HurdleVault storage-layout`).
     function _rebalanceCountSlot() internal pure returns (bytes32) {
-        return bytes32(uint256(14));
+        return bytes32(uint256(15));
     }
 
     // ---------------------------------------------------------------------

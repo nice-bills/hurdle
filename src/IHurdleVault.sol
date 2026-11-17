@@ -12,14 +12,15 @@ interface IHurdleVault {
     /// take = bond refill + carry (curator gain); shortfallPaid = value delivered to depositors; bond = bondValue().
     event Settled(uint256 nav, uint256 bench, uint256 take, uint256 shortfallPaid, uint256 bond, uint160 sqrtPriceX96);
     event Fired(uint256 bond, uint256 nav);
+    event BondReclaimed(uint256 bondTokens, uint256 bondShares);
 
     error NotCurator();
     error CuratorFired();
     error ZeroShares();
 
     /// First deposit only, curator-only, shares to `receiver` (TWAP-valued, idle).
-    function deposit(uint256 amount0, uint256 amount1, address receiver) external returns (uint256 shares);
-    /// In kind, only in the settlement block: pays what withdraw(shares) would pay, rounded up.
+    function firstDeposit(uint256 amount0, uint256 amount1, address receiver) external returns (uint256 shares);
+    /// In kind, within DEPOSIT_WINDOW of an epoch settlement: pays what withdraw(shares) would pay, rounded up.
     function deposit(uint256 shares, uint256 max0, uint256 max1) external returns (uint256 amount0, uint256 amount1);
     function withdraw(uint256 shares) external returns (uint256 amount0, uint256 amount1);
     function postBond(uint256 amount1) external;
@@ -27,6 +28,10 @@ interface IHurdleVault {
     /// Reverts if more than maxIdleBps of NAV is left outside the position.
     function rebalance(int24 tickLower, int24 tickUpper, uint16 maxIdleBps) external;
     function settle() external;
+    /// Fired and parked, one epoch after firing: the curator takes back what is left of its bond.
+    function reclaimBond() external;
+    function previewDeposit(uint256 shares) external view returns (uint256 amount0, uint256 amount1);
+    function previewWithdraw(uint256 shares) external view returns (uint256 amount0, uint256 amount1);
 
     function curator() external view returns (address);
     function fired() external view returns (bool);

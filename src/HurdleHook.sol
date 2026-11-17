@@ -11,7 +11,7 @@ import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/src/types/BeforeS
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 
 /// Hurdle: settles LP curators against an onchain passive-LP benchmark.
-/// @notice Phase 3: a stripped-down Uniswap v3 oracle (time-weighted tick accumulator per pool)
+/// @notice A stripped-down Uniswap v3 oracle (time-weighted tick accumulator per pool)
 /// plus a per-block reference tick (the price at the start of the current block).
 /// @dev The accumulator is written in `beforeSwap`, before the pool moves its price. The tick
 /// that was live over the elapsed period is therefore the only tick that earns weight, and every
@@ -26,8 +26,9 @@ contract HurdleHook is BaseHook {
 
     /// @notice Minimum spacing of ring-buffer entries. The accumulator itself updates every block, so
     /// a window ending at the latest update is exact; a window *starting* inside a ring gap is linearly
-    /// interpolated (error <= 60s x the tick change in that gap). Spacing stretches the history to
-    /// 32 x 60s = 32 minutes, which a one-entry-per-block ring could not hold on a 1s-block chain.
+    /// interpolated (error <= 60s x the tick change in that gap). Spacing stretches the history to at
+    /// least ~31 minutes (32 entries >= 60s apart; longer when trading is sparse, since entries are only
+    /// written on swaps), which a one-entry-per-block ring could not hold on a 1s-block chain.
     uint32 public constant OBSERVATION_INTERVAL = 60;
 
     /// @notice Preferred window for the settlement TWAP. Shortened to the available history.
@@ -61,7 +62,6 @@ contract HurdleHook is BaseHook {
     mapping(PoolId => OracleState) private _oracle;
     mapping(PoolId => Observation[OBSERVATION_CARDINALITY]) private _observations;
     mapping(PoolId => FeeGrowth) private _blockOpenFeeGrowth;
-
 
     error InvalidTwapWindow();
     error DonationsDisabled();
@@ -146,7 +146,7 @@ contract HurdleHook is BaseHook {
         if (oracle.cardinality != 0 && timestamp <= lastTimestamp) return;
         oracle.blockOpenTick = tick;
         (uint256 fg0, uint256 fg1) = poolManager.getFeeGrowthGlobals(id);
-        _blockOpenFeeGrowth[id] = FeeGrowth(fg0, fg1);
+        _blockOpenFeeGrowth[id] = FeeGrowth({global0X128: fg0, global1X128: fg1});
 
         if (oracle.cardinality != 0) {
             unchecked {

@@ -158,7 +158,7 @@ contract ReplayTest is Test, Deployers {
         _give(curator, address(v), a0, a1 + bondAmt);
         vm.startPrank(curator);
         v.postBond(bondAmt);
-        v.deposit(a0, a1, DEPOSITOR); // curator pays, shares go to a non-curator depositor the bond covers
+        v.firstDeposit(a0, a1, DEPOSITOR); // curator pays, shares go to a non-curator depositor the bond covers
         vm.stopPrank();
     }
 
