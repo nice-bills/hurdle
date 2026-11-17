@@ -40,8 +40,7 @@ contract HurdleHookTest is Test, Deployers {
 
         // Mine a CREATE2 salt that gives the hook the permission bits it declares.
         uint160 flags = uint160(
-            Hooks.BEFORE_ADD_LIQUIDITY_FLAG | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG | Hooks.BEFORE_SWAP_FLAG
-                | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_DONATE_FLAG
+            Hooks.BEFORE_SWAP_FLAG | Hooks.AFTER_INITIALIZE_FLAG | Hooks.BEFORE_DONATE_FLAG
         );
         (address hookAddress, bytes32 salt) =
             HookMiner.find(address(this), flags, type(HurdleHook).creationCode, abi.encode(address(manager)));
@@ -196,61 +195,26 @@ contract HurdleHookTest is Test, Deployers {
     }
 
     // ---------------------------------------------------------------------
-    // Epoch snapshots
+    // Settlement price helpers
     // ---------------------------------------------------------------------
 
-    function test_snapshotStoresFeeGrowthAndPrice() public {
-        vm.warp(START + 100);
-        swap(key, true, -1e16, ZERO_BYTES);
-        int24 tickA = _tick(key);
-
-        vm.warp(START + 200);
-        swap(key, false, -1e16, ZERO_BYTES);
-
-        (uint160 sqrtPriceX96,,,) = manager.getSlot0(key.toId());
-        (uint256 feeGrowthGlobal0X128, uint256 feeGrowthGlobal1X128) = manager.getFeeGrowthGlobals(key.toId());
-        assertGt(feeGrowthGlobal0X128 + feeGrowthGlobal1X128, 0, "swaps should accrue fees");
-
-        // 200s of history, shorter than TWAP_WINDOW, so the snapshot uses all of it:
-        // tick 0 for [START, 100], tickA for [100, 200].
-        int24 expectedTwapTick = int24(int56(tickA) * 100 / 200);
-        assertEq(hook.consult(key, 200), expectedTwapTick, "hand-computed 200s mean");
-
-        vm.prank(address(0xBEEF));
-        uint256 epochId = hook.snapshot(key);
-        assertEq(epochId, 1, "first epoch is 1");
-        assertEq(hook.epochCount(key), 1);
-
-        HurdleHook.EpochSnapshot memory snap = hook.getEpoch(key, 1);
-        assertEq(snap.timestamp, block.timestamp, "snapshot timestamp");
-        assertEq(snap.sqrtPriceX96, sqrtPriceX96, "snapshot price");
-        assertEq(snap.twapTick, expectedTwapTick, "snapshot TWAP tick");
-        assertEq(snap.feeGrowthGlobal0X128, feeGrowthGlobal0X128, "fee growth 0");
-        assertEq(snap.feeGrowthGlobal1X128, feeGrowthGlobal1X128, "fee growth 1");
-
-        (uint256 latestId, HurdleHook.EpochSnapshot memory latest) = hook.latestEpoch(key);
-        assertEq(latestId, 1);
-        assertEq(latest.sqrtPriceX96, snap.sqrtPriceX96);
-        assertEq(latest.feeGrowthGlobal0X128, snap.feeGrowthGlobal0X128);
-
-        vm.expectRevert(HurdleHook.UnknownEpoch.selector);
-        hook.getEpoch(key, 0);
-        vm.expectRevert(HurdleHook.UnknownEpoch.selector);
-        hook.getEpoch(key, 2);
+    function test_twapTickRevertsOnYoungPool() public {
+        vm.warp(START + 599);
+        vm.expectRevert(HurdleHook.InsufficientHistory.selector);
+        hook.twapTick(key.toId());
+        vm.warp(START + 600);
+        assertEq(hook.twapTick(key.toId()), _tick(key), "flat history: TWAP = spot");
     }
 
-    function test_snapshotFallsBackToSpotWithoutHistory() public {
-        // Only the afterInitialize seed exists, so there is no TWAP window yet.
-        (uint160 sqrtPriceX96, int24 spotTick,,) = manager.getSlot0(key.toId());
-
-        uint256 epochId = hook.snapshot(key);
-        assertEq(epochId, 1);
-
-        HurdleHook.EpochSnapshot memory snap = hook.getEpoch(key, 1);
-        assertEq(snap.sqrtPriceX96, sqrtPriceX96);
-        assertEq(snap.twapTick, spotTick, "spot fallback before two observations");
-        assertEq(snap.feeGrowthGlobal0X128, 0);
-        assertEq(snap.feeGrowthGlobal1X128, 0);
+    function test_referenceTickIgnoresSameBlockSwaps() public {
+        vm.warp(START + 100);
+        int24 open = _tick(key);
+        assertEq(hook.referenceTick(key.toId()), open, "no swap yet: spot is the last close");
+        swap(key, false, 1e17, ZERO_BYTES); // pump in this block
+        assertTrue(_tick(key) != open);
+        assertEq(hook.referenceTick(key.toId()), open, "same-block swap moved the reference");
+        vm.warp(START + 101);
+        assertEq(hook.referenceTick(key.toId()), _tick(key), "next block: reference = previous close");
     }
 
     // ---------------------------------------------------------------------

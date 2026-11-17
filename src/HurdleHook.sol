@@ -12,7 +12,7 @@ import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 
 /// Hurdle: settles LP curators against an onchain passive-LP benchmark.
 /// @notice Phase 3: a stripped-down Uniswap v3 oracle (time-weighted tick accumulator per pool)
-/// plus permissionless epoch snapshots of the inputs the benchmark needs.
+/// plus a per-block reference tick (the price at the start of the current block).
 /// @dev The accumulator is written in `beforeSwap`, before the pool moves its price. The tick
 /// that was live over the elapsed period is therefore the only tick that earns weight, and every
 /// swap in a block after the first writes nothing. Same-block price manipulation has zero weight
@@ -24,13 +24,17 @@ contract HurdleHook is BaseHook {
     /// @notice Number of observations kept per pool (ring buffer).
     uint32 public constant OBSERVATION_CARDINALITY = 32;
 
-    /// @notice Minimum spacing of ring-buffer entries. The accumulator itself updates every block,
-    /// so the TWAP stays exact; spacing only stretches the history to 32 x 60s = 32 minutes, which a
-    /// one-entry-per-block ring could not hold on a 1s-block chain.
+    /// @notice Minimum spacing of ring-buffer entries. The accumulator itself updates every block, so
+    /// a window ending at the latest update is exact; a window *starting* inside a ring gap is linearly
+    /// interpolated (error <= 60s x the tick change in that gap). Spacing stretches the history to
+    /// 32 x 60s = 32 minutes, which a one-entry-per-block ring could not hold on a 1s-block chain.
     uint32 public constant OBSERVATION_INTERVAL = 60;
 
-    /// @notice Preferred window for `snapshot`'s TWAP tick. Shortened to the available history.
+    /// @notice Preferred window for the settlement TWAP. Shortened to the available history.
     uint32 public constant TWAP_WINDOW = 30 minutes;
+
+    /// @notice twapTick reverts until the pool has this much history (no spot fallback on young pools).
+    uint32 public constant MIN_TWAP_WINDOW = 10 minutes;
 
     /// @param timestamp Observation block timestamp (uint32, as in Uniswap v3)
     /// @param tickCumulative Running sum of `tick * seconds` (int56, as in Uniswap v3)
@@ -45,35 +49,16 @@ contract HurdleHook is BaseHook {
         uint32 cardinality; // initialized observations, capped at OBSERVATION_CARDINALITY
         uint32 lastTimestamp; // timestamp of the latest accumulator update (may be newer than the ring)
         int56 tickCumulative; // cumulative at lastTimestamp
-    }
-
-    /// @notice Everything the passive benchmark needs at the start/end of an epoch.
-    struct EpochSnapshot {
-        uint256 timestamp;
-        uint160 sqrtPriceX96;
-        int24 twapTick;
-        uint256 feeGrowthGlobal0X128;
-        uint256 feeGrowthGlobal1X128;
+        int24 blockOpenTick; // tick before the first swap of the block at lastTimestamp
     }
 
     mapping(PoolId => OracleState) private _oracle;
     mapping(PoolId => Observation[OBSERVATION_CARDINALITY]) private _observations;
-    mapping(PoolId => EpochSnapshot[]) private _epochs;
 
-    event EpochSnapshotTaken(
-        PoolId indexed poolId,
-        uint256 indexed epochId,
-        uint256 timestamp,
-        int24 twapTick,
-        uint160 sqrtPriceX96,
-        uint256 feeGrowthGlobal0X128,
-        uint256 feeGrowthGlobal1X128
-    );
 
     error InvalidTwapWindow();
     error DonationsDisabled();
     error InsufficientHistory();
-    error UnknownEpoch();
 
     constructor(IPoolManager _manager) BaseHook(_manager) {}
 
@@ -82,9 +67,9 @@ contract HurdleHook is BaseHook {
         return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: true,
-            beforeAddLiquidity: true,
+            beforeAddLiquidity: false,
             afterAddLiquidity: false,
-            beforeRemoveLiquidity: true,
+            beforeRemoveLiquidity: false,
             afterRemoveLiquidity: false,
             beforeSwap: true,
             afterSwap: false,
@@ -152,6 +137,7 @@ contract HurdleHook is BaseHook {
 
         // At most one observation per block. This is also the same-block manipulation guard.
         if (oracle.cardinality != 0 && timestamp <= lastTimestamp) return;
+        oracle.blockOpenTick = tick;
 
         if (oracle.cardinality != 0) {
             unchecked {
@@ -188,7 +174,7 @@ contract HurdleHook is BaseHook {
 
         OracleState storage oracle = _oracle[id];
         uint32 cardinality = oracle.cardinality;
-        if (cardinality < 2) revert InsufficientHistory();
+        if (cardinality == 0) revert InsufficientHistory();
 
         uint32 nowTs = uint32(block.timestamp);
         if (secondsAgo > nowTs) revert InsufficientHistory();
@@ -285,82 +271,22 @@ contract HurdleHook is BaseHook {
     }
 
     /// @notice Settlement tick for vaults: TWAP over `TWAP_WINDOW`, shortened to the available history.
-    /// shortcut: the 32-slot ring holds 32 blocks with swaps, so on a busy pool the window is shorter than 30 min; upgrade to a growable ring before mainnet.
+    /// Reverts with InsufficientHistory until the pool has MIN_TWAP_WINDOW of history.
     function twapTick(PoolId id) external view returns (int24) {
-        (, int24 spotTick,,) = poolManager.getSlot0(id);
-        return _twapTickOrSpot(id, spotTick);
+        OracleState storage oracle = _oracle[id];
+        if (oracle.cardinality == 0) revert InsufficientHistory();
+        uint32 available = uint32(block.timestamp) - _observationAt(id, 0).timestamp;
+        if (available < MIN_TWAP_WINDOW) revert InsufficientHistory();
+        return consult(id, available < TWAP_WINDOW ? available : TWAP_WINDOW);
     }
 
-    /// @dev TWAP over `TWAP_WINDOW`, shortened to the available history; spot tick before that.
-    function _twapTickOrSpot(PoolId id, int24 spotTick) private view returns (int24) {
-        if (_oracle[id].cardinality < 2) return spotTick;
-
-        uint32 nowTs = uint32(block.timestamp);
-        uint32 oldest = _observationAt(id, 0).timestamp;
-        if (nowTs <= oldest) return spotTick;
-
-        uint32 available = nowTs - oldest;
-        uint32 window = available < TWAP_WINDOW ? available : TWAP_WINDOW;
-        if (window == 0) return spotTick;
-
-        return consult(id, window);
-    }
-
-    // ---------------------------------------------------------------------
-    // Epoch snapshots
-    // ---------------------------------------------------------------------
-
-    /// @notice Permissionlessly freeze the benchmark inputs for a new epoch.
-    /// @dev Epoch ids are 1-based so that 0 means "no epoch".
-    function snapshot(PoolKey calldata key) external returns (uint256 epochId) {
-        PoolId id = key.toId();
-
-        (uint160 sqrtPriceX96, int24 spotTick,,) = poolManager.getSlot0(id);
-        (uint256 feeGrowthGlobal0X128, uint256 feeGrowthGlobal1X128) = poolManager.getFeeGrowthGlobals(id);
-        int24 settleTick = _twapTickOrSpot(id, spotTick);
-
-        _epochs[id].push(
-            EpochSnapshot({
-                timestamp: block.timestamp,
-                sqrtPriceX96: sqrtPriceX96,
-                twapTick: settleTick,
-                feeGrowthGlobal0X128: feeGrowthGlobal0X128,
-                feeGrowthGlobal1X128: feeGrowthGlobal1X128
-            })
-        );
-        epochId = _epochs[id].length;
-
-        emit EpochSnapshotTaken(
-            id, epochId, block.timestamp, settleTick, sqrtPriceX96, feeGrowthGlobal0X128, feeGrowthGlobal1X128
-        );
-    }
-
-    /// @notice Number of snapshots taken for a pool.
-    function epochCount(PoolKey calldata key) external view returns (uint256) {
-        return _epochs[key.toId()].length;
-    }
-
-    /// @notice Snapshot `epochId` (1-based) for a pool.
-    function getEpoch(PoolKey calldata key, uint256 epochId)
-        external
-        view
-        returns (EpochSnapshot memory epochSnapshot)
-    {
-        EpochSnapshot[] storage epochs = _epochs[key.toId()];
-        if (epochId == 0 || epochId > epochs.length) revert UnknownEpoch();
-        return epochs[epochId - 1];
-    }
-
-    /// @notice Most recent snapshot, if any.
-    function latestEpoch(PoolKey calldata key)
-        external
-        view
-        returns (uint256 epochId, EpochSnapshot memory epochSnapshot)
-    {
-        EpochSnapshot[] storage epochs = _epochs[key.toId()];
-        epochId = epochs.length;
-        if (epochId == 0) revert UnknownEpoch();
-        return (epochId, epochs[epochId - 1]);
+    /// @notice The pool's tick at the start of the current block, i.e. the last block's closing price.
+    /// Same-block swaps cannot move it, so vaults bound their own swaps against it (a TWAP can lag the
+    /// real price after a fast move; this does not).
+    function referenceTick(PoolId id) external view returns (int24 tick) {
+        OracleState storage oracle = _oracle[id];
+        if (oracle.cardinality != 0 && oracle.lastTimestamp == uint32(block.timestamp)) return oracle.blockOpenTick;
+        (, tick,,) = poolManager.getSlot0(id); // no swap yet this block: spot is the last close
     }
 
     /// @notice Raw accumulator state, for debugging and research tooling.
@@ -371,27 +297,5 @@ contract HurdleHook is BaseHook {
     {
         OracleState storage oracle = _oracle[id];
         return (oracle.cardinality, oracle.lastTimestamp, oracle.tickCumulative, oracle.index);
-    }
-
-    // ---------------------------------------------------------------------
-    // Liquidity gates (unchanged)
-    // ---------------------------------------------------------------------
-
-    function beforeAddLiquidity(address, PoolKey calldata, IPoolManager.ModifyLiquidityParams calldata, bytes calldata)
-        external
-        pure
-        override
-        returns (bytes4)
-    {
-        return IHooks.beforeAddLiquidity.selector;
-    }
-
-    function beforeRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        IPoolManager.ModifyLiquidityParams calldata,
-        bytes calldata
-    ) external pure override returns (bytes4) {
-        return IHooks.beforeRemoveLiquidity.selector;
     }
 }
