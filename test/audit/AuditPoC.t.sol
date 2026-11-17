@@ -18,7 +18,8 @@ import {HurdleHook} from "../../src/HurdleHook.sol";
 import {HurdleVault} from "../../src/HurdleVault.sol";
 import {HookMiner} from "../utils/HookMiner.sol";
 
-/// Independent audit PoCs. Each test PASSES when the bug is present.
+/// Independent audit PoCs, converted to regression tests: each keeps the PoC scenario and asserts the
+/// attack no longer works (research/audit-fixes.md).
 contract AuditPoC is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -112,12 +113,11 @@ contract AuditPoC is Test, Deployers {
     }
 
     // -----------------------------------------------------------------------
-    // F1: deposit is priced at TWAP, withdraw is pro-rata in kind => the vault
-    // is a free market maker at the stale TWAP price. No manipulation needed:
-    // after any real price move, while |spot - TWAP| <= maxTickDeviation,
-    // anyone can deposit the token that is cheap at spot and withdraw a basket.
+    // F1 (fixed): deposits are in kind and only in the settlement block, so a
+    // deposit/withdraw round trip cannot trade with the vault at the stale TWAP.
+    // Same honest -45 tick move with TWAP lagging, now timed to the epoch end.
     // -----------------------------------------------------------------------
-    function test_F1_depositAtTwapWithdrawInKindArb() public {
+    function test_F1_noArbDepositWithdrawInKind() public {
         vault = new HurdleVault(manager, key, CURATOR, 2000, 200, 50, 600);
         _fund(CURATOR, address(vault), 0, 2e18);
         vm.prank(CURATOR);
@@ -127,40 +127,45 @@ contract AuditPoC is Test, Deployers {
         vault.deposit(30e18, 30e18);
         vm.prank(CURATOR);
         vault.rebalance(TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING));
+        _fund(ARB, address(vault), 40e18, 40e18);
 
-        // Honest market move: token0 drops 45 ticks. 12 s later TWAP has barely moved.
+        // Mid-epoch, deposits are closed.
+        vm.warp(block.timestamp + 588);
+        vm.prank(ARB);
+        vm.expectRevert(HurdleVault.DepositsOnlyAtSettlement.selector);
+        vault.deposit(1e18, 40e18, 40e18);
+
+        // Honest market move: token0 drops 45 ticks. 12 s later TWAP has barely moved and the epoch is over.
         _swapTo(-45);
         vm.warp(block.timestamp + 12);
         int24 twap = hook.twapTick(key.toId());
         assertGe(twap, -1, "TWAP still ~0");
         assertEq(_spotTick(), -45);
+        vault.settle();
 
         uint256 vaultBefore = _vaultSpotValue(vault);
-        _fund(ARB, address(vault), 40e18, 0);
         uint256 arbBefore = _valueAtSpot(t0.balanceOf(ARB), t1.balanceOf(ARB));
         vm.startPrank(ARB);
         for (uint256 i; i < 15; ++i) {
-            uint256 s = vault.deposit(t0.balanceOf(ARB) > 30e18 ? 30e18 : t0.balanceOf(ARB), 0);
+            uint256 s = vault.totalSupply() / 2;
+            vault.deposit(s, 40e18, 40e18);
             vault.withdraw(s);
         }
         vm.stopPrank();
         uint256 arbAfter = _valueAtSpot(t0.balanceOf(ARB), t1.balanceOf(ARB));
         uint256 vaultAfter = _vaultSpotValue(vault);
-        console2.log("arb profit (token1 wei, at spot):", arbAfter - arbBefore);
-        console2.log("vault loss (token1 wei, at spot):", vaultBefore - vaultAfter);
-        console2.log("vault NAV at spot before:", vaultBefore);
-        assertGt(arbAfter, arbBefore, "arb profits");
-        assertGt(vaultBefore - vaultAfter, 0.05e18, "depositors lose to arb");
+        console2.log("arb P&L lost (token1 wei, at spot):", arbBefore - arbAfter);
+        assertLe(arbAfter, arbBefore, "arb cannot profit");
+        assertGe(vaultAfter, vaultBefore, "depositors lose nothing");
     }
 
     // -----------------------------------------------------------------------
-    // F2: the rebalance swap is price-limited to TWAP +/- maxTickDeviation, not to
-    // the real price. While TWAP lags a move, a curator (or anyone, at the firing
-    // settle / post-fire rebalance) pushes spot back into the band, makes the vault
-    // sell into it, and buys back. One epoch's loss exceeds the bond floor that
-    // MAX_REBALANCES_PER_EPOCH * maxTickDeviation <= minBondBps was meant to bound.
+    // F2 (fixed): rebalances require spot, the block-open referenceTick and the
+    // TWAP to agree within maxTickDeviation, and the swap is bounded by both. While
+    // TWAP lags the 800-tick rally, the curator's in-band push cannot make the vault
+    // trade: every rebalance reverts, the vault keeps tracking par, the bond is intact.
     // -----------------------------------------------------------------------
-    function test_F2_laggedTwapRebalanceLossExceedsBondFloor() public {
+    function test_F2_laggedTwapRebalanceBlocked() public {
         vault = new HurdleVault(manager, key, CURATOR, 2000, 200, 50, 600);
         _fund(CURATOR, address(vault), 0, 0.5e18);
         vm.prank(CURATOR);
@@ -177,39 +182,31 @@ contract AuditPoC is Test, Deployers {
         int24 fair = _spotTick();
         uint256 honest = _vaultSpotValue(vault);
 
-        // Attacker = curator + its own swaps (this contract). Value P&L at the fair price.
         uint256 me0 = t0.balanceOf(address(this));
         uint256 me1 = t1.balanceOf(address(this));
-        for (uint256 i; i < 3; ++i) { // 1 of 4 slots used by the initial park
+        for (uint256 i; i < 3; ++i) {
             int24 twap = hook.twapTick(key.toId());
-            _swapTo(twap + 45); // into the band
+            _swapTo(twap + 45); // into the TWAP band, but far from the block-open price
             int24 c = (twap / SPACING) * SPACING;
-            vm.prank(CURATOR); // range far below spot => vault must sell all token0
+            vm.prank(CURATOR);
+            vm.expectRevert(HurdleVault.PriceDeviation.selector);
             vault.rebalance(c - 6000, c - 3000);
         }
-        _swapTo(fair); // buy the cheap token0 back
+        _swapTo(fair);
         uint256 after_ = _vaultSpotValue(vault);
-        uint256 loss = honest - after_;
         int256 d0 = int256(t0.balanceOf(address(this))) - int256(me0);
         int256 d1 = int256(t1.balanceOf(address(this))) - int256(me1);
         (uint160 sp,,,) = manager.getSlot0(key.toId());
         int256 pnl = d1 + d0 * int256(uint256(sp)) / int256(1 << 96) * int256(uint256(sp)) / int256(1 << 96);
-        console2.log("vault value at fair, honest:", honest);
-        console2.log("vault loss at fair         :", loss);
-        console2.log("loss bps of NAV            :", loss * 10_000 / honest);
-        console2.log("bond posted                :", vault.bond());
         console2.log("attacker P&L at fair (int) :");
         console2.logInt(pnl);
-        assertGt(loss * 10_000, uint256(vault.minBondBps()) * honest, "one epoch loses more than the bond floor");
-        assertGt(loss, vault.bond(), "loss exceeds the whole bond");
-        assertGt(pnl, 0, "attacker profits (a third party at the firing settle keeps all of it)");
+        assertGe(after_, honest, "vault lost value to the push");
+        assertLt(pnl, 0, "attacker only paid fees");
 
-        // Settle twice: right away (TWAP still lagging) and once TWAP has caught up to the fair price.
-        // Total value delivered (nav + bond payments) ends below par: the bond did not cover the loss.
         uint256 shortfallUnpaid;
         for (uint256 k; k < 2; ++k) {
             vm.warp(block.timestamp + 1800);
-            _swapTo(fair == _spotTick() ? fair + 1 : fair); // keep the oracle ticking at the fair price
+            _swapTo(fair == _spotTick() ? fair + 1 : fair);
             vm.recordLogs();
             vault.settle();
             Vm.Log[] memory logs = vm.getRecordedLogs();
@@ -222,18 +219,20 @@ contract AuditPoC is Test, Deployers {
                 }
             }
         }
-        console2.log("bond left, unpaid shortfall:", vault.bond(), shortfallUnpaid);
-        assertEq(vault.bond(), 0, "bond exhausted");
-        assertGt(shortfallUnpaid, 0.1e18, "depositors end below par");
-        assertTrue(vault.fired());
+        // Only the curator's own carry shares (from the first settle) absorb a sliver of the second miss (F11).
+        assertLt(shortfallUnpaid * 1e6, honest, "depositors at par");
+        assertGt(vault.bond(), 0.49e18, "bond intact");
+        assertFalse(vault.fired());
     }
 
     // -----------------------------------------------------------------------
-    // F3: deposit is priced at max(nav, par) even when the bond cannot cover
-    // par - nav. A newcomer pays for a guarantee that is not collateralized and
-    // is instantly worth less than they put in; the surplus goes to incumbents.
+    // F4 (fixed; was named F3 in the PoC): a newcomer buys in kind and only at
+    // the settlement, after the bond has paid what it can, so it never pays par for
+    // a guarantee the bond cannot cover; an exhausted bond means zero capacity.
+    // The F2 extraction that set up the under-bonded state now reverts, so a
+    // narrow range trended out of range produces the same ~4% miss vs a 2.5% bond.
     // -----------------------------------------------------------------------
-    function test_F3_depositAtParOverpaysWhenBondShort() public {
+    function test_F4_depositIntoUnderBondedVaultIsFair() public {
         vault = new HurdleVault(manager, key, CURATOR, 2000, 200, 50, 7200);
         _fund(CURATOR, address(vault), 0, 0.5e18);
         vm.prank(CURATOR);
@@ -242,56 +241,49 @@ contract AuditPoC is Test, Deployers {
         vm.prank(ALICE);
         vault.deposit(10e18, 10e18);
         vm.prank(CURATOR);
-        vault.rebalance(TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING));
-        // Same lagged-TWAP extraction as F2, leaving the vault ~4% below par with a 2.5% bond.
+        vault.rebalance(-60, 60);
         _swapTo(800);
-        vm.warp(block.timestamp + 12);
-        int24 fair = _spotTick();
-        for (uint256 i; i < 3; ++i) {
-            int24 twap = hook.twapTick(key.toId());
-            _swapTo(twap + 45);
-            int24 c = (twap / SPACING) * SPACING;
-            vm.prank(CURATOR);
-            vault.rebalance(c - 6000, c - 3000);
-        }
-        _swapTo(fair);
         vm.warp(block.timestamp + 1800);
-        _swapTo(fair + 1); // TWAP catches up, deposits allowed again
-        assertLt(vault.nav(), _bench(), "vault trails par");
+        _swapTo(801); // TWAP catches up
+        assertGt(_bench(), vault.nav() + vault.bond(), "shortfall exceeds the bond");
 
         address bob = address(0xB0B);
-        _fund(bob, address(vault), 1e18, 1e18);
-        uint256 bobIn = _valueAtSpot(1e18, 1e18);
+        _fund(bob, address(vault), 5e18, 5e18);
         vm.prank(bob);
-        uint256 shares = vault.deposit(1e18, 1e18);
+        vm.expectRevert(HurdleVault.DepositsOnlyAtSettlement.selector);
+        vault.deposit(1e18, 5e18, 5e18);
+
+        // At the settlement the bond pays what it can and the curator is fired: with no bond left,
+        // capacity is zero, so the newcomer cannot buy into the uncollateralized guarantee at all.
         vm.warp(block.timestamp + 7200);
-        vault.settle(); // bond pays what it can; the rest of the shortfall stays unpaid
+        uint256 shares = vault.totalSupply() / 10;
         vm.prank(bob);
-        (uint256 o0, uint256 o1) = vault.withdraw(shares);
-        uint256 bobOut = _valueAtSpot(o0, o1);
-        console2.log("bob in / out (at spot):", bobIn, bobOut);
-        assertLt(bobOut * 1000, bobIn * 995, "bob loses > 0.5% by depositing into an under-bonded vault");
+        vm.expectRevert(HurdleVault.CapacityExceeded.selector);
+        vault.deposit(shares, 5e18, 5e18);
+        vault.settle();
+        assertTrue(vault.fired());
+        assertEq(t0.balanceOf(bob), 5e18);
+        assertEq(t1.balanceOf(bob), 5e18);
     }
 
     function _bench() internal view returns (uint256) {
         (uint64 ts, uint160 s0, uint256 f0, uint256 f1, uint256 n) = vault.start();
-        ts;
         (uint256 g0, uint256 g1) = manager.getFeeGrowthGlobals(key.toId());
         uint160 s1 = TickMath.getSqrtPriceAtTick(hook.twapTick(key.toId()));
         unchecked {
-            return vault.benchmark(n, s0, s1, g0 - f0, g1 - f1);
+            return vault.benchmark(n, s0, s1, g0 - f0, g1 - f1, block.timestamp - ts);
         }
     }
 
     // -----------------------------------------------------------------------
-    // F4: wash-swap fee growth. beforeDonate is blocked, but swaps raise
-    // feeGrowthGlobal too. Par credits the vault's *virtual* full-range liquidity
-    // nav/(2 s0) with dfg = fee / activeLiquidity, and that virtual liquidity is not
-    // in the denominator. When an attacker's share of it exceeds the other active
-    // liquidity, wash-trading costs less (fees to other LPs) than the bond it pays out.
-    // Precondition shown: vault idle/out of range, thin pool (10e18 L).
+    // F3 (bounded; was named F4 in the PoC): wash-swap fee growth. The benchmark's
+    // fee credit is capped at MAX_FEE_APR_BPS (300% APR) of the epoch's starting
+    // NAV, so the same one-block wash in a thin pool moves at most the cap
+    // (~0.57 bp of NAV per 10-min epoch) out of the bond: the attacker, paying
+    // the swap fees, loses. Residual: an attacker who is also the pool's only
+    // other LP gets its fees back and nets up to the cap per epoch.
     // -----------------------------------------------------------------------
-    function test_F4_washSwapInflatesParDrainsBond() public {
+    function test_F3_washSwapBoundedByFeeCap() public {
         LIQUIDITY_PARAMS = IPoolManager.ModifyLiquidityParams(
             TickMath.minUsableTick(200), TickMath.maxUsableTick(200), 10e18, 0
         );
@@ -309,15 +301,16 @@ contract AuditPoC is Test, Deployers {
         _fund(ALICE, address(vault), 5e18, 5e18);
         vm.prank(ALICE);
         vault.deposit(5e18, 5e18);
-        // Attacker = this contract (it also does the swaps).
+        // Attacker = this contract (it also does the swaps). Joins in kind in the same (settlement) block.
         t0.approve(address(vault), type(uint256).max);
         t1.approve(address(vault), type(uint256).max);
         uint256 a0 = t0.balanceOf(address(this));
         uint256 a1 = t1.balanceOf(address(this));
-        uint256 shares = vault.deposit(40e18, 40e18);
+        uint256 shares = 8 * vault.totalSupply();
+        vault.deposit(shares, 41e18, 41e18);
+        uint256 nav0 = vault.nav();
         vm.warp(block.timestamp + 600);
 
-        // One block: wash-trade back to the starting price, then settle and exit.
         (uint160 s0,,,) = manager.getSlot0(key.toId());
         for (uint256 i; i < 25; ++i) {
             swapRouter.swap(key, IPoolManager.SwapParams(true, -int256(2e18), MIN_PRICE_LIMIT),
@@ -331,10 +324,12 @@ contract AuditPoC is Test, Deployers {
         int256 d0 = int256(t0.balanceOf(address(this))) - int256(a0);
         int256 d1 = int256(t1.balanceOf(address(this))) - int256(a1);
         int256 pnl = d0 + d1; // price is back at 1:1
-        console2.log("bond paid out:", bondBefore - vault.bond());
+        uint256 cap = nav0 * vault.MAX_FEE_APR_BPS() * 600 / (10_000 * 365 days);
+        console2.log("bond paid out / cap:", bondBefore - vault.bond(), cap);
         console2.log("attacker P&L (token1 wei):");
         console2.logInt(pnl);
-        assertGt(bondBefore - vault.bond(), 1.5e18, "bond drained by fake par");
-        assertGt(pnl, 0.5e18, "wash trading is profitable");
+        assertLe(bondBefore - vault.bond(), cap + 1, "bond drain bounded by the fee cap");
+        assertLt(pnl, 0, "wash trading is unprofitable");
+        assertFalse(vault.fired());
     }
 }

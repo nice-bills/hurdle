@@ -46,6 +46,7 @@ contract HurdleVaultTest is Test, Deployers {
             TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING), 2000e18, 0
         );
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(address(hook)), 3000, SQRT_PRICE_1_1);
+        vm.warp(block.timestamp + 600); // the hook's TWAP needs 10 min of history
     }
 
     // ---------------------------------------------------------------------
@@ -57,7 +58,11 @@ contract HurdleVaultTest is Test, Deployers {
     }
 
     function _newVault(uint256 bondAmount, int24 maxDev) internal returns (HurdleVault v) {
-        v = new HurdleVault(manager, key, CURATOR, 2000, 200, maxDev, 600);
+        return _newVault(bondAmount, maxDev, 600);
+    }
+
+    function _newVault(uint256 bondAmount, int24 maxDev, uint32 epoch) internal returns (HurdleVault v) {
+        v = new HurdleVault(manager, key, CURATOR, 2000, 200, maxDev, epoch);
         _fund(CURATOR, address(v), 0, bondAmount);
         vm.prank(CURATOR);
         v.postBond(bondAmount);
@@ -288,12 +293,15 @@ contract HurdleVaultTest is Test, Deployers {
         // Epoch 3 loses again: bond shares are burned before any bond tokens move.
         uint256 bondTokens = vault.bond();
         uint256 bShares = vault.bondShares();
+        uint256 cShares = vault.balanceOf(CURATOR);
         vm.recordLogs();
         _losingEpoch(c);
         (uint256 paid3,) = _checkSettlements(false); // bond shares absorb their own share of the miss
         assertGt(paid3, 0, "epoch 3 should trail par");
-        assertLt(vault.bondShares(), bShares, "bond shares not burned first");
-        if (vault.bondShares() > 0) assertEq(vault.bond(), bondTokens, "tokens moved before shares ran out");
+        // Burned k = b - b' + m, where m curator free shares were locked into bond shares (F11).
+        uint256 burned = bShares + cShares - vault.bondShares() - vault.balanceOf(CURATOR);
+        assertGt(burned, 0, "bond shares not burned first");
+        if (burned < bShares) assertEq(vault.bond(), bondTokens, "tokens moved before shares ran out");
     }
 
     /// Sanity: a par-tracking (full range) curator settling every epoch keeps its bond.
@@ -359,30 +367,204 @@ contract HurdleVaultTest is Test, Deployers {
         new HurdleVault(manager, key, CURATOR, 2000, 200, 51, 600);
     }
 
-    /// A newcomer cannot buy in below par and collect a top-up for a shortfall that predates them:
-    /// mid-epoch, with the vault trailing par, shares are priced at par (fewer than NAV pricing gives).
-    function test_depositPricedAtParWhenTrailing() public {
-        vault = _newVault(6e18);
-        _recenter(vault, 120);
-        vm.warp(block.timestamp + 600);
-        vault.settle();
-        int24 c = _currentTick();
-        swapRouter.swap(
-            key,
-            IPoolManager.SwapParams(false, -int256(1e30), TickMath.getSqrtPriceAtTick(c + 45)),
-            PoolSwapTest.TestSettings(false, false),
-            ZERO_BYTES
-        );
-        vm.warp(block.timestamp + 300); // still inside the 600s epoch
-        uint256 navNow = vault.nav();
-        uint256 supply = vault.totalSupply();
-        uint160 s = TickMath.getSqrtPriceAtTick(hook.twapTick(key.toId()));
-        uint256 value = uint256(1e18) * s / (1 << 96) * s / (1 << 96) + 1e18;
+    /// In-kind deposits only in the settlement block: mid-epoch reverts; once the epoch is over,
+    /// deposit() settles and goes through.
+    function test_depositOnlyAtSettlement() public {
+        vault = _newVault(1e18);
+        _recenter(vault, 600);
+        vm.warp(block.timestamp + 300);
         address bob = address(0xB0B);
-        _fund(bob, address(vault), 1e18, 1e18);
+        _fund(bob, address(vault), 2e18, 2e18);
         vm.prank(bob);
-        uint256 shares = vault.deposit(1e18, 1e18);
-        assertLt(shares, value * supply / navNow, "priced at NAV although the vault trails par");
+        vm.expectRevert(HurdleVault.DepositsOnlyAtSettlement.selector);
+        vault.deposit(1e18, 2e18, 2e18);
+        vm.warp(block.timestamp + 300);
+        vm.prank(bob);
+        vault.deposit(1e18, 2e18, 2e18);
+        (uint64 ts,,,,) = vault.start();
+        assertEq(ts, block.timestamp, "deposit did not settle");
+        assertEq(vault.balanceOf(bob), 1e18);
+    }
+
+    /// Deposit pays exactly what withdraw pays back (rounded up): a round trip never profits.
+    function test_depositInKindRoundTrip() public {
+        vault = _newVault(1e18);
+        _recenter(vault, 120); // position + idle
+        _moveTo(60);
+        address bob = address(0xB0B);
+        _fund(bob, address(vault), 10e18, 10e18);
+        uint256 shares = vault.balanceOf(ALICE) / 3;
+        uint256 navPerShare = vault.nav() * 1e18 / vault.totalSupply();
+        vm.startPrank(bob);
+        (uint256 in0, uint256 in1) = vault.deposit(shares, 10e18, 10e18);
+        (uint256 out0, uint256 out1) = vault.withdraw(shares);
+        vm.stopPrank();
+        assertGt(in0 + in1, 0);
+        assertLe(out0, in0, "round trip gained token0");
+        assertLe(out1, in1, "round trip gained token1");
+        assertApproxEqAbs(out0, in0, 3);
+        assertApproxEqAbs(out1, in1, 3);
+        assertGe(vault.nav() * 1e18 / vault.totalSupply(), navPerShare, "incumbents diluted");
+    }
+
+    function test_depositSlippageAndFirstOnly() public {
+        vault = _newVault(1e18);
+        address bob = address(0xB0B);
+        _fund(bob, address(vault), 11e18, 11e18);
+        uint256 aliceShares = vault.balanceOf(ALICE);
+        vm.startPrank(bob);
+        vm.expectRevert(HurdleVault.Slippage.selector);
+        vault.deposit(aliceShares, 11e18, 9e18); // needs ~10e18 of each
+        vm.expectRevert(HurdleVault.NotFirstDeposit.selector);
+        vault.deposit(1e18, 1e18);
+        vm.stopPrank();
+    }
+
+    /// F5: a mid-epoch exit while ahead of par pays its pro-rata share of the pending carry.
+    function test_midEpochWithdrawPaysCarry() public {
+        vault = _newVault(1e18, 50, 1 days);
+        address bob = address(0xB0B);
+        _fund(bob, address(vault), 11e18, 11e18);
+        uint256 aliceShares = vault.balanceOf(ALICE);
+        vm.prank(bob);
+        vault.deposit(aliceShares, 11e18, 11e18);
+        _recenter(vault, 600);
+        for (uint256 i; i < 20; ++i) _moveTo(i % 2 == 0 ? int24(300) : int24(-300));
+        _moveTo(0);
+        vm.prank(ALICE);
+        vault.withdraw(1); // realizes accrued fees into NAV (withdraw does this before crystallizing)
+
+        uint256 navNow = vault.nav();
+        uint256 benchNow = _benchNow();
+        assertGt(navNow, benchNow, "patient should be ahead mid-epoch");
+        uint256 t = vault.totalSupply();
+        uint256 shares = vault.balanceOf(bob);
+        uint256 take = (navNow - benchNow) * shares / t * 2000 / 10_000;
+        vm.prank(bob);
+        vault.withdraw(shares);
+        uint256 curatorValue = vault.balanceOf(CURATOR) * navNow / t;
+        assertGt(curatorValue, 0, "no carry crystallized");
+        assertApproxEqRel(curatorValue, take, 1e14);
+        assertEq(vault.balanceOf(bob), 0);
+    }
+
+    function _benchNow() internal view returns (uint256) {
+        (uint64 ts, uint160 s0, uint256 f0, uint256 f1, uint256 n) = vault.start();
+        (uint256 g0, uint256 g1) = manager.getFeeGrowthGlobals(key.toId());
+        uint160 s1 = TickMath.getSqrtPriceAtTick(hook.twapTick(key.toId()));
+        unchecked {
+            return vault.benchmark(n, s0, s1, g0 - f0, g1 - f1, block.timestamp - ts);
+        }
+    }
+
+    /// F9: withdraw works when the oracle reverts (settlement and crystallization are skipped), and
+    /// still realizes fees first, so two equal withdrawals are worth the same.
+    function test_withdrawSurvivesOracleRevert() public {
+        vault = _newVault(1e18, 50, 1 days);
+        address bob = address(0xB0B);
+        _fund(bob, address(vault), 11e18, 11e18);
+        uint256 aliceShares = vault.balanceOf(ALICE);
+        vm.prank(bob);
+        vault.deposit(aliceShares, 11e18, 11e18);
+        _recenter(vault, 600);
+        for (uint256 i; i < 6; ++i) _moveTo(i % 2 == 0 ? int24(300) : int24(-300));
+        _moveTo(0);
+        vm.warp(block.timestamp + 1 days); // epoch over: withdraw would settle
+        vm.mockCallRevert(address(hook), abi.encodeWithSelector(HurdleHook.twapTick.selector), "");
+        vm.expectRevert();
+        vault.settle();
+        uint256 shares = vault.balanceOf(bob) / 100;
+        vm.prank(bob);
+        (uint256 b0, uint256 b1) = vault.withdraw(shares);
+        vm.prank(ALICE);
+        (uint256 c0, uint256 c1) = vault.withdraw(shares);
+        vm.clearMockedCalls();
+        assertGt(b0 + b1, 0);
+        assertApproxEqAbs(b0, c0, 2);
+        assertApproxEqAbs(b1, c1, 2);
+    }
+
+    /// F9: a park that reverts at the firing settle does not revert the settlement; anyone parks later.
+    function test_firingSettleSurvivesFailedPark() public {
+        vault = _newVault(0.6e18);
+        int24 tick;
+        for (uint256 epoch; epoch < 12 && !vault.fired(); ++epoch) {
+            _recenter(vault, 120);
+            for (uint256 i; i < 10; ++i) {
+                tick += 100;
+                _moveTo(tick);
+            }
+            vm.warp(block.timestamp + 600);
+            vm.mockCallRevert(address(hook), abi.encodeWithSelector(HurdleHook.referenceTick.selector), "");
+            vault.settle();
+            vm.clearMockedCalls();
+        }
+        assertTrue(vault.fired(), "never fired");
+        (int24 lo,,) = vault.position();
+        assertTrue(lo != TickMath.minUsableTick(SPACING), "park should have been skipped");
+        _moveTo(tick);
+        vault.rebalance(0, 0);
+        (lo,,) = vault.position();
+        assertEq(lo, TickMath.minUsableTick(SPACING));
+    }
+
+    /// F11: the curator's free (carry) shares absorb their own share of a miss: the bond pays only
+    /// depositors, and the curator's free value is not topped up from its own bond.
+    function test_curatorSharesAbsorbOwnMiss() public {
+        vault = _newVault(6e18);
+        _recenter(vault, 600);
+        for (uint256 i; i < 60; ++i) _moveTo(i % 2 == 0 ? int24(300) : int24(-300));
+        _moveTo(0);
+        vault.settle(); // patient epoch: carry shares to the curator
+        uint256 c = vault.balanceOf(CURATOR);
+        assertGt(c, 0, "no carry shares");
+        assertEq(vault.bondShares(), 0);
+
+        _recenter(vault, 120);
+        int24 tick;
+        for (uint256 i; i < 10; ++i) {
+            tick += 100;
+            _moveTo(tick);
+        }
+        vm.warp(block.timestamp + 600);
+        uint256 t = vault.totalSupply();
+        uint256 bondV = vault.bondValue();
+        (uint256 nav, uint256 bench,, uint256 paid) = _settled(vault);
+        assertGt(bench, nav, "should trail par");
+        uint256 t2 = vault.totalSupply();
+        uint256 nav2 = vault.nav();
+        assertApproxEqRel(paid, (bench - nav) * (t - c) / t, 1e12, "paid != depositors' share of the miss");
+        assertApproxEqRel(vault.balanceOf(CURATOR) * nav2 / t2, c * nav / t, 1e12, "curator topped up from bond");
+        assertApproxEqRel(bondV - vault.bondValue(), paid, 1e12, "bond fell by more than depositors got");
+        uint256 depositors = t2 - vault.balanceOf(CURATOR) - vault.bondShares();
+        assertApproxEqRel(depositors * nav2 / t2, (t - c) * bench / t, 1e12, "depositors not at par");
+    }
+
+    function test_constructorRejectsBadParams() public {
+        vm.expectRevert(bytes("CARRY"));
+        new HurdleVault(manager, key, CURATOR, 5001, 200, 50, 600);
+        vm.expectRevert(bytes("BOND"));
+        new HurdleVault(manager, key, CURATOR, 2000, 5001, 50, 600);
+        vm.expectRevert(bytes("BOND"));
+        new HurdleVault(manager, key, CURATOR, 2000, 99, 10, 600);
+        vm.expectRevert(bytes("EPOCH"));
+        new HurdleVault(manager, key, CURATOR, 2000, 200, 50, 599);
+        PoolKey memory native = key;
+        native.currency0 = Currency.wrap(address(0));
+        vm.expectRevert(bytes("NATIVE"));
+        new HurdleVault(manager, native, CURATOR, 2000, 200, 50, 600);
+    }
+
+    /// F3: the benchmark's fee credit is capped at MAX_FEE_APR_BPS of the starting NAV.
+    function test_benchmarkFeeCreditCapped() public {
+        vault = _newVault(1e18);
+        uint160 s = TickMath.getSqrtPriceAtTick(0);
+        uint256 huge = 1 << 127; // 0.5 token per unit L
+        uint256 nav0 = 100e18;
+        uint256 cap = nav0 * 30_000 * 600 / (10_000 * 365 days);
+        assertEq(vault.benchmark(nav0, s, s, huge, huge, 600), nav0 + cap);
+        uint256 small = 1e20;
+        assertEq(vault.benchmark(nav0, s, s, 0, small, 600), nav0 + nav0 / 2 * small / (1 << 128)); // under the cap
     }
 
     function _positionValue(HurdleVault v, uint128 liq) internal view returns (uint256) {
@@ -398,9 +580,10 @@ contract HurdleVaultTest is Test, Deployers {
     function test_midEpochWithdrawGetsProRataFees() public {
         vault = _newVault(1e18);
         address bob = address(0xB0B);
-        _fund(bob, address(vault), 10e18, 10e18);
+        _fund(bob, address(vault), 11e18, 11e18);
+        uint256 aliceShares = vault.balanceOf(ALICE);
         vm.prank(bob);
-        vault.deposit(10e18, 10e18);
+        vault.deposit(aliceShares, 11e18, 11e18); // in kind, same block as the first deposit
         _recenter(vault, 600);
         vm.warp(block.timestamp + 600);
         vault.settle();
@@ -421,10 +604,11 @@ contract HurdleVaultTest is Test, Deployers {
 
     function test_depositCappedByBond() public {
         vault = _newVault(1e18); // 1e18 bond, 2% floor => cap 50e18 NAV; 20e18 deposited
-        _fund(ALICE, address(vault), 20e18, 20e18);
+        _fund(ALICE, address(vault), 21e18, 21e18);
+        uint256 shares = 2 * vault.totalSupply();
         vm.prank(ALICE);
         vm.expectRevert(HurdleVault.CapacityExceeded.selector);
-        vault.deposit(20e18, 20e18);
+        vault.deposit(shares, 21e18, 21e18);
     }
 
     function test_publicSettleGatedByEpoch() public {

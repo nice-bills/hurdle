@@ -47,7 +47,7 @@ All addresses: [research/deploy.md](research/deploy.md).
 ## Run
 
 ```sh
-forge test                                     # 25 tests
+forge test                                     # 42 tests
 # replay a real week through the hook + two vaults (~30 s), then build the UI data
 REPLAY_CSV=data/weeks/2026-10-31.csv REPLAY_OUT=demo/out/range-week.csv forge test --match-contract ReplayTest -vv
 python3 demo/build_json.py demo/out/range-week.csv "Range-bound week (Oct 31 – Nov 6)"
@@ -57,11 +57,22 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
 ## Limits (known, documented)
 
 - The TWAP ring holds 32 blocks with swaps, so on a busy pool the window is shorter than 30 minutes.
-- A withdrawal mid-epoch leaves without that partial epoch's guarantee.
-- NAV is valued at TWAP. When spot is far from TWAP this errs against the curator, never depositors.
+- Deposits are in kind and only in the settlement block (`deposit(shares, max0, max1)` settles a
+  finished epoch first): a newcomer pays exactly what `withdraw(shares)` pays out, rounded up, so no
+  price is used. Only the first deposit is valued (at TWAP) and sits idle until the curator rebalances.
+- A withdrawal mid-epoch leaves without that partial epoch's guarantee. If the vault is ahead of par,
+  the withdrawn shares first pay their pro-rata share of the pending recoup and carry. Withdrawals
+  never wait on settlement: if settling or the price read reverts, they pay out in kind without it.
+- NAV and par are valued at TWAP, which matters only at settlement and for crystallized carry.
+- Par's fee credit is capped at 300% APR of the epoch's starting NAV, so wash swaps can inflate par
+  (and drain the bond) by at most that much per epoch.
+- Rebalances need spot, the block-open price and TWAP within `maxTickDeviation` of each other, and the
+  swap is bounded by both bands. Holding an off-market price across a block boundary still passes.
 - The curator cannot withdraw the bond or bond shares; they stay as collateral for the vault's life.
-- After firing, `rebalance` is permissionless and swaps to 50/50; price impact is bounded to
-  `maxTickDeviation` around TWAP.
+- After firing, `rebalance` is permissionless and swaps to 50/50, with the same price bounds.
+- The curator's own free shares are not covered by its bond: on a miss they take their share of the loss.
+- Plain ERC20 pools only: native ETH and fee-on-transfer tokens are unsupported. Depositors must check
+  that the vault's pool hook is the canonical HurdleHook.
 - Par is valued at the TWAP, not spot. Over a trending week the two differ by up to ~22 bp at the
   endpoints (`data/par_check.py` without `--twap`).
 - Not audited. Testnet only (mock tokens).
