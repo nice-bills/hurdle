@@ -35,7 +35,7 @@ Hurdle's par is exactly this: `value1 = L·(2·s1 + dfg0·P1 + dfg1)` (`research
 
 Replay one real week of swaps through a local v4 pool with Hurdle attached, two curators:
 - **Range week:** Patient (±10%, never moves) beats par by 1.9%, earns carry and keeps its bond. Chaser (re-centers ±2%) misses par in many hours; each miss is paid from its bond (8.8% gross), later excess refills it, and its depositors end 2.6% above par.
-- **ETH −14% week:** both trail par. Patient's bond pays 8.8% and on day 6.2 a miss leaves it below half the floor: `Fired`, the vault parks passive. Its depositors still end above par (+0.1%), and never dip below it at any hourly settlement.
+- **ETH −14% week:** both trail par. Patient's bond pays 8.8% and on day 6.2 a miss leaves it below half the floor: `Fired`, the vault parks passive. Its depositors still end above par (+0.10 pts), and never dip below it at any hourly settlement.
 
 One chart: par line (benchmark), two vault lines, depositor line that never drops below par, bond meters.
 

@@ -63,14 +63,14 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
 Every swap of two real weeks of mainnet ETH/USDC (Uniswap v3, 0.05%) replayed through the hook and two
 vaults with hourly settlement (`test/Replay.t.sol`). Patient holds ±10%; Chaser re-centers ±2% whenever
 price leaves its range (the strategy most curators lose with), and tops up its bond if refused for being
-under the floor. Values in USD, % of starting capital.
+under the floor. Values in USD; "vs par" is the gap in points of starting capital (as in the UI).
 
 | Week | Vault | Strategy vs par | Depositor vs par | Bond paid (gross) | Carry | Fired |
 |---|---|---|---|---|---|---|
 | Range (Oct 31 – Nov 6) | Patient | +1.92% | +1.57% | 2.63% | 0.39% | no |
 | | Chaser | +0.65% | +2.58% | 8.83% | 0.64% | no |
-| ETH −14% (Nov 7 – 13) | Patient | −4.25% | +0.11% | 8.77% | 0.02% | day 6.2 |
-| | Chaser | −2.21% | +0.52% | 9.91% | 0.11% | no (1 top-up) |
+| ETH −14% (Nov 7 – 13) | Patient | −3.93% | +0.10% | 8.77% | 0.02% | day 6.2 |
+| | Chaser | −2.04% | +0.48% | 9.91% | 0.11% | no (1 top-up) |
 
 Depositors are never below par at any of the 166 hourly settlements, in either week. On-chain par
 matches an independent offchain computation within 0.001 bp at every settlement
