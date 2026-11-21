@@ -421,7 +421,7 @@ function updateCard(i, nm, p, pos) {
 // ---------- playback ----------
 function frame(ts) {
   if (!S.playing) return;
-  const dt = Math.min((ts - S.last) / 1000, .1); S.last = ts;
+  const dt = Math.max(0, Math.min((ts - S.last) / 1000, .1)); S.last = ts;  // rAF ts can precede performance.now() on the first frame
   S.pos += dt * (S.data.points.length - 1) / DURATION * S.speed;
   if (S.pos >= S.data.points.length - 1) { S.pos = S.data.points.length - 1; S.playing = false; }
   render();
