@@ -7,6 +7,8 @@ no self-reported performance. A curator whose bond runs out is fired and the vau
 
 UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and design log: [IDEA.md](IDEA.md).
 
+**Live demo:** https://nice-bills.github.io/hurdle/ (real-swap replays: [range week](https://nice-bills.github.io/hurdle/?s=range-week#play), [ETH −14% week](https://nice-bills.github.io/hurdle/?s=down-week#play); the Live panel reads the Sepolia vaults).
+
 ## How it works
 
 - **Par, onchain, in closed form.** For a full-range position of liquidity L between two snapshots:
