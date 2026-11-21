@@ -7,7 +7,7 @@ import { state } from "./state.js";
 import { getSqrtPriceAtTick, maxUsableTick, minUsableTick } from "./tickmath.js";
 import { errMsg, log, sleep, withRetry } from "./util.js";
 
-const MIN_ETH = 300_000_000_000_000n; // 0.0003 ETH: below this the keeper skips transactions
+const MIN_ETH = BigInt(process.env.KEEPER_MIN_ETH_WEI ?? "300000000000000"); // default 0.0003 ETH: below this the keeper skips transactions
 const USDC = 10n ** 6n;
 const WETH = 10n ** 18n;
 const MIN_USDC = 20_000n * USDC;
@@ -76,14 +76,15 @@ export function makeKeeper(db: Db, client: Client) {
   const bal = (token: Hex) =>
     withRetry(() => client.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [account.address] }) as Promise<bigint>, "erc20 balance", 4);
 
-  async function ensureMocks() {
+  async function ensureMocks(): Promise<boolean> {
+    let ok = true;
     const router = deployment.swapRouter;
     for (const [token, min, mint, label] of [
       [deployment.currency0, MIN_USDC, MINT_USDC, "mUSDC"],
       [deployment.currency1, MIN_WETH, MINT_WETH, "mWETH"],
     ] as const) {
       if ((await bal(token)) < min) {
-        await send(`mint_${label}`, null, { address: token, abi: erc20Abi, functionName: "mint", args: [account.address, mint] });
+        ok = (await send(`mint_${label}`, null, { address: token, abi: erc20Abi, functionName: "mint", args: [account.address, mint] })) && ok;
       }
       const allowance = (await withRetry(
         () => client.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [account.address, router] }),
@@ -91,9 +92,10 @@ export function makeKeeper(db: Db, client: Client) {
         4,
       )) as bigint;
       if (allowance < MAX_UINT / 2n) {
-        await send(`approve_${label}`, null, { address: token, abi: erc20Abi, functionName: "approve", args: [router, MAX_UINT] });
+        ok = (await send(`approve_${label}`, null, { address: token, abi: erc20Abi, functionName: "approve", args: [router, MAX_UINT] })) && ok;
       }
     }
+    return ok;
   }
 
   /** Small round trip: ~5 ticks down then back to the starting price. Volume, fees and fresh TWAP observations. */
@@ -143,7 +145,9 @@ export function makeKeeper(db: Db, client: Client) {
           4,
         );
         const [epochStart, epochSeconds, fired, pos] = r as [bigint, number, boolean, readonly [number, number, bigint]];
-        if (now >= epochStart + BigInt(epochSeconds)) {
+        const due = now >= epochStart + BigInt(epochSeconds);
+        log("keeper", `vault ${addr}: ${due ? "epoch over, settling" : `epoch ends in ${Number(epochStart) + Number(epochSeconds) - Number(now)}s`}${fired ? ", FIRED" : ""}`);
+        if (due) {
           await send("settle", addr, { address: v, abi: vaultAbi, functionName: "settle" });
         }
         if (fired) {
@@ -165,8 +169,8 @@ export function makeKeeper(db: Db, client: Client) {
       await record("skip_low_gas", null, null, false, `keeper balance ${formatEther(eth)} ETH is below ${formatEther(MIN_ETH)}; fund ${account.address}`);
       return;
     }
-    await ensureMocks();
-    await roundTrip();
+    // Swaps need funded, approved mocks; settling/parking does not, so it runs regardless.
+    if (await ensureMocks()) await roundTrip();
     await maintainVaults();
     await refreshBalance();
     state.lastKeeperRunAt = Date.now();
