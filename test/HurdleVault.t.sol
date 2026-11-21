@@ -75,8 +75,11 @@ contract HurdleVaultTest is VaultFixture {
         assertGt(nav, bench, "patient should beat par");
         assertApproxEqAbs(carry, (nav - bench) * 2000 / 10_000, 1);
         // Curator's new shares are worth exactly the carry.
+        // The settle was called by a third party (this test contract): it gets SETTLER_BOUNTY_BPS of the carry.
         uint256 curatorValue = vault.balanceOf(CURATOR) * nav / vault.totalSupply();
-        assertApproxEqRel(curatorValue, carry, 1e12);
+        uint256 settlerValue = vault.balanceOf(address(this)) * nav / vault.totalSupply();
+        assertApproxEqRel(curatorValue + settlerValue, carry, 1e12);
+        assertApproxEqRel(settlerValue, carry * vault.SETTLER_BOUNTY_BPS() / 10_000, 1e12);
     }
 
     /// Multi-epoch: every shortfall settle pays min(shortfall, bond); a payment that leaves the bond below

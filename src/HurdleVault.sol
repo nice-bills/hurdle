@@ -17,6 +17,7 @@ import {IHurdleVault} from "./IHurdleVault.sol";
 
 interface IHurdleOracle {
     function twapTick(PoolId id) external view returns (int24);
+    function consult(PoolId id, uint32 secondsAgo) external view returns (int24);
     function referenceTick(PoolId id) external view returns (int24);
     function referenceFeeGrowth(PoolId id) external view returns (uint256, uint256);
 }
@@ -38,7 +39,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     using StateLibrary for IPoolManager;
 
     /// Each rebalance can lose at most ~maxTickDeviation bps of NAV to a sandwich: its swap is
-    /// price-limited to the intersection of referenceTick ± maxTickDeviation and TWAP ± maxTickDeviation,
+    /// price-limited to the intersection of referenceTick ± maxTickDeviation and 10-min TWAP ± maxTickDeviation,
     /// and the referenceTick (block-open price) cannot be moved within the block. Capping rebalances per
     /// epoch keeps 4 x maxTickDeviation <= minBondBps, so a curator (or MEV) cannot extract more than the
     /// bond in one epoch versus the block-open price. Residual: a price held off-market across a block
@@ -54,6 +55,14 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// newcomer neither pays for nor collects performance from before it joined, and a third party
     /// settling first cannot close the window.
     uint256 public constant DEPOSIT_WINDOW = 300;
+    /// Rebalances and parks gate on a 10-min TWAP (not the 30-min one used for valuation), so the curator
+    /// can act minutes after a real move. The 10- and 30-min TWAPs must still agree within
+    /// MAX_REBALANCES_PER_EPOCH x maxTickDeviation, so moving the gate still means holding the price
+    /// across blocks for ~10 min, and the swap stays bounded by the 10-min TWAP and block-open bands.
+    uint32 public constant REBALANCE_TWAP_WINDOW = 600;
+    /// Share of the curator's carry (free shares) paid to whoever calls `settle()` on schedule, so a
+    /// keeper is paid to keep epochs short. Paid only from carry: never from depositors or the bond.
+    uint256 public constant SETTLER_BOUNTY_BPS = 500;
     /// Shares burned on the first deposit so a donation cannot inflate the share price.
     uint256 private constant DEAD_SHARES = 1000;
     uint256 private constant Q96 = 1 << 96;
@@ -191,7 +200,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         if (shares == 0) revert ZeroShares();
         _maybeSettle(); // also realizes accrued fees, so the add below carries none
         if (block.timestamp > epochStart + DEPOSIT_WINDOW) revert DepositWindowClosed();
-        if (start.timestamp != block.timestamp) _settle(false); // re-baseline par to this block
+        if (start.timestamp != block.timestamp) _settle(false, address(0)); // re-baseline par to this block
         uint256 supply = totalSupply;
         if (supply == 0) revert ZeroShares();
         uint256 navBefore = navAt(_checkedTwapSqrtPrice());
@@ -292,7 +301,6 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// Self-call target for the fire-time park, so a failed park cannot revert the settlement.
     function park() external {
         if (msg.sender != address(this)) revert OnlySelf();
-        _checkedTwapSqrtPrice();
         _redeploy(TickMath.minUsableTick(poolKey.tickSpacing), TickMath.maxUsableTick(poolKey.tickSpacing));
     }
 
@@ -337,7 +345,6 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
             if (_belowFloor()) revert BondBelowFloor();
             if (++rebalancesThisEpoch > MAX_REBALANCES_PER_EPOCH) revert TooManyRebalances();
         }
-        _checkedTwapSqrtPrice();
         _redeploy(tickLower, tickUpper);
         if (_idleBps() > maxIdleBps) revert RebalanceIncomplete();
     }
@@ -361,7 +368,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
 
     function settle() external {
         if (block.timestamp < epochStart + epochSeconds) revert EpochNotOver();
-        _settle(true);
+        _settle(true, msg.sender);
     }
 
     /// After firing, once the vault is parked full range and a full epoch has passed, the curator takes
@@ -388,13 +395,14 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
 
     /// Settles if the epoch is over; otherwise realizes accrued fees so NAV and pro-rata payouts include them.
     function _maybeSettle() private {
-        if (block.timestamp >= epochStart + epochSeconds) _settle(true);
+        if (block.timestamp >= epochStart + epochSeconds) _settle(true, address(0));
         else if (_liquidity > 0) _modify(_tickLower, _tickUpper, 0);
     }
 
     /// `epochEnd`: a scheduled settlement (new epoch, rebalance count reset). Otherwise a deposit's
     /// re-baseline: same accounting, but the epoch clock and count are kept.
-    function _settle(bool epochEnd) private {
+    /// `settler`: the external `settle()` caller, paid SETTLER_BOUNTY_BPS of the carry; zero otherwise.
+    function _settle(bool epochEnd, address settler) private {
         if (epochEnd) _newEpoch();
         Start memory st = start;
         uint160 s1 = _twapSqrtPrice();
@@ -421,7 +429,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         uint256 paid;
         uint256 navAfter = navNow;
         if (navNow >= bench) {
-            if (!fired) take = _reward(navNow, navNow - bench);
+            if (!fired) take = _reward(navNow, navNow - bench, settler);
         } else {
             uint256 tokens;
             (paid, tokens) = _payShortfall(navNow, bench - navNow);
@@ -443,7 +451,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     /// Excess first refills the bond up to `deficit` (as locked shares), then pays carry (free shares).
-    function _reward(uint256 navNow, uint256 excess) private returns (uint256 take) {
+    function _reward(uint256 navNow, uint256 excess, address settler) private returns (uint256 take) {
         uint256 recoup = excess < deficit ? excess : deficit;
         deficit -= recoup;
         uint256 carry = FullMath.mulDiv(excess - recoup, carryBps, 10_000);
@@ -452,7 +460,15 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         uint256 newShares = FullMath.mulDiv(take, totalSupply, navNow - take);
         uint256 toBond = FullMath.mulDiv(newShares, recoup, take);
         bondShares += toBond;
-        balanceOf[curator] += newShares - toBond;
+        uint256 carryShares = newShares - toBond;
+        uint256 bounty = settler == address(0) || settler == curator
+            ? 0
+            : FullMath.mulDiv(carryShares, SETTLER_BOUNTY_BPS, 10_000);
+        balanceOf[curator] += carryShares - bounty;
+        if (bounty > 0) {
+            balanceOf[settler] += bounty;
+            emit SettlerPaid(settler, bounty);
+        }
         totalSupply += newShares;
     }
 
@@ -626,9 +642,24 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         return d <= maxTickDeviation && d >= -maxTickDeviation;
     }
 
+    /// Gate for rebalances and parks: spot, block-open tick and the 10-min TWAP agree within
+    /// maxTickDeviation, and the 10-min TWAP is within MAX_REBALANCES_PER_EPOCH x maxTickDeviation of
+    /// the 30-min one. Returns the 10-min TWAP tick, which bounds the swap.
+    function _checkedRebalanceTick() private view returns (int24 twap) {
+        twap = oracle.consult(poolId, REBALANCE_TWAP_WINDOW);
+        int24 ref = oracle.referenceTick(poolId);
+        (, int24 spot,,) = manager.getSlot0(poolId);
+        int24 d = twap - oracle.twapTick(poolId);
+        int24 lim = int24(uint24(MAX_REBALANCES_PER_EPOCH)) * maxTickDeviation;
+        if (!_near(spot, twap) || !_near(spot, ref) || !_near(ref, twap) || d > lim || d < -lim) {
+            revert PriceDeviation();
+        }
+    }
+
     function _redeploy(int24 tickLower, int24 tickUpper) private {
+        int24 twap = _checkedRebalanceTick();
         if (_liquidity > 0) _modify(_tickLower, _tickUpper, -int256(uint256(_liquidity)));
-        _swapToRatio(TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(tickUpper));
+        _swapToRatio(TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(tickUpper), twap);
         (uint160 spot,,,) = manager.getSlot0(poolId);
         uint128 liq = LiquidityAmounts.getLiquidityForAmounts(
             spot,
@@ -643,9 +674,9 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     /// Swap idle balances to the token ratio the range needs at spot. The price limit is the intersection
-    /// of referenceTick ± maxTickDeviation and TWAP ± maxTickDeviation (no swap if empty); any unswapped
+    /// of referenceTick ± maxTickDeviation and 10-min TWAP ± maxTickDeviation (no swap if empty); any unswapped
     /// remainder stays idle.
-    function _swapToRatio(uint160 sa, uint160 sb) private {
+    function _swapToRatio(uint160 sa, uint160 sb, int24 twap) private {
         (uint160 sp,,,) = manager.getSlot0(poolId);
         uint256 a0 = token0.balanceOf(address(this));
         uint256 a1 = _idle1();
@@ -657,7 +688,6 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         bool zeroForOne = a0 > target0;
         uint256 amountIn = zeroForOne ? a0 - target0 : _value(target0 - a0, 0, sp);
         if (amountIn == 0 || _value(zeroForOne ? amountIn : 0, zeroForOne ? 0 : amountIn, sp) * 1000 < total) return;
-        int24 twap = oracle.twapTick(poolId);
         int24 ref = oracle.referenceTick(poolId);
         (int24 hi, int24 lo) = twap > ref ? (twap, ref) : (ref, twap);
         if (hi - lo > 2 * maxTickDeviation) return; // bands do not overlap

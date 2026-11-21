@@ -12,6 +12,8 @@ interface IHurdleVault {
     /// take = bond refill + carry (curator gain); shortfallPaid = value delivered to depositors; bond = bondValue().
     event Settled(uint256 nav, uint256 bench, uint256 take, uint256 shortfallPaid, uint256 bond, uint160 sqrtPriceX96);
     event Fired(uint256 bond, uint256 nav);
+    /// A third party called settle() on schedule and received `shares` of the curator's carry.
+    event SettlerPaid(address indexed settler, uint256 shares);
     event BondReclaimed(uint256 bondTokens, uint256 bondShares);
 
     error NotCurator();
