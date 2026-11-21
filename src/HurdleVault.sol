@@ -557,14 +557,14 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     /// Approximate quote for deposit(shares, …) at the current state: pro-rata idle balances plus the same
-    /// fraction of the position at spot, rounded up (+1 wei per token for the pool's rounding). Excludes
+    /// fraction of the position at spot, rounded up (+2 wei per token: the pool and LiquidityAmounts round in opposite directions). Excludes
     /// unrealized fees and any pending settlement; pass max0/max1 with some slack.
     function previewDeposit(uint256 shares) external view returns (uint256 amount0, uint256 amount1) {
         uint256 t = totalSupply;
         amount0 = FullMath.mulDivRoundingUp(_idle0(), shares, t);
         amount1 = FullMath.mulDivRoundingUp(_idle1(), shares, t);
         (uint256 p0, uint256 p1) = _positionAmounts(uint128(FullMath.mulDivRoundingUp(_liquidity, shares, t)));
-        if (p0 + p1 > 0) (amount0, amount1) = (amount0 + p0 + 1, amount1 + p1 + 1);
+        if (p0 + p1 > 0) (amount0, amount1) = (amount0 + p0 + 2, amount1 + p1 + 2);
     }
 
     /// Approximate payout of withdraw(shares) at the current state, before any carry `crystallize` takes

@@ -73,6 +73,7 @@ contract ReplayTest is Test, Deployers {
         _setUp(t0, s0);
         t0_ = t0;
         minDepositorVsPar = type(uint256).max;
+        topUp = vm.envOr("REPLAY_TOPUP", true);
 
         vm.writeFile(out, "t,sqrtPriceX96,twapSqrtPriceX96,par,p_nav,p_dep,p_bond,p_carry,p_paid,p_fired,c_nav,c_dep,c_bond,c_carry,c_paid,c_fired\n");
         _writeRow(out, t0);
@@ -100,6 +101,8 @@ contract ReplayTest is Test, Deployers {
         emit log_named_uint("settlements", settlements);
         emit log_named_uint("chaser rebalances refused: BondBelowFloor", chaseBelowFloor);
         emit log_named_uint("chaser rebalances refused: other (PriceDeviation etc.)", chaseOtherRevert);
+        emit log_named_uint("chaser bond top-ups", chaseTopUps);
+        emit log_named_uint("chaser top-up token1 (bps of start NAV)", chaseTopUpAmount * 10_000 / tc.initialCapital);
         emit log_named_uint("patient fired", patient.fired() ? 1 : 0);
         emit log_named_uint("chaser fired", chaser.fired() ? 1 : 0);
         emit log_named_uint("patient day fired (x100)", tp.firedDay);
@@ -209,10 +212,34 @@ contract ReplayTest is Test, Deployers {
         vm.prank(CHASER);
         try chaser.rebalance(c - CHASER_HALF, c + CHASER_HALF) {}
         catch (bytes memory err) {
-            if (bytes4(err) == HurdleVault.BondBelowFloor.selector) chaseBelowFloor++;
-            else chaseOtherRevert++;
+            if (bytes4(err) == HurdleVault.BondBelowFloor.selector) {
+                chaseBelowFloor++;
+                if (topUp) _topUpAndRetry(c);
+            } else {
+                chaseOtherRevert++;
+            }
         }
         lastChase = block.timestamp;
+    }
+
+    /// REPLAY_TOPUP=true (default): a curator refused for BondBelowFloor tops the bond up to 1.5x the
+    /// floor (3% of NAV) from its own pocket and retries once. Top-ups are curator capital, reported apart.
+    bool topUp;
+    uint256 chaseTopUps;
+    uint256 chaseTopUpAmount; // token1 posted by top-ups
+
+    function _topUpAndRetry(int24 c) internal {
+        uint256 target = chaser.nav() * chaser.minBondBps() * 3 / 2 / 10_000;
+        uint256 have = chaser.bond();
+        if (target <= have) return;
+        uint256 amt = target - have;
+        MockERC20(Currency.unwrap(currency1)).transfer(CHASER, amt);
+        vm.startPrank(CHASER);
+        chaser.postBond(amt);
+        try chaser.rebalance(c - CHASER_HALF, c + CHASER_HALF) {} catch {}
+        vm.stopPrank();
+        chaseTopUps++;
+        chaseTopUpAmount += amt;
     }
 
     function _settleBoth() internal {

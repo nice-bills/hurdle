@@ -238,10 +238,23 @@ contract V2Features is VaultFixture {
         _newcomerFair(true);
     }
 
-    /// Proves: joining after the vault fell behind par makes the bond pay before the newcomer exists; the
-    /// newcomer neither funds the bond nor collects that payment.
+    /// Proves: once the vault fell behind par, the re-baseline at the join makes the bond pay before the
+    /// newcomer exists, and the outstanding deficit (owed back to the bond) then blocks the join entirely:
+    /// a newcomer can never fund the bond's recoup or collect the payment made to earlier holders.
     function test_newcomerFairness_vaultBehind() public {
-        _newcomerFair(false);
+        _prepWindow(false);
+        uint256 supply = vault.totalSupply();
+        uint256 bobShares = vault.balanceOf(BOB);
+        uint256 shares = vault.balanceOf(ALICE) / 4;
+        vm.prank(BOB);
+        vm.expectRevert(HurdleVault.DeficitOutstanding.selector);
+        vault.deposit(shares, 100e18, 100e18);
+        // The revert rolled back the re-baseline; a dust join hits the same gate.
+        vm.prank(BOB);
+        vm.expectRevert(HurdleVault.DeficitOutstanding.selector);
+        vault.deposit(1, 100e18, 100e18);
+        assertEq(vault.totalSupply(), supply, "supply changed");
+        assertEq(vault.balanceOf(BOB), bobShares, "newcomer got shares");
     }
 
     // ---------------------------------------------------------------------
@@ -275,7 +288,7 @@ contract V2Features is VaultFixture {
     // ---------------------------------------------------------------------
 
     function _failingEpochs(bool mockPark) internal returns (int24 tick) {
-        vault = _newVault(0.6e18);
+        vault = _newVault(mockPark ? 1.1e18 : 0.6e18);
         for (uint256 epoch; epoch < 12 && !vault.fired(); ++epoch) {
             _recenter(vault, 120);
             for (uint256 i; i < 10; ++i) {
@@ -326,7 +339,21 @@ contract V2Features is VaultFixture {
         vm.expectRevert(HurdleVault.NotParked.selector);
         vault.reclaimBond();
 
-        vault.rebalance(0, 0); // anyone finishes the park
+        // Anyone finishes the park once the TWAP has caught up with spot (each call swaps at most to the
+        // TWAP band edge); permissionless and uncounted after firing, so retry until idle < 2% of NAV.
+        uint256 calls;
+        for (; calls < 10; ++calls) {
+            vm.roll(block.number + 1);
+            vm.warp(block.timestamp + 600); // the TWAP converges on the (unmoved) spot
+            vault.rebalance(0, 0);
+            uint256 snap = vm.snapshotState();
+            vm.prank(CURATOR);
+            (bool ok,) = address(vault).call(abi.encodeCall(HurdleVault.reclaimBond, ()));
+            vm.revertToState(snap);
+            if (ok) break;
+        }
+        assertLt(calls, 10, "park never completed");
+        emit log_named_uint("park calls needed", calls + 1);
         uint256 bond0 = vault.bond();
         uint256 bs0 = vault.bondShares();
         uint256 free0 = vault.balanceOf(CURATOR);
@@ -431,6 +458,9 @@ contract V2Features is VaultFixture {
     function test_endogenousPar() public {
         // Thin pool: 60e18 background, so the vault (+/-600 ticks, ~10e18 of each token) dominates.
         LIQUIDITY_PARAMS.liquidityDelta = 60e18;
+        int24 spacing = 50;
+        LIQUIDITY_PARAMS.tickLower = TickMath.minUsableTick(spacing);
+        LIQUIDITY_PARAMS.tickUpper = TickMath.maxUsableTick(spacing);
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(address(hook)), 2500, SQRT_PRICE_1_1);
         vm.warp(block.timestamp + 600);
         vault = _newVault(1e18);
@@ -460,7 +490,7 @@ contract V2Features is VaultFixture {
         modifyLiquidityRouter.modifyLiquidity(
             key,
             IPoolManager.ModifyLiquidityParams(
-                TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING), int256(nav0 / 2), bytes32(uint256(1))
+                TickMath.minUsableTick(50), TickMath.maxUsableTick(50), int256(nav0 / 2), bytes32(uint256(1))
             ),
             ZERO_BYTES
         );

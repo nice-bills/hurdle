@@ -12,9 +12,10 @@ import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {HurdleHook} from "../src/HurdleHook.sol";
 import {HurdleVault} from "../src/HurdleVault.sol";
+import {HurdleVaultFactory} from "../src/HurdleVaultFactory.sol";
 
 /// @notice Step 2 of 2. Reads the JSON written by DeployHurdleHook.s.sol and deploys the Patient (±10%) and
-///         Chaser (±2%) demo vaults on that pool: post bond, first deposit, rebalance. Adds `patientVault` and
+///         Chaser (±2%) demo vaults on that pool through a HurdleVaultFactory pinned to the hook: post bond, first deposit, rebalance. Adds `patientVault` and
 ///         `chaserVault` to the JSON.
 /// @dev Run at least 10 minutes after step 1: HurdleHook.twapTick reverts until the pool has 10 minutes of
 ///      history, and the first deposit and the rebalance both price at the TWAP. No swap is needed in between
@@ -37,6 +38,7 @@ contract DeployVaults is Script {
     struct Ctx {
         IPoolManager manager;
         HurdleHook hook;
+        HurdleVaultFactory factory;
         MockERC20 usdc;
         MockERC20 weth;
         PoolKey key;
@@ -58,6 +60,7 @@ contract DeployVaults is Script {
         vm.startBroadcast(pk);
         (, int24 tick,,) = c.manager.getSlot0(c.key.toId());
         address depositor = _depositor(pk);
+        c.factory = new HurdleVaultFactory(c.manager, address(c.hook));
         patient = _vault(c, vm.addr(pk), depositor, tick, 950);
         chaser = _vault(c, vm.addr(pk), depositor, tick, 200);
         vm.stopBroadcast();
@@ -93,20 +96,19 @@ contract DeployVaults is Script {
         return vm.addr(uint256(keccak256(abi.encode(pk, "hurdle-depositor"))));
     }
 
-    /// Deployer is curator; it funds the first deposit with shares minted to `depositor`.
+    /// Deployer is curator (the factory makes msg.sender the curator); it funds the first deposit with shares minted to `depositor`.
     /// Bond 5% of the deposit (token1); deposit 1 mWETH + 3000 mUSDC.
     function _vault(Ctx memory c, address curator, address depositor, int24 tick, int24 half)
         internal
         returns (HurdleVault v)
     {
-        v = new HurdleVault(
-            c.manager, c.key, curator, CARRY_BPS, MIN_BOND_BPS, MAX_TICK_DEVIATION, EPOCH
-        );
+        v = c.factory.create(c.key, CARRY_BPS, MIN_BOND_BPS, MAX_TICK_DEVIATION, EPOCH);
+        require(v.curator() == curator, "factory curator");
         c.usdc.approve(address(v), type(uint256).max);
         c.weth.approve(address(v), type(uint256).max);
         v.postBond(c.wethIs0 ? 300e6 : 0.1e18); // token1 is mUSDC if mWETH is currency0
         (uint256 a0, uint256 a1) = c.wethIs0 ? (uint256(1e18), uint256(3000e6)) : (uint256(3000e6), uint256(1e18));
-        v.deposit(a0, a1, depositor);
+        v.firstDeposit(a0, a1, depositor);
         int24 mid = (tick / TICK_SPACING) * TICK_SPACING;
         v.rebalance(mid - half, mid + half);
     }
@@ -127,6 +129,7 @@ contract DeployVaults is Script {
         vm.serializeAddress(o, "currency1", Currency.unwrap(c.key.currency1));
         vm.serializeUint(o, "fee", c.key.fee);
         vm.serializeInt(o, "tickSpacing", TICK_SPACING);
+        vm.serializeAddress(o, "factory", address(c.factory));
         vm.serializeAddress(o, "patientVault", address(patient));
         vm.serializeAddress(o, "chaserVault", address(chaser));
         vm.serializeAddress(o, "depositor", depositor);
