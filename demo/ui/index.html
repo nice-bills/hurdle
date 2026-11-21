@@ -3,82 +3,159 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hurdle demo</title>
+<title>Hurdle: curators that beat par or pay</title>
+<meta name="description" content="Hurdle: a Uniswap v4 curator vault must beat par (a passive full-range LP, computed onchain) or its bond pays depositors the shortfall.">
 <link rel="icon" href="data:,">
 <style>
 :root {
+  color-scheme:dark;
   --bg:#0d1117; --panel:#161b22; --line:#30363d; --grid:#21262d; --text:#e6edf3; --muted:#8b949e;
   --par:#e6edf3; --v0:#3dd6c4; --v1:#ff9f43; --v2:#a78bfa; --v3:#f472b6;
-  --bad:#ff5d5d; --good:#3fb950; --below:rgba(255,93,93,.10);
+  --bad:#ff6b6b; --good:#3fb950; --warn:#f0b429; --below:rgba(255,107,107,.10); --badfill:#d1242f;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
+    color-scheme:light;
     --bg:#f6f8fa; --panel:#ffffff; --line:#d0d7de; --grid:#eaeef2; --text:#1f2328; --muted:#59636e;
-    --par:#1f2328; --v0:#0a8f80; --v1:#c75b00; --v2:#6f42c1; --v3:#bf3989;
-    --bad:#cf222e; --good:#1a7f37; --below:rgba(207,34,46,.08);
+    --par:#1f2328; --v0:#0a7f72; --v1:#b35000; --v2:#6f42c1; --v3:#bf3989;
+    --bad:#cf222e; --good:#1a7f37; --warn:#9a6700; --below:rgba(207,34,46,.08); --badfill:#cf222e;
   }
 }
 :root[data-theme="light"] {
+  color-scheme:light;
   --bg:#f6f8fa; --panel:#ffffff; --line:#d0d7de; --grid:#eaeef2; --text:#1f2328; --muted:#59636e;
-  --par:#1f2328; --v0:#0a8f80; --v1:#c75b00; --v2:#6f42c1; --v3:#bf3989;
-  --bad:#cf222e; --good:#1a7f37; --below:rgba(207,34,46,.08);
+  --par:#1f2328; --v0:#0a7f72; --v1:#b35000; --v2:#6f42c1; --v3:#bf3989;
+  --bad:#cf222e; --good:#1a7f37; --warn:#9a6700; --below:rgba(207,34,46,.08); --badfill:#cf222e;
 }
 * { box-sizing:border-box; margin:0; }
-html,body { height:100%; }
-body { background:var(--bg); color:var(--text); font:14px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  display:grid; grid-template-rows:auto 1fr auto; gap:10px; padding:12px 16px; min-height:100vh; overflow:hidden; }
+html { -webkit-text-size-adjust:100%; }
+body { background:var(--bg); color:var(--text); font:14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:16px; overflow-x:hidden; }
+.wrap { max-width:1240px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
+a { color:inherit; text-decoration-color:var(--muted); text-underline-offset:2px; }
 .num { font-variant-numeric:tabular-nums; }
-header { display:flex; align-items:flex-end; gap:16px; justify-content:space-between; }
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
+
+header { display:flex; flex-wrap:wrap; align-items:flex-start; gap:10px 16px; justify-content:space-between; }
+.head { flex:1 1 520px; min-width:0; }
 h1 { font-size:22px; letter-spacing:-.01em; }
-h1 span { color:var(--muted); font-weight:400; font-size:15px; margin-left:8px; }
-.sub { color:var(--muted); font-size:12px; margin-top:2px; }
-.tools { display:flex; gap:8px; align-items:center; }
-select,button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; cursor:pointer; }
+.pitch { margin-top:4px; font-size:15px; line-height:1.4; max-width:80ch; }
+.pitch b { font-weight:700; }
+.sub { color:var(--muted); font-size:12px; margin-top:4px; }
+.tools { display:flex; gap:8px; align-items:center; flex:0 1 auto; max-width:100%; }
+select,button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; cursor:pointer; min-height:34px; }
+select { max-width:100%; min-width:0; }
 button:hover,select:hover { border-color:var(--muted); }
 button.on { border-color:var(--text); }
-main { display:grid; grid-template-columns:1fr 330px; gap:12px; min-height:0; }
-.chartbox { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 4px 4px; display:flex; flex-direction:column; min-height:0; position:relative; }
-.legend { display:flex; flex-wrap:wrap; gap:4px 16px; padding:0 14px 4px; font-size:12px; color:var(--muted); align-items:center; }
+
+.levels { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.lv { background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--c); border-radius:10px; padding:8px 12px; font-size:13px; }
+.lv b { color:var(--c); display:block; margin-bottom:2px; }
+.lv.floor { --c:var(--warn); } .lv.half { --c:var(--bad); }
+
+main { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:12px; align-items:start; }
+.chartbox { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 4px 4px; display:flex; flex-direction:column; min-width:0; position:relative; }
+.legend { display:flex; flex-wrap:wrap; gap:4px 14px; padding:0 12px 6px; font-size:12px; color:var(--muted); align-items:center; }
 .legend i { display:inline-block; width:22px; height:0; border-top:3px solid; vertical-align:middle; margin-right:5px; }
 .legend i.dash { border-top-style:dashed; border-top-width:2px; }
 .legend i.box { width:14px; height:10px; border:0; background:var(--below); outline:1px solid var(--bad); }
-#main { flex:1; min-height:0; position:relative; }
+#banners { display:flex; flex-direction:column; gap:6px; padding:0 8px; }
+#banners:empty { display:none; }
+.banner { display:none; border:1px solid var(--bad); border-left-width:5px; background:var(--panel); border-radius:8px; padding:7px 10px; font-size:13px; }
+.banner.show { display:block; animation:pop .35s ease-out; }
+.banner b { color:var(--bad); }
+@keyframes pop { from { opacity:0; transform:translateY(-4px) } to { opacity:1; transform:none } }
+@media (prefers-reduced-motion: reduce) { .banner.show { animation:none; } }
+#main { height:320px; position:relative; }
 #strip { height:104px; position:relative; }
 svg { display:block; width:100%; height:100%; }
 text { fill:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
-.fired { position:absolute; transform:translate(-50%,0); pointer-events:none; display:none; text-align:center; }
-.fired.show { display:block; animation:pop .5s cubic-bezier(.2,1.4,.4,1); }
-.fired b { display:block; background:var(--bad); color:#fff; font-size:26px; letter-spacing:.08em; padding:2px 14px; border-radius:6px; box-shadow:0 4px 18px rgba(0,0,0,.35); }
-.fired small { display:block; color:var(--bad); font-weight:600; font-size:12px; margin-top:3px; background:var(--panel); border-radius:4px; }
-@keyframes pop { from { transform:translate(-50%,0) scale(.3); opacity:0 } to { transform:translate(-50%,0) scale(1); opacity:1 } }
-.cards { display:flex; flex-direction:column; gap:10px; min-height:0; }
-.card { background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--c); border-radius:10px; padding:10px 12px; flex:1; display:flex; flex-direction:column; gap:6px; min-height:0; }
-.card.isfired { border-color:var(--bad); border-left-color:var(--bad); }
-.card h2 { font-size:16px; display:flex; justify-content:space-between; align-items:center; }
-.card h2 em { font-style:normal; color:var(--c); }
-.pill { font-size:11px; font-weight:700; letter-spacing:.06em; padding:2px 8px; border-radius:99px; border:1px solid var(--good); color:var(--good); }
-.card.isfired .pill { background:var(--bad); border-color:var(--bad); color:#fff; }
-.meter { height:10px; background:var(--grid); border-radius:5px; position:relative; }
-.meter .fill { position:absolute; inset:0 auto 0 0; border-radius:5px; background:var(--c); }
-.meter .tick { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--muted); }
-.meter .tick.thr { background:var(--bad); }
-.cap { font-size:11px; color:var(--muted); margin-top:-2px; }
-.minibond { flex:1; min-height:48px; }
-.rows { display:grid; grid-template-columns:1fr auto; gap:2px 8px; font-size:13px; }
-.rows span:nth-child(odd) { color:var(--muted); }
-.rows span:nth-child(even) { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
-.ok { color:var(--good); } .bad { color:var(--bad); }
-footer { display:flex; align-items:center; gap:10px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 12px; }
-footer input[type=range] { flex:1; accent-color:var(--text); }
-#play { min-width:84px; font-weight:600; }
-#clock { min-width:150px; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
 #msg { position:absolute; inset:0; display:none; align-items:center; justify-content:center; color:var(--bad); padding:24px; text-align:center; }
+
+.cards { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.card { background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--c); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:7px; min-width:0; }
+.card.isfired { border-color:var(--bad); border-left-color:var(--bad); }
+.card.isfrozen { border-color:var(--warn); border-left-color:var(--warn); }
+.card h2 { font-size:16px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.card h2 em { font-style:normal; color:var(--c); }
+.card h2 em small { color:var(--muted); font-weight:400; font-size:12px; margin-left:6px; }
+.pill { font-size:11px; font-weight:700; letter-spacing:.06em; padding:2px 8px; border-radius:99px; border:1px solid var(--good); color:var(--good); white-space:nowrap; }
+.card.isfrozen .pill { border-color:var(--warn); color:var(--warn); }
+.card.isfired .pill { background:var(--badfill); border-color:var(--badfill); color:#fff; }
+.rows { display:grid; grid-template-columns:auto 1fr; gap:2px 8px; font-size:13px; }
+.rows > span:nth-child(odd) { color:var(--muted); }
+.rows > span:nth-child(even) { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.dep { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:2px 6px; }
+.chip { display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:99px; border:1px solid currentColor; white-space:nowrap; }
+.chip.fire { background:var(--badfill); border-color:var(--badfill); color:#fff; }
+.meter { height:12px; background:var(--grid); border-radius:6px; position:relative; margin:6px 0 2px; }
+.meter .fill { position:absolute; inset:0 auto 0 0; border-radius:6px; background:var(--c); }
+.meter .tick { position:absolute; top:-4px; bottom:-4px; width:2px; margin-left:-1px; }
+.meter .tick.floor { background:var(--warn); }
+.meter .tick.half { background:var(--bad); }
+.cap { font-size:11px; color:var(--muted); line-height:1.5; }
+.cap .kf { color:var(--warn); font-weight:600; } .cap .kh { color:var(--bad); font-weight:600; }
+.why { display:none; font-size:12px; border-radius:6px; padding:6px 8px; border:1px solid var(--bad); }
+.why.show { display:block; }
+.why.warn { border-color:var(--warn); }
+.why b { color:var(--bad); } .why.warn b { color:var(--warn); }
+.minibond { height:60px; }
+.ok { color:var(--good); } .bad { color:var(--bad); }
+
+.ctl { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px 12px; }
+.ctl input[type=range] { flex:1 1 200px; min-width:120px; accent-color:var(--text); }
+#play { min-width:84px; font-weight:600; }
+#clock { margin-left:auto; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+/* live panel */
+.live { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+.live h2 { font-size:16px; display:flex; flex-wrap:wrap; gap:6px 12px; align-items:baseline; justify-content:space-between; }
+.live h2 small { color:var(--muted); font-weight:400; font-size:12px; }
+.live .lead { color:var(--muted); font-size:12px; margin:2px 0 10px; }
+.lgrid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.lv-card { border:1px solid var(--line); border-left:4px solid var(--c); border-radius:8px; padding:10px; min-width:0; }
+.lv-card h3 { font-size:14px; display:flex; flex-wrap:wrap; gap:4px 8px; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.lv-card h3 span.n { color:var(--c); }
+.lv-card .addr { font-size:11px; color:var(--muted); font-weight:400; word-break:break-all; }
+.kv { display:grid; grid-template-columns:auto minmax(0,1fr); gap:3px 10px; font-size:13px; }
+.kv > span:nth-child(odd) { color:var(--muted); }
+.kv > span:nth-child(even) { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; overflow-wrap:anywhere; }
+.kv .na { color:var(--muted); font-weight:400; }
+.evs { margin-top:10px; font-size:12px; }
+.evs h4 { font-size:12px; color:var(--muted); font-weight:600; margin-bottom:4px; }
+.ev { border-top:1px solid var(--line); padding:5px 0; overflow-wrap:anywhere; }
+.ev b.f { color:var(--bad); }
+.lmsg { color:var(--muted); font-size:12px; padding:6px 0; }
+.lmsg.err { color:var(--bad); }
+.livebtns { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center; }
+
+footer.foot { color:var(--muted); font-size:12px; padding-bottom:8px; }
+
+@media (max-width: 900px) {
+  main { grid-template-columns:minmax(0,1fr); }
+  .lgrid { grid-template-columns:minmax(0,1fr); }
+}
+@media (max-width: 600px) {
+  body { padding:16px; }
+  h1 { font-size:20px; }
+  .pitch { font-size:14px; }
+  .levels { grid-template-columns:minmax(0,1fr); }
+  .head { flex-basis:100%; }
+  .tools { width:100%; } .tools select { flex:1; }
+  #main { height:260px; }
+  #strip { height:92px; }
+  button,select { min-height:40px; }
+  .ctl input[type=range] { flex-basis:100%; order:5; }
+  #clock { order:6; flex-basis:100%; margin:0; text-align:left; }
+}
 </style>
 </head>
 <body>
+<div class="wrap">
 <header>
-  <div>
-    <h1>Hurdle<span id="pitch">Your LP curator beats a passive LP or pays you the difference from their own bond.</span></h1>
+  <div class="head">
+    <h1>Hurdle</h1>
+    <p class="pitch">A curator vault has to beat <b>par</b>, the return of a passive full-range LP that the pool itself computes onchain from its own fee growth and TWAP; if it misses, the curator's bond pays depositors the shortfall, and the curator earns carry (20%) only on outperformance.</p>
     <div class="sub num" id="sub"></div>
   </div>
   <div class="tools">
@@ -87,39 +164,59 @@ footer input[type=range] { flex:1; accent-color:var(--text); }
   </div>
 </header>
 
+<section class="levels" aria-label="Bond levels">
+  <div class="lv floor"><b>Floor: bond below 2% of NAV</b>Deposits and curator rebalances freeze until the curator tops up the bond.</div>
+  <div class="lv half"><b>Half floor: bond below 1% of NAV</b>A miss that leaves the bond here fires the curator; the vault parks passive full range.</div>
+</section>
+
 <main>
   <div class="chartbox">
     <div class="legend" id="legend"></div>
-    <div id="main"><svg id="svgMain"></svg></div>
-    <div id="strip"><svg id="svgStrip"></svg></div>
+    <div id="banners" aria-live="polite"></div>
+    <div id="main"><svg id="svgMain" role="img" aria-label="Depositor value and NAV of each vault against par over the week"></svg></div>
+    <div id="strip"><svg id="svgStrip" role="img" aria-label="ETH price in USDC over the week"></svg></div>
     <div id="msg"></div>
   </div>
   <div class="cards" id="cards"></div>
 </main>
 
-<footer>
+<div class="ctl">
   <button id="play">Play</button>
-  <button id="restart" title="Home">⏮</button>
+  <button id="restart" title="Restart (Home)" aria-label="Restart">⏮</button>
   <input id="scrub" type="range" min="0" max="1" step="0.01" value="0" aria-label="Time">
-  <button id="final" title="End">Final</button>
-  <button data-speed="1" class="on">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button>
+  <button id="final" title="Final view (End)">Final</button>
+  <span><button data-speed="1" class="on">1×</button> <button data-speed="2">2×</button> <button data-speed="4">4×</button></span>
   <span id="clock"></span>
-</footer>
+</div>
+<div class="sr" id="srsum" aria-live="polite"></div>
+
+<section class="live" id="live" aria-labelledby="live-h">
+  <h2 id="live-h">Live (Unichain Sepolia) <small id="live-meta">chain 1301 · read-only JSON-RPC</small></h2>
+  <p class="lead">The two testnet vaults, read straight from the chain with <code>eth_call</code>; no backend. Amounts are in the pool's token1 (bond token).</p>
+  <div class="lmsg" id="live-msg">Loading…</div>
+  <div class="lgrid" id="live-grid"></div>
+  <div class="livebtns"><button id="live-refresh">Refresh</button><button id="live-more" hidden>Scan older events</button><span class="sub" id="live-ts"></span></div>
+</section>
+
+<footer class="foot">Data: real Uniswap v3 mainnet swaps replayed through a local v4 pool with the Hurdle hook. Testnet only, not audited. Keys: space play/pause, ←/→ step, Home/End, t theme.</footer>
+</div>
 
 <script>
 const $ = s => document.querySelector(s);
-const SVGNS = 'http://www.w3.org/2000/svg';
 const DURATION = 24;                      // seconds for a full 1× playback
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const FIRE_TEXT = 'Miss left bond below ½ floor → curator fired, vault parked passive';
+const ROLE = { patient: '±10%', chaser: '±2%' };
 const pct = (v, d = 2) => (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(d) + '%';
-const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const S = { data: null, names: [], pos: 0, playing: false, speed: 1, last: 0, firedAt: {}, firedShown: {} };
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const S = { data: null, names: [], pos: 0, playing: false, speed: 1, last: 0, firedAt: {}, floor: .02, half: .01 };
+const cap1 = n => n[0].toUpperCase() + n.slice(1);
+const when = t => new Date(t * 1000).toISOString().slice(5, 16).replace('T', ' ') + ' UTC';
 
 // ---------- load ----------
 async function boot() {
   let list;
   try { list = await (await fetch('scenarios.json')).json(); }
-  catch (e) { return showMsg('Cannot load scenarios.json — serve demo/ over HTTP (see README).'); }
+  catch (e) { return showMsg('Cannot load scenarios.json. Serve this folder over HTTP (see README).'); }
   const sel = $('#scenario');
   sel.innerHTML = list.map(s => `<option value="${esc(s.id)}">${esc(s.label || s.id)}</option>`).join('');
   const q = new URLSearchParams(location.search).get('s');
@@ -133,88 +230,84 @@ async function load(id) {
   pause(); showMsg('');
   let d;
   try {
-    const r = await fetch(`../out/${encodeURIComponent(id)}.json`);
+    const r = await fetch(`data/${encodeURIComponent(id)}.json`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     d = await r.json();
     if (!d.points || !d.points.length) throw new Error('no points');
-  } catch (e) { S.data = null; clearAll(); return showMsg(`Could not load ../out/${id}.json (${e.message}). Run the replay script or pick another scenario.`); }
+  } catch (e) { S.data = null; clearAll(); return showMsg(`Could not load data/${id}.json (${e.message}).`); }
   S.data = d; S.names = Object.keys(d.points[0].vaults);
-  const P = d.points, N = P.length;
+  const P = d.points, N = P.length, m = d.meta || {};
   S.t = P.map(p => p.t);
+  S.floor = (m.minBondBps != null ? m.minBondBps : 200) / 1e4; S.half = S.floor / 2;
   S.firedAt = {};
   for (const e of d.events || []) if (e.type === 'fired' && S.firedAt[e.vault] == null) S.firedAt[e.vault] = e.t;
   S.names.forEach(n => { if (S.firedAt[n] == null) { const p = P.find(p => p.vaults[n].fired); if (p) S.firedAt[n] = p.t; } });
-  S.firedShown = {};
   // fixed scales across the whole run so the chart does not jump while playing
   const ys = []; P.forEach(p => { ys.push(p.par); S.names.forEach(n => ys.push(p.vaults[n].depositor, p.vaults[n].nav)); });
   S.y = niceRange(Math.min(...ys), Math.max(...ys));
-  const pr = P.map(p => p.price); S.py = niceRange(Math.min(...pr), Math.max(...pr), .12, true);
-  const bonds = []; P.forEach(p => S.names.forEach(n => bonds.push(p.vaults[n].bond)));
-  S.bmax = Math.max(...bonds, d.points[0].vaults[S.names[0]].bond) * 1.15;
-  S.bmin = Math.min(...bonds, 0);
+  const pr = P.map(p => p.price); S.py = niceRange(Math.min(...pr), Math.max(...pr), .12);
+  S.ratio = {}; let rmax = 0;
+  S.names.forEach(n => { S.ratio[n] = P.map(p => p.vaults[n].bond / p.vaults[n].nav); rmax = Math.max(rmax, ...S.ratio[n]); });
+  S.rmax = rmax * 1.1;
   $('#scrub').max = N - 1;
-  const m = d.meta || {};
   $('#sub').textContent = [m.pool, m.start && m.end ? `${m.start.slice(0,10)} → ${m.end.slice(0,10)}` : '',
-    `1.00 = start capital · unit: ${m.unit || '?'}`, m.carryBps != null ? `carry ${m.carryBps/100}%` : '', m.minBondBps != null ? `fire at bond < ${m.minBondBps/100}% NAV` : ''].filter(Boolean).join('  ·  ');
-  buildLegend(); buildCards(); buildBadges();
+    `1.00 = start capital (${m.unit || 'USD'})`, m.epochSeconds ? `settles every ${m.epochSeconds / 3600} h` : '',
+    m.carryBps != null ? `carry ${m.carryBps / 100}%` : ''].filter(Boolean).join('  ·  ');
+  buildLegend(); buildCards(); buildBanners();
   S.pos = N - 1;                           // default: static final view
-  $('#play').textContent = 'Play';
   render();
 }
 
-function niceRange(lo, hi, padF = .1, noZero) {
+function niceRange(lo, hi, padF = .1) {
   const pad = (hi - lo || Math.abs(hi) * .01 || 1) * padF; lo -= pad; hi += pad;
   const raw = (hi - lo) / 5, mag = 10 ** Math.floor(Math.log10(raw));
   const step = [1, 2, 2.5, 5, 10].map(k => k * mag).find(s => s >= raw);
   return { lo, hi, step };
 }
 function showMsg(t) { const m = $('#msg'); m.textContent = t; m.style.display = t ? 'flex' : 'none'; }
-function clearAll() { $('#svgMain').innerHTML = $('#svgStrip').innerHTML = $('#cards').innerHTML = $('#legend').innerHTML = ''; $('#sub').textContent = ''; document.querySelectorAll('.fired').forEach(e => e.remove()); }
+function clearAll() { $('#svgMain').innerHTML = $('#svgStrip').innerHTML = $('#cards').innerHTML = $('#legend').innerHTML = $('#banners').innerHTML = ''; $('#sub').textContent = ''; }
 const col = i => `var(--v${i % 4})`;
 
 // ---------- static DOM ----------
 function buildLegend() {
   $('#legend').innerHTML = `<span><i style="border-color:var(--par);border-top-width:5px;opacity:.55"></i>Par (passive LP)</span>` +
-    S.names.map((n, i) => `<span><i style="border-color:${col(i)}"></i>${esc(n)} depositor</span><span><i class="dash" style="border-color:${col(i)}"></i>${esc(n)} NAV</span>`).join('') +
-    `<span><i class="box"></i>below par</span><span>shade = bond paid</span>`;
+    S.names.map((n, i) => `<span><i style="border-color:${col(i)}"></i>${esc(cap1(n))} depositor</span><span><i class="dash" style="border-color:${col(i)}"></i>${esc(cap1(n))} NAV</span>`).join('') +
+    `<span><i class="box"></i>below par</span>`;
 }
 function buildCards() {
   $('#cards').innerHTML = S.names.map((n, i) => `
     <div class="card" id="card-${i}" style="--c:${col(i)}">
-      <h2><em>${esc(n[0].toUpperCase() + n.slice(1))}</em><span class="pill">ACTIVE</span></h2>
+      <h2><em>${esc(cap1(n))}<small>${esc(ROLE[n] || '')}</small></em><span class="pill" id="c${i}-pill">ACTIVE</span></h2>
       <div class="rows">
-        <span>Depositor vs par</span><span id="c${i}-dep"></span>
+        <span>Depositor vs par</span><span class="dep" id="c${i}-dep"></span>
         <span>NAV vs par</span><span id="c${i}-nav"></span>
       </div>
-      <div class="meter" id="c${i}-meter"><div class="fill"></div><div class="tick init"></div><div class="tick thr"></div></div>
-      <div class="cap" id="c${i}-cap"></div>
+      <div>
+        <div class="meter" id="c${i}-meter" role="img"><div class="fill"></div><div class="tick floor"></div><div class="tick half"></div></div>
+        <div class="cap" id="c${i}-cap"></div>
+      </div>
+      <div class="why" id="c${i}-why"></div>
       <div class="rows">
-        <span>Bond</span><span id="c${i}-bond"></span>
+        <span>Bond (% of start)</span><span id="c${i}-bond"></span>
         <span>Carry earned</span><span id="c${i}-carry"></span>
         <span>Shortfall paid</span><span id="c${i}-short"></span>
       </div>
-      <div class="minibond"><svg id="c${i}-svg"></svg></div>
+      <div class="minibond"><svg id="c${i}-svg" role="img" aria-label="${esc(cap1(n))} bond as a share of NAV over time, with the floor and half-floor lines"></svg></div>
     </div>`).join('');
 }
-function buildBadges() {
-  document.querySelectorAll('.fired').forEach(e => e.remove());
-  S.names.forEach((n, i) => {
-    if (S.firedAt[n] == null) return;
-    const d = document.createElement('div'); d.className = 'fired'; d.id = `fired-${i}`;
-    d.innerHTML = `<b>FIRED</b><small>${esc(n)} · bond exhausted → passive</small>`;
-    $('.chartbox').appendChild(d);
-  });
+function buildBanners() {
+  $('#banners').innerHTML = S.names.map((n, i) => S.firedAt[n] == null ? '' :
+    `<div class="banner" id="banner-${i}" role="status"><b>⚠ ${esc(cap1(n))} fired · ${when(S.firedAt[n])}</b>: ${FIRE_TEXT}</div>`).join('');
 }
 
 // ---------- geometry ----------
-function interp(arr, pos) {                // arr: number[] ; linear tip
+function interp(arr, pos) {
   const i = Math.floor(pos), f = pos - i;
   return i >= arr.length - 1 ? arr[arr.length - 1] : arr[i] + (arr[i + 1] - arr[i]) * f;
 }
 function xOfT(t, g) { const T = S.t; return g.l + (t - T[0]) / (T[T.length - 1] - T[0]) * (g.w - g.l - g.r); }
 function posOfT(t) { const T = S.t; if (t <= T[0]) return 0; for (let i = 1; i < T.length; i++) if (T[i] >= t) return i - 1 + (t - T[i-1]) / (T[i] - T[i-1]); return T.length - 1; }
 function series(get) { return S.data.points.map(get); }
-// polyline path points for 0..pos with interpolated tip
 function pathPts(vals, pos, X, Y) {
   const out = [], n = Math.floor(pos);
   for (let i = 0; i <= n && i < vals.length; i++) out.push([X(S.t[i]), Y(vals[i])]);
@@ -222,33 +315,33 @@ function pathPts(vals, pos, X, Y) {
   return out;
 }
 const line = pts => pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
-
 function ticks(r) { const a = []; for (let v = Math.ceil(r.lo / r.step) * r.step; v <= r.hi; v += r.step) a.push(v); return a; }
 
 // ---------- render ----------
 function render() {
   const D = S.data; if (!D) return;
-  const pos = S.pos, n = Math.floor(pos), P = D.points;
+  const pos = S.pos, n = Math.floor(pos), P = D.points, p = P[Math.min(n, P.length - 1)];
   drawMain(pos); drawStrip(pos);
-  S.names.forEach((nm, i) => updateCard(i, nm, P[Math.min(n, P.length - 1)], pos));
-  const tNow = interp(S.t, pos), day = (tNow - S.t[0]) / 86400;
-  $('#clock').textContent = `Day ${Math.min(Math.floor(day) + 1, Math.ceil((S.t[S.t.length-1] - S.t[0]) / 86400))} · ${new Date(tNow * 1000).toISOString().slice(5, 16).replace('T', ' ')} UTC`;
+  S.names.forEach((nm, i) => updateCard(i, nm, p, pos));
+  S.names.forEach((nm, i) => { const b = $(`#banner-${i}`); if (b) b.classList.toggle('show', posOfT(S.firedAt[nm]) <= pos + 1e-9); });
+  const tNow = interp(S.t, pos), days = Math.ceil((S.t[S.t.length - 1] - S.t[0]) / 86400);
+  $('#clock').textContent = `Day ${Math.min(Math.floor((tNow - S.t[0]) / 86400) + 1, days)} · ${when(tNow)}`;
   $('#scrub').value = pos;
   $('#play').textContent = S.playing ? 'Pause' : (pos >= P.length - 1 ? 'Replay' : 'Play');
+  if (!S.playing) $('#srsum').textContent = `${when(tNow)}. Par ${pct(p.par - 1)}. ` + S.names.map(nm => {
+    const v = p.vaults[nm]; return `${nm}: depositor ${pct(v.depositor - 1)}, NAV ${pct(v.nav - 1)}${v.fired ? ', fired' : ''}.`; }).join(' ');
 }
 
 function mk(w, h, l, r, t, b) { return { w, h, l, r, t, b }; }
 function drawMain(pos) {
   const el = $('#svgMain'), w = el.clientWidth, h = el.clientHeight; if (!w) return;
-  const g = mk(w, h, 58, 16, 10, 8), Y = v => g.t + (S.y.hi - v) / (S.y.hi - S.y.lo) * (h - g.t - g.b), X = t => xOfT(t, g);
-  const P = S.data.points;
+  const g = mk(w, h, w < 500 ? 46 : 58, 12, 10, 8), Y = v => g.t + (S.y.hi - v) / (S.y.hi - S.y.lo) * (h - g.t - g.b), X = t => xOfT(t, g);
   let s = '';
   for (const v of ticks(S.y)) s += `<line x1="${g.l}" x2="${w - g.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${g.l - 6}" y="${Y(v) + 4}" text-anchor="end">${pct(v - 1, 1)}</text>`;
   for (let d = 0; d * 86400 <= S.t[S.t.length - 1] - S.t[0]; d++) { const x = X(S.t[0] + d * 86400); s += `<line x1="${x}" x2="${x}" y1="${g.t}" y2="${h - g.b}" stroke="var(--grid)"/>`; }
   const par = pathPts(series(p => p.par), pos, X, Y);
-  // below-par zone
   if (par.length > 1) s += `<path d="${line(par)}L${par[par.length-1][0]} ${h - g.b}L${par[0][0]} ${h - g.b}Z" fill="var(--below)"/>`;
-  S.names.forEach((nm, i) => {   // tint between NAV and depositor
+  S.names.forEach((nm, i) => {
     const dep = pathPts(series(p => p.vaults[nm].depositor), pos, X, Y), nav = pathPts(series(p => p.vaults[nm].nav), pos, X, Y);
     if (dep.length > 1) s += `<path d="${line(dep)}${line(nav.slice().reverse()).replace('M', 'L')}Z" fill="${col(i)}" opacity=".16"/>`;
   });
@@ -259,20 +352,13 @@ function drawMain(pos) {
     if (dep.length > 1) s += `<path d="${line(dep)}" fill="none" stroke="${col(i)}" stroke-width="3" stroke-linejoin="round"/>`;
     if (dep.length) { const q = dep[dep.length - 1]; s += `<circle cx="${q[0]}" cy="${q[1]}" r="4.5" fill="${col(i)}"/>`; }
   });
-  // settle ticks
   for (const e of S.data.events || []) if (e.type === 'settle' && posOfT(e.t) <= pos) { const x = X(e.t); s += `<path d="M${x} ${h - g.b - 7}l4 4-4 4-4-4z" fill="var(--muted)" opacity=".5"/>`; }
-  // fire markers
   let slot = 0;
-  S.names.forEach((nm, i) => {
-    const b = $(`#fired-${i}`); if (!b) return;
-    const ft = S.firedAt[nm], shown = posOfT(ft) <= pos + 1e-9;
-    if (shown) {
-      const x = X(ft); s += `<line x1="${x}" x2="${x}" y1="${g.t}" y2="${h - g.b}" stroke="var(--bad)" stroke-width="2" stroke-dasharray="6 4"/>`;
-      const pad = 90; b.style.left = Math.min(Math.max(x, pad), w - pad) + 'px'; b.style.top = (el.parentElement.offsetTop + g.t + 2 + (slot++) * 56) + 'px';
-    }
-    if (shown && !S.firedShown[nm]) { b.classList.add('show'); }
-    if (!shown) b.classList.remove('show');
-    S.firedShown[nm] = shown;
+  S.names.forEach(nm => {
+    const ft = S.firedAt[nm]; if (ft == null || posOfT(ft) > pos + 1e-9) return;
+    const x = X(ft), label = `✕ ${cap1(nm)} fired`, anchorEnd = x > w * .6;
+    s += `<line x1="${x}" x2="${x}" y1="${g.t}" y2="${h - g.b}" stroke="var(--bad)" stroke-width="2" stroke-dasharray="6 4"/>`;
+    s += `<text x="${x + (anchorEnd ? -6 : 6)}" y="${g.t + 12 + slot++ * 15}" text-anchor="${anchorEnd ? 'end' : 'start'}" paint-order="stroke" stroke="var(--panel)" stroke-width="3" style="fill:var(--bad);font-weight:700;font-size:12px">${esc(label)}</text>`;
   });
   const cx = X(interp(S.t, pos));
   s += `<line x1="${cx}" x2="${cx}" y1="${g.t}" y2="${h - g.b}" stroke="var(--muted)" stroke-width="1" opacity=".6"/>`;
@@ -281,12 +367,14 @@ function drawMain(pos) {
 
 function drawStrip(pos) {
   const el = $('#svgStrip'), w = el.clientWidth, h = el.clientHeight; if (!w) return;
-  const g = mk(w, h, 58, 16, 6, 22), Y = v => g.t + (S.py.hi - v) / (S.py.hi - S.py.lo) * (h - g.t - g.b), X = t => xOfT(t, g);
+  const g = mk(w, h, w < 500 ? 46 : 58, 12, 6, 22), Y = v => g.t + (S.py.hi - v) / (S.py.hi - S.py.lo) * (h - g.t - g.b), X = t => xOfT(t, g);
   let s = '';
   for (const v of ticks(S.py).filter((_, i, a) => a.length < 5 || i % 2 === 0)) s += `<line x1="${g.l}" x2="${w - g.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${g.l - 6}" y="${Y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`;
+  const every = w < 500 ? 2 : 1;
   for (let d = 0; d * 86400 <= S.t[S.t.length - 1] - S.t[0]; d++) {
     const t = S.t[0] + d * 86400, x = X(t);
-    s += `<line x1="${x}" x2="${x}" y1="${g.t}" y2="${h - g.b}" stroke="var(--grid)"/><text x="${x}" y="${h - 6}" text-anchor="${d === 0 ? 'start' : 'middle'}">${new Date(t * 1000).toISOString().slice(5, 10)}</text>`;
+    s += `<line x1="${x}" x2="${x}" y1="${g.t}" y2="${h - g.b}" stroke="var(--grid)"/>`;
+    if (d % every === 0) s += `<text x="${x}" y="${h - 6}" text-anchor="${d === 0 ? 'start' : 'middle'}">${new Date(t * 1000).toISOString().slice(5, 10)}</text>`;
   }
   const pts = pathPts(series(p => p.price), pos, X, Y);
   if (pts.length > 1) s += `<path d="${line(pts)}L${pts[pts.length - 1][0]} ${h - g.b}L${pts[0][0]} ${h - g.b}Z" fill="var(--muted)" opacity=".15"/><path d="${line(pts)}" fill="none" stroke="var(--text)" stroke-width="1.6"/>`;
@@ -297,34 +385,38 @@ function drawStrip(pos) {
 }
 
 function updateCard(i, nm, p, pos) {
-  const v = p.vaults[nm], m = S.data.meta || {}, card = $(`#card-${i}`);
+  const v = p.vaults[nm], P = S.data.points, card = $(`#card-${i}`);
   const dd = v.depositor - p.par, nd = v.nav - p.par, ok = dd >= -1e-9;
   const set = (id, html) => { $(`#c${i}-${id}`).innerHTML = html; };
-  set('dep', `<span class="${ok ? 'ok' : 'bad'}">${pct(dd)} ${ok ? '✓ ≥ par' : '✗ below par'}</span>`);
+  const ratio = v.bond / v.nav, frozen = !v.fired && ratio < S.floor;
+  set('dep', `<span class="${ok ? 'ok' : 'bad'}">${pct(dd)}</span> <span class="chip ${ok ? 'ok' : 'bad'}">${ok ? '✓ ≥ par' : '✗ below par'}</span>` +
+    (v.fired ? ` <span class="chip fire">⚠ FIRED: bond &lt; ½ floor</span>` : frozen ? ` <span class="chip" style="color:var(--warn)">⚠ frozen: bond &lt; floor</span>` : ''));
   set('nav', `<span class="${nd >= 0 ? 'ok' : 'bad'}">${pct(nd)}</span>`);
-  set('bond', pct(v.bond).replace(/^\+/, '') );
-  set('carry', pct(v.carry).replace(/^\+/, ''));
-  set('short', pct(v.shortfall).replace(/^\+/, '').replace('−', ''));
-  const pr = P_(), b0 = pr[0].vaults[nm].bond;
-  const thr = (m.minBondBps || 0) / 1e4 * v.nav, f = x => Math.max(0, Math.min(100, (x - 0) / S.bmax * 100)) + '%';
+  set('bond', (v.bond * 100).toFixed(2) + '%');
+  set('carry', (v.carry * 100).toFixed(2) + '%');
+  set('short', (v.shortfall * 100).toFixed(2) + '%');
+  const f = x => Math.max(0, Math.min(100, x / S.rmax * 100)) + '%';
   const meter = $(`#c${i}-meter`);
-  meter.querySelector('.fill').style.width = f(v.bond);
-  meter.querySelector('.init').style.left = f(b0); meter.querySelector('.thr').style.left = f(thr);
-  meter.title = `initial ${pct(b0).slice(1)} · fire threshold ${pct(thr).slice(1)}`;
-  $(`#c${i}-cap`).innerHTML = `start ${(b0*100).toFixed(1)}% <span style="color:var(--bad)">· fire below ${(thr*100).toFixed(2)}%</span>`;
-  card.classList.toggle('isfired', !!v.fired);
-  card.querySelector('.pill').textContent = v.fired ? 'FIRED' : 'ACTIVE';
-  // mini bond-over-time chart
+  meter.querySelector('.fill').style.width = f(ratio);
+  meter.querySelector('.floor').style.left = f(S.floor); meter.querySelector('.half').style.left = f(S.half);
+  meter.setAttribute('aria-label', `Bond is ${(ratio * 100).toFixed(2)}% of NAV; floor ${S.floor * 100}%, half floor ${S.half * 100}%`);
+  $(`#c${i}-cap`).innerHTML = `bond <b>${(ratio * 100).toFixed(2)}% of NAV</b> · <span class="kf">floor ${(S.floor * 100).toFixed(0)}%</span> · <span class="kh">½ floor ${(S.half * 100).toFixed(0)}%</span>`;
+  const why = $(`#c${i}-why`);
+  why.className = 'why' + (v.fired ? ' show' : frozen ? ' show warn' : '');
+  why.innerHTML = v.fired ? `<b>Fired:</b> ${FIRE_TEXT}. Depositors are still ≥ par; the shortfall came from the bond.`
+    : frozen ? `<b>Frozen:</b> bond below the ${(S.floor * 100).toFixed(0)}% floor, so deposits and rebalances wait for a top-up.` : '';
+  card.classList.toggle('isfired', !!v.fired); card.classList.toggle('isfrozen', frozen);
+  $(`#c${i}-pill`).textContent = v.fired ? 'FIRED' : frozen ? 'FROZEN' : 'ACTIVE';
+  // mini chart: bond as % of NAV over time with the two levels
   const el = $(`#c${i}-svg`), w = el.clientWidth, h = el.clientHeight; if (!w) return;
-  const g = mk(w, h, 2, 2, 4, 4), Y = x => g.t + (1 - x / S.bmax) * (h - g.t - g.b), X = t => xOfT(t, g);
-  const bonds = pr.map(q => q.vaults[nm].bond), pts = pathPts(bonds, pos, X, Y);
-  let s = `<line x1="${g.l}" x2="${w - g.r}" y1="${Y(b0)}" y2="${Y(b0)}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
-  s += `<path d="${line(pr.map((q, k) => [X(S.t[k]), Y((m.minBondBps || 0) / 1e4 * q.vaults[nm].nav)]))}" fill="none" stroke="var(--bad)" stroke-width="1.2" stroke-dasharray="2 3" opacity=".8"/>`;
-  s += `<path d="${line(bonds.map((x, k) => [X(S.t[k]), Y(x)]))}" fill="none" stroke="var(--muted)" stroke-width="1" opacity=".3"/>`;
+  const g = mk(w, h, 2, 30, 4, 4), Y = x => g.t + (1 - x / S.rmax) * (h - g.t - g.b), X = t => xOfT(t, g);
+  const rs = S.ratio[nm], pts = pathPts(rs, pos, X, Y);
+  let s = `<line x1="${g.l}" x2="${w - g.r}" y1="${Y(S.floor)}" y2="${Y(S.floor)}" stroke="var(--warn)" stroke-width="1.3" stroke-dasharray="4 3"/><text x="${w - g.r + 3}" y="${Y(S.floor) + 4}" style="fill:var(--warn)">${S.floor * 100}%</text>`;
+  s += `<line x1="${g.l}" x2="${w - g.r}" y1="${Y(S.half)}" y2="${Y(S.half)}" stroke="var(--bad)" stroke-width="1.3" stroke-dasharray="4 3"/><text x="${w - g.r + 3}" y="${Y(S.half) + 4}" style="fill:var(--bad)">${S.half * 100}%</text>`;
+  s += `<path d="${line(rs.map((x, k) => [X(S.t[k]), Y(x)]))}" fill="none" stroke="var(--muted)" stroke-width="1" opacity=".3"/>`;
   if (pts.length > 1) s += `<path d="${line(pts)}L${pts[pts.length - 1][0]} ${h - g.b}L${pts[0][0]} ${h - g.b}Z" fill="${col(i)}" opacity=".2"/><path d="${line(pts)}" fill="none" stroke="${col(i)}" stroke-width="2"/>`;
   el.innerHTML = s;
 }
-const P_ = () => S.data.points;
 
 // ---------- playback ----------
 function frame(ts) {
@@ -351,10 +443,11 @@ document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
   S.speed = +b.dataset.speed; document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('on', x === b));
 });
 document.addEventListener('keydown', e => {
+  if (['SELECT', 'INPUT', 'BUTTON'].includes(e.target.tagName) && e.code === 'Space') return;
   if (e.target.tagName === 'SELECT' || !S.data) return;
   if (e.code === 'Space') { e.preventDefault(); $('#play').click(); }
-  else if (e.key === 'ArrowRight') { S.playing = false; seek(Math.floor(S.pos) + 1); render(); }
-  else if (e.key === 'ArrowLeft') { S.playing = false; seek(Math.ceil(S.pos) - 1); render(); }
+  else if (e.key === 'ArrowRight' && e.target.tagName !== 'INPUT') { S.playing = false; seek(Math.floor(S.pos) + 1); render(); }
+  else if (e.key === 'ArrowLeft' && e.target.tagName !== 'INPUT') { S.playing = false; seek(Math.ceil(S.pos) - 1); render(); }
   else if (e.key === 'Home') $('#restart').click();
   else if (e.key === 'End') $('#final').click();
   else if (e.key === 't') $('#theme').click();
@@ -366,8 +459,221 @@ $('#theme').onclick = () => {
   render();
 };
 try { const t = localStorage.getItem('hurdle-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
-new ResizeObserver(() => render()).observe(document.body);
+new ResizeObserver(() => render()).observe($('.chartbox'));
+matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => render());
+
+// ============================================================
+// Live panel: plain fetch + eth_call / eth_getLogs, no libraries
+// Selectors / topics via `cast sig` / `cast keccak`.
+// ============================================================
+const SEL = {
+  nav: '0xc1590cd7', bond: '0x64c9ec6f', bondValue: '0xd2d5862c', fired: '0xc9267a62', deficit: '0x5426fa8a',
+  start: '0xbe9a6555', epochSeconds: '0xfb5bb0c3', minBondBps: '0x08026a6b', token1: '0xd21220a7', decimals: '0x313ce567', symbol: '0x95d89b41',
+};
+const TOPIC = {
+  Settled: '0x7bcc7069a1d287811bf0337e6e7e30e11116199fc19d26230e97a69712d71a22', // Settled(uint256,uint256,uint256,uint256,uint256,uint160)
+  Fired: '0xc02b1f0ee21fa2b201e6ca4cb3caa0c17c5cb908623389b4801629b0177d8469',   // Fired(uint256,uint256)
+};
+const L = { cfg: null, vaults: {}, tok: null, head: 0, scanned: 0, floorBlock: 0, busy: false };
+const CHUNK = 1000, MORE_SPAN = 12000;
+
+async function rpc(url, calls) {              // calls: [{method, params}] -> results[] (error entries are Error objects)
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, signal: ctl.signal,
+      body: JSON.stringify(calls.map((c, i) => ({ jsonrpc: '2.0', id: i + 1, method: c.method, params: c.params }))) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    if (!Array.isArray(j)) throw new Error((j && j.error && j.error.message) || 'bad RPC response');
+    const out = new Array(calls.length).fill(null).map(() => new Error('no response'));
+    j.forEach(x => { out[x.id - 1] = x.error ? new Error(x.error.message || 'rpc error') : x.result; });
+    return out;
+  } finally { clearTimeout(to); }
+}
+const words = hex => { const h = hex.slice(2); const o = []; for (let i = 0; i + 64 <= h.length; i += 64) o.push(BigInt('0x' + h.slice(i, i + 64))); return o; };
+const callOf = (to, data) => ({ method: 'eth_call', params: [{ to, data }, 'latest'] });
+const short = a => a.slice(0, 6) + '…' + a.slice(-4);
+const isAddr = a => /^0x[0-9a-fA-F]{40}$/.test(a || '');
+
+function fmtUnits(x, dec, shown = 4) {
+  if (x == null) return null;
+  const base = 10n ** BigInt(dec), int = x / base, frac = (x % base).toString().padStart(dec, '0').slice(0, shown);
+  return int.toLocaleString('en-US') + (shown ? '.' + frac : '');
+}
+const ago = ts => { const s = Math.max(0, Date.now() / 1000 - ts); return s < 90 ? Math.round(s) + ' s ago' : s < 5400 ? Math.round(s / 60) + ' min ago' : s < 129600 ? (s / 3600).toFixed(1) + ' h ago' : (s / 86400).toFixed(1) + ' d ago'; };
+
+async function liveBoot() {
+  const msg = $('#live-msg');
+  try {
+    const r = await fetch('live.json', { cache: 'no-cache' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    L.cfg = await r.json();
+  } catch (e) { msg.textContent = 'live.json not found: add {"rpc","patient","chaser","explorer"} to enable this panel.'; msg.className = 'lmsg err'; $('#live-refresh').hidden = true; return; }
+  const c = L.cfg;
+  c.rpc = c.rpc || 'https://sepolia.unichain.org'; c.explorer = (c.explorer || 'https://sepolia.uniscan.xyz').replace(/\/$/, '');
+  L.vaults = {}; ['patient', 'chaser'].forEach(k => { if (isAddr(c[k])) L.vaults[k] = c[k]; });
+  if (!Object.keys(L.vaults).length) { msg.textContent = 'live.json has no valid vault addresses.'; msg.className = 'lmsg err'; return; }
+  $('#live-refresh').onclick = () => liveLoad(true);
+  $('#live-more').onclick = () => liveMoreEvents();
+  await liveLoad(true);
+}
+
+async function liveLoad(reset) {
+  if (L.busy) return; L.busy = true;
+  const msg = $('#live-msg'), c = L.cfg, names = Object.keys(L.vaults);
+  msg.className = 'lmsg'; msg.textContent = 'Reading chain…'; $('#live-refresh').disabled = true;
+  try {
+    const calls = [{ method: 'eth_chainId', params: [] }, { method: 'eth_blockNumber', params: [] }];
+    const fields = ['nav', 'bond', 'bondValue', 'fired', 'deficit', 'start', 'epochSeconds', 'minBondBps', 'token1'];
+    names.forEach(n => fields.forEach(f => calls.push(callOf(L.vaults[n], SEL[f]))));
+    const res = await rpc(c.rpc, calls);
+    if (res[0] instanceof Error || res[1] instanceof Error) throw res[0] instanceof Error ? res[0] : res[1];
+    const chain = parseInt(res[0], 16); L.head = parseInt(res[1], 16);
+    if (chain !== 1301) { msg.className = 'lmsg err'; msg.textContent = `RPC returned chain ${chain}, expected 1301 (Unichain Sepolia).`; return; }
+    const data = {};
+    names.forEach((n, vi) => { data[n] = {}; fields.forEach((f, fi) => { data[n][f] = res[2 + vi * fields.length + fi]; }); });
+    // token decimals / symbol (bond token = token1), degrade to 6 / token1
+    L.tok = { dec: 6, sym: 'token1' };
+    const t1 = names.map(n => data[n].token1).find(x => typeof x === 'string' && x.length >= 66);
+    if (t1) {
+      const addr = '0x' + t1.slice(-40);
+      const tr = await rpc(c.rpc, [callOf(addr, SEL.decimals), callOf(addr, SEL.symbol)]).catch(() => []);
+      if (typeof tr[0] === 'string') L.tok.dec = Number(words(tr[0])[0]);
+      if (typeof tr[1] === 'string' && tr[1].length >= 130) { try { const len = Number(BigInt('0x' + tr[1].slice(2 + 64, 2 + 128))); const hx = tr[1].slice(2 + 128, 2 + 128 + len * 2); L.tok.sym = decodeURIComponent(hx.replace(/../g, '%$&')); } catch (e) {} }
+    }
+    L.data = data;
+    drawLive(names);
+    $('#live-ts').textContent = `block ${L.head.toLocaleString('en-US')} · ${new Date().toISOString().slice(11, 19)} UTC`;
+    msg.textContent = '';
+    if (reset) { L.events = {}; L.scanned = 0; L.floorBlock = Number(c.fromBlock) || 0; names.forEach(n => L.events[n] = []); await scanEvents(true); }
+  } catch (e) {
+    msg.className = 'lmsg err';
+    msg.innerHTML = `Could not reach ${esc(c.rpc)} (${esc(e.name === 'AbortError' ? 'timeout' : e.message)}). The replay above is unaffected. ` +
+      names.map(n => `<a href="${esc(c.explorer)}/address/${L.vaults[n]}" target="_blank" rel="noopener">${cap1(n)} on explorer</a>`).join(' · ');
+  } finally { L.busy = false; $('#live-refresh').disabled = false; }
+}
+
+function val(x, fmt) { return x instanceof Error || x == null ? `<span class="na" title="${esc(x && x.message || '')}">n/a</span>` : fmt(x); }
+function drawLive(names) {
+  const c = L.cfg, dec = L.tok.dec, sym = esc(L.tok.sym), now = Date.now() / 1000;
+  const money = x => `${fmtUnits(x, dec)} ${sym}`;
+  $('#live-grid').innerHTML = names.map((n, i) => {
+    const d = L.data[n], w = f => (typeof d[f] === 'string' && d[f].length > 2) ? words(d[f]) : (d[f] instanceof Error ? d[f] : null);
+    const nav = w('nav'), bond = w('bond'), bv = w('bondValue'), fired = w('fired'), def = w('deficit'), st = w('start'), ep = w('epochSeconds'), mb = w('minBondBps');
+    const navV = nav && !(nav instanceof Error) ? nav[0] : null, bvV = bv && !(bv instanceof Error) ? bv[0] : (bond && !(bond instanceof Error) ? bond[0] : null);
+    const minBps = mb && !(mb instanceof Error) ? Number(mb[0]) : 200;
+    let status = '<span class="na">n/a</span>';
+    if (fired && !(fired instanceof Error) && fired[0]) status = '<span class="chip fire">⚠ FIRED</span>';
+    else if (navV && bvV != null) {
+      const ratio = Number(bvV * 1000000n / navV) / 1e6, floor = minBps / 1e4;
+      status = ratio < floor ? `<span class="chip" style="color:var(--warn)">⚠ frozen: bond ${(ratio * 100).toFixed(2)}% &lt; floor ${(floor * 100).toFixed(0)}%</span>` : `<span class="chip ok">ACTIVE · bond ${(ratio * 100).toFixed(2)}% of NAV</span>`;
+    } else if (fired && !(fired instanceof Error)) status = '<span class="chip ok">ACTIVE</span>';
+    let startRows = `<span>start()</span><span><span class="na">n/a</span></span>`;
+    if (st && !(st instanceof Error) && st.length >= 5) {
+      const px = Number(st[1]) / 2 ** 96, price = px * px * 1e12;                 // token1/token0, 18 vs 6 decimals (mWETH / mUSDC)
+      startRows = `<span>start.timestamp</span><span>${Number(st[0])} · ${ago(Number(st[0]))}</span>` +
+        `<span>start.sqrtPriceX96</span><span>${st[1].toString()}<br><small class="na">≈ ${price.toFixed(2)} ${sym}/token0</small></span>` +
+        `<span>start.feeGrowth0 / 1</span><span>${st[2].toString().replace(/(\d{6})\d+$/, '$1…')} / ${st[3].toString().replace(/(\d{6})\d+$/, '$1…')}</span>` +
+        `<span>start.nav</span><span>${money(st[4])}</span>`;
+    }
+    let epochRows = `<span>epochSeconds</span><span>${val(ep, x => x[0].toString() + ' s')}</span>`;
+    if (ep && !(ep instanceof Error) && st && !(st instanceof Error)) {
+      const end = Number(st[0]) + Number(ep[0]); epochRows += `<span>epoch ends</span><span>${end > now ? 'in ' + Math.round((end - now) / 60) + ' min' : 'settle due'}</span>`;
+    }
+    return `<div class="lv-card" style="--c:${col(i)}">
+      <h3><span class="n">${esc(cap1(n))} ${esc(ROLE[n] || '')}</span>${status}</h3>
+      <div class="addr"><a href="${esc(c.explorer)}/address/${L.vaults[n]}" target="_blank" rel="noopener">${L.vaults[n]}</a></div>
+      <div class="kv" style="margin-top:6px">
+        <span>nav()</span><span>${val(nav, x => money(x[0]))}</span>
+        <span>bond()</span><span>${val(bond, x => money(x[0]))}</span>
+        <span>bondValue()</span><span>${val(bv, x => money(x[0]))}</span>
+        <span>fired()</span><span>${val(fired, x => x[0] ? '<span class="bad">true</span>' : 'false')}</span>
+        <span>deficit()</span><span>${val(def, x => money(x[0]))}</span>
+        ${startRows}${epochRows}
+      </div>
+      <div class="evs"><h4>Recent events</h4><div id="ev-${n}" class="lmsg">scanning…</div></div>
+    </div>`;
+  }).join('');
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// getLogs over block ranges (<=1000 each, RPC cap). One call covers both vaults (address array). Paced + one retry
+// because the public RPC rate-limits bursts. Returns {logs, limited}.
+async function getLogsRanges(ranges) {
+  const addrs = Object.values(L.vaults), logs = []; let limited = false;
+  for (let i = 0; i < ranges.length; i += 4) {
+    const part = ranges.slice(i, i + 4);
+    const calls = part.map(([a, b]) => ({ method: 'eth_getLogs', params: [{ address: addrs, fromBlock: '0x' + a.toString(16), toBlock: '0x' + b.toString(16), topics: [[TOPIC.Settled, TOPIC.Fired]] }] }));
+    let res = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { res = await rpc(L.cfg.rpc, calls); } catch (e) { res = null; }
+      if (res && !res.some(r => r instanceof Error && /rate/i.test(r.message))) break;
+      await sleep(1500);
+    }
+    if (!res) { limited = true; break; }
+    let bad = false; res.forEach(r => { if (r instanceof Error) bad = true; else logs.push(...r); });
+    if (bad) { limited = true; break; }
+    await sleep(250);
+  }
+  return { logs, limited };
+}
+const chunksOf = (lo, hi) => { const o = []; for (let to = hi; to >= lo; to -= CHUNK) o.push([Math.max(to - CHUNK + 1, lo), to]); return o; };
+
+async function scanEvents(first) {
+  const names = Object.keys(L.vaults), byAddr = {}; names.forEach(n => byAddr[L.vaults[n].toLowerCase()] = n);
+  const floor = Math.max(L.floorBlock, 0); let ranges = [];
+  if (first) {
+    // recent window + a window around the last settle (start.timestamp is reset at settle, so its block holds that Settled)
+    ranges = chunksOf(Math.max(L.head - 4999, floor), L.head); L.scanned = Math.max(L.head - 4999, floor);
+    try {
+      const ts = Math.min(...names.map(n => { const d = L.data[n].start; return typeof d === 'string' && d.length >= 66 ? Number(words(d)[0]) : Infinity; }));
+      if (isFinite(ts)) {
+        const r = await rpc(L.cfg.rpc, [{ method: 'eth_getBlockByNumber', params: ['0x' + L.head.toString(16), false] }, { method: 'eth_getBlockByNumber', params: ['0x' + (L.head - 2000).toString(16), false] }]);
+        const t1 = parseInt(r[0].timestamp, 16), t0 = parseInt(r[1].timestamp, 16), spb = Math.max((t1 - t0) / 2000, .05);
+        const est = L.head - Math.round((t1 - ts) / spb);
+        if (est < L.scanned - 1500 && est > floor) {
+          ranges.push(...chunksOf(Math.max(est - 1500, floor), est + 1500)); L.anchorLo = Math.max(est - 1500, floor);
+          L.scanned = Math.min(L.scanned, L.anchorLo);
+        }
+      }
+    } catch (e) { /* anchor is best-effort */ }
+  } else {
+    const hi = L.scanned - 1; if (hi < floor) return;
+    ranges = chunksOf(Math.max(hi - MORE_SPAN + 1, floor), hi); L.scanned = Math.max(hi - MORE_SPAN + 1, floor);
+  }
+  const { logs, limited } = await getLogsRanges(ranges);
+  logs.forEach(l => { const n = byAddr[l.address.toLowerCase()]; if (n && !L.events[n].some(e => e.transactionHash === l.transactionHash && e.logIndex === l.logIndex)) L.events[n].push(l); });
+  const shown = {}; names.forEach(n => { L.events[n].sort((a, b) => parseInt(b.blockNumber, 16) - parseInt(a.blockNumber, 16) || parseInt(b.logIndex, 16) - parseInt(a.logIndex, 16)); shown[n] = L.events[n].slice(0, 6); });
+  L.bts = L.bts || {};
+  const need = [...new Set(names.flatMap(n => shown[n].map(e => e.blockNumber)))].filter(b => !(b in L.bts));
+  if (need.length) { const r = await rpc(L.cfg.rpc, need.map(b => ({ method: 'eth_getBlockByNumber', params: [b, false] }))).catch(() => []); need.forEach((b, k) => { if (r[k] && !(r[k] instanceof Error)) L.bts[b] = parseInt(r[k].timestamp, 16); }); }
+  L.limited = limited; drawEvents(names, shown);
+  $('#live-more').hidden = !(L.scanned > floor);
+}
+function liveMoreEvents() { const b = $('#live-more'); b.disabled = true; scanEvents(false).finally(() => { b.disabled = false; }); }
+
+function drawEvents(names, shown) {
+  const failed = L.limited;
+  const c = L.cfg, dec = L.tok.dec, sym = esc(L.tok.sym), money = x => `${fmtUnits(x, dec, 4)} ${sym}`;
+  const span = L.head - L.scanned + 1, note = failed ? ' (RPC rate-limited part of the scan; Refresh or scan again in a moment)' : '';
+  names.forEach(n => {
+    const el = $(`#ev-${n}`); if (!el) return;
+    const evs = shown[n];
+    if (!evs.length) { el.className = 'lmsg'; el.textContent = `none found in the scanned ranges (down to block ${L.scanned.toLocaleString('en-US')})${note}. Settles happen once per epoch.`; return; }
+    el.className = '';
+    el.innerHTML = evs.map(e => {
+      const bn = parseInt(e.blockNumber, 16), w = words(e.data), t = L.bts[e.blockNumber], isFired = e.topics[0] === TOPIC.Fired;
+      const head = `<a href="${esc(c.explorer)}/tx/${e.transactionHash}" target="_blank" rel="noopener">${isFired ? '<b class="f">⚠ Fired</b>' : 'Settled'}</a> <span class="na">· block ${bn.toLocaleString('en-US')}${t ? ' · ' + ago(t) : ''}</span>`;
+      if (isFired) return `<div class="ev">${head}<br>bond ${money(w[0])} · nav ${money(w[1])}</div>`;
+      const beat = w[0] >= w[1];
+      return `<div class="ev">${head}<br>nav ${money(w[0])} vs par ${money(w[1])} <b class="${beat ? 'ok' : 'bad'}">${beat ? '✓ ≥ par' : '✗ below par'}</b><br>` +
+        `carry ${money(w[2])} · shortfall paid ${money(w[3])} · bond ${money(w[4])}</div>`;
+    }).join('') + `<div class="lmsg">scanned down to block ${L.scanned.toLocaleString('en-US')}${note}</div>`;
+  });
+}
+
 boot();
+liveBoot();
 </script>
 </body>
 </html>
