@@ -12,11 +12,11 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {HurdleVault} from "../../src/HurdleVault.sol";
 import {IHurdleVault} from "../../src/IHurdleVault.sol";
-import {HurdleVaultTest} from "../HurdleVault.t.sol";
+import {VaultFixture} from "../VaultFixture.sol";
 
 /// Second audit's PoCs, inverted into regression tests: each reproduces the PoC scenario and asserts the
-/// attack no longer works. (Inherits HurdleVaultTest for its setup and helpers.)
-contract Audit2Regression is HurdleVaultTest {
+/// attack no longer works. (Inherits VaultFixture for its setup and helpers.)
+contract Audit2Regression is VaultFixture {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -277,6 +277,8 @@ contract Audit2Regression is HurdleVaultTest {
         emit log_named_uint("curator bond+free, late settle    ", curB);
         emit log_named_uint("alice value, on-time              ", aliceA);
         emit log_named_uint("alice value, late                 ", aliceB);
+        assertLe(curB, curA, "late settle favours the curator");
+        assertGe(aliceB, aliceA - aliceA / 1e9, "late settle hurts the depositor");
     }
 
     // ---------------------------------------------------------------------

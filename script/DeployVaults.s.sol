@@ -106,7 +106,7 @@ contract DeployVaults is Script {
         c.weth.approve(address(v), type(uint256).max);
         v.postBond(c.wethIs0 ? 300e6 : 0.1e18); // token1 is mUSDC if mWETH is currency0
         (uint256 a0, uint256 a1) = c.wethIs0 ? (uint256(1e18), uint256(3000e6)) : (uint256(3000e6), uint256(1e18));
-        v.deposit(a0, a1, depositor);
+        v.firstDeposit(a0, a1, depositor);
         int24 mid = (tick / TICK_SPACING) * TICK_SPACING;
         v.rebalance(mid - half, mid + half);
     }
