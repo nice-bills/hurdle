@@ -55,10 +55,10 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// newcomer neither pays for nor collects performance from before it joined, and a third party
     /// settling first cannot close the window.
     uint256 public constant DEPOSIT_WINDOW = 300;
-    /// Rebalances and parks gate on a 10-min TWAP (not the 30-min one used for valuation), so the curator
+    /// A bonded curator's rebalances gate on a 10-min TWAP (not the 30-min one used for valuation), so the curator
     /// can act minutes after a real move. The 10- and 30-min TWAPs must still agree within
     /// MAX_REBALANCES_PER_EPOCH x maxTickDeviation, so moving the gate still means holding the price
-    /// across blocks for ~10 min, and the swap stays bounded by the 10-min TWAP and block-open bands.
+    /// across blocks for ~10 min, and the swap stays bounded by the 10-min TWAP and block-open bands. Fired-vault parks keep the 30-min gate.
     uint32 public constant REBALANCE_TWAP_WINDOW = 600;
     /// Share of the curator's carry (free shares) paid to whoever calls `settle()` on schedule, so a
     /// keeper is paid to keep epochs short. Paid only from carry: never from depositors or the bond.
@@ -642,14 +642,17 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         return d <= maxTickDeviation && d >= -maxTickDeviation;
     }
 
-    /// Gate for rebalances and parks: spot, block-open tick and the 10-min TWAP agree within
-    /// maxTickDeviation, and the 10-min TWAP is within MAX_REBALANCES_PER_EPOCH x maxTickDeviation of
-    /// the 30-min one. Returns the 10-min TWAP tick, which bounds the swap.
-    function _checkedRebalanceTick() private view returns (int24 twap) {
-        twap = oracle.consult(poolId, REBALANCE_TWAP_WINDOW);
+    /// Gate for a bonded curator's rebalance (`fast`): spot, block-open tick and the 10-min TWAP agree
+    /// within maxTickDeviation, and the 10-min TWAP is within MAX_REBALANCES_PER_EPOCH x maxTickDeviation
+    /// of the 30-min one. Any mark-to-TWAP gap the swap opens is covered by the bond at settlement.
+    /// Parks of a fired vault (no live bond behind them) use the strict gate: the 30-min TWAP in place of
+    /// the 10-min one. Returns the gate's TWAP tick, which bounds the swap.
+    function _checkedRebalanceTick(bool fast) private view returns (int24 twap) {
+        int24 t30 = oracle.twapTick(poolId);
+        twap = fast ? oracle.consult(poolId, REBALANCE_TWAP_WINDOW) : t30;
         int24 ref = oracle.referenceTick(poolId);
         (, int24 spot,,) = manager.getSlot0(poolId);
-        int24 d = twap - oracle.twapTick(poolId);
+        int24 d = twap - t30;
         int24 lim = int24(uint24(MAX_REBALANCES_PER_EPOCH)) * maxTickDeviation;
         if (!_near(spot, twap) || !_near(spot, ref) || !_near(ref, twap) || d > lim || d < -lim) {
             revert PriceDeviation();
@@ -657,7 +660,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     function _redeploy(int24 tickLower, int24 tickUpper) private {
-        int24 twap = _checkedRebalanceTick();
+        int24 twap = _checkedRebalanceTick(!fired);
         if (_liquidity > 0) _modify(_tickLower, _tickUpper, -int256(uint256(_liquidity)));
         _swapToRatio(TickMath.getSqrtPriceAtTick(tickLower), TickMath.getSqrtPriceAtTick(tickUpper), twap);
         (uint160 spot,,,) = manager.getSlot0(poolId);

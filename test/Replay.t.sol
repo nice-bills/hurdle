@@ -275,6 +275,15 @@ contract ReplayTest is Test, Deployers {
         if (v.fired() && tr.firedDay == 0) tr.firedDay = (block.timestamp - t0_) * 100 / 1 days;
         uint256 r = FullMath.mulDiv(_depositorRatio(v, tr), 1e18, tr.par);
         if (r < minDepositorVsPar) minDepositorVsPar = r;
+        if (r < 0.9999e18) {
+            emit log_named_uint("below-par settlement: below par, day x100", (block.timestamp - t0_) * 100 / 1 days);
+            emit log_named_uint("below-par settlement: vault is patient", address(v) == address(patient) ? 1 : 0);
+            emit log_named_uint("below-par settlement: ratio", r);
+            emit log_named_uint("below-par settlement: fired", v.fired() ? 1 : 0);
+            emit log_named_uint("below-par settlement: bond", v.bond());
+            emit log_named_uint("below-par settlement: bondShares", v.bondShares());
+            emit log_named_uint("below-par settlement: keeper shares", v.balanceOf(address(this)));
+        }
     }
 
     function _depositorRatio(HurdleVault v, Track storage tr) internal view returns (uint256) {
