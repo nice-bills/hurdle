@@ -1,6 +1,7 @@
 {
   "rpc": "https://sepolia.unichain.org",
-  "patient": "0xc3A2f6f4BE0b437A2cC1C3844F86c999c7391b47",
-  "chaser": "0x3CD34e0A6E6f9606F17e00e37544DcC2a70fE586",
-  "explorer": "https://sepolia.uniscan.xyz"
+  "patient": "0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D",
+  "chaser": "0xB66277b0C38B99afcbeD6AB5554d2C3505E5749e",
+  "explorer": "https://sepolia.uniscan.xyz",
+  "fromBlock": 68430000
 }

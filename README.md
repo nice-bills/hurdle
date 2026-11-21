@@ -79,22 +79,27 @@ and later excess refills the bond before any carry.
 
 ## Unichain Sepolia (1301)
 
-**Live (second-audit fixes, deployed 2026-11-17):**
+**Live (v3, deployed 2026-11-21):**
 
 | Contract | Address |
 |---|---|
-| HurdleHook | [`0x23C23680100b77Acb606995dAD2Be470A30590A0`](https://sepolia.uniscan.xyz/address/0x23C23680100b77Acb606995dAD2Be470A30590A0) |
-| Patient vault (±10%) | [`0xc3A2f6f4BE0b437A2cC1C3844F86c999c7391b47`](https://sepolia.uniscan.xyz/address/0xc3A2f6f4BE0b437A2cC1C3844F86c999c7391b47) |
-| Chaser vault (±2%) | [`0x3CD34e0A6E6f9606F17e00e37544DcC2a70fE586`](https://sepolia.uniscan.xyz/address/0x3CD34e0A6E6f9606F17e00e37544DcC2a70fE586) |
-| mWETH (currency0) | `0x66eE82318ef63f70062D6A1dA13B4932D07ACF45` |
-| mUSDC (currency1, bond token) | `0xb64f26a56Be428ED28dF58eaFa8581CBd4E657C9` |
-| Liquidity / swap routers | `0x7C7649B1a7c6EE4b907a604070dAb159aDAFeEeD` / `0x52bD3f18263c4b05cE7550B5c601780F9A495742` |
+| HurdleHook | [`0x7EECdD6507E77db3247C9E9bccFA0AcFf5F410a0`](https://sepolia.uniscan.xyz/address/0x7EECdD6507E77db3247C9E9bccFA0AcFf5F410a0) |
+| HurdleVaultFactory | [`0x6afcE6f48644eECBA68d0b88E45496953720A904`](https://sepolia.uniscan.xyz/address/0x6afcE6f48644eECBA68d0b88E45496953720A904) |
+| Patient vault (±10%) | [`0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D`](https://sepolia.uniscan.xyz/address/0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D) |
+| Chaser vault (±2%) | [`0xB66277b0C38B99afcbeD6AB5554d2C3505E5749e`](https://sepolia.uniscan.xyz/address/0xB66277b0C38B99afcbeD6AB5554d2C3505E5749e) |
+| mUSDC (currency0) | `0x16dED02f19B86f66335f0d05448D8EBAf2BBC18b` |
+| mWETH (currency1, bond token) | `0x6Fe21Df36b9f00E9279640B0C5a2006d3a92F318` |
+| Liquidity / swap routers | `0x8952E2f3923157A1A4C4Da214F8cBFfFDe3caB7E` / `0xE74B11084895Eb9AdC5F34629416Ff5657eA8F12` |
 | Depositor (holds the vault shares; not the curator, so the bond covers it) | `0xE1cCCD969F34E0f7d435CeA96C63c4d78E95aD03` |
 
-Each vault: 300 mUSDC bond, 1 mWETH + 3000 mUSDC deposited, curator range deployed. Full output:
-`script/out/deploy-1301.json`.
+Both vaults were created through the factory (`isVault` true). Each: bond 5% of the deposit (0.1 mWETH),
+1 mWETH + 3000 mUSDC deposited, curator range deployed. Full output: `script/out/deploy-1301.json`.
+A keeper (`script/Keeper.s.sol`) trades, settles each hour and drove the scripted miss below; the live
+panel in the UI reads these vaults.
 
 Superseded (do not use):
+- second-audit fixes: hook `0x23C23680100b77Acb606995dAD2Be470A30590A0`, vaults
+  `0xc3A2f6f4BE0b437A2cC1C3844F86c999c7391b47`, `0x3CD34e0A6E6f9606F17e00e37544DcC2a70fE586`;
 - first audit fixes: hook `0x9BaaB91A2DFB8fF9b9D86D5067E67435d56090a0`, vaults
   `0x448071dAbcF890D6f89FB108803c20461f0D86e8`, `0x0B33F9959107469Fb0913B69f2459Cb07d18d68f`;
 - pre-audit: hook `0xd0d744918B9a2657B6097e034D51B2D93524dA80`, vaults
@@ -116,6 +121,7 @@ Superseded (do not use):
 ## Run
 
 ```sh
+./e2e.sh                                      # everything below in one go: build, all tests, both replays, par check, UI data + smoke (E2E_LIVE=1 adds a read-only testnet check)
 forge test                                     # 94 pass, replay skipped (Audit2Regression re-runs the 30 vault tests via inheritance)
 # replay a real week through the hook + two vaults (30–60 s), check par against the offchain reference, build the UI data
 REPLAY_CSV=data/weeks/2026-10-31.csv REPLAY_OUT=demo/out/range-week.csv forge test --match-contract ReplayTest -vv
