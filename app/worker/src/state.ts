@@ -1,0 +1,15 @@
+/** Shared in-memory status surfaced by /healthz. */
+export const state = {
+  startedAt: Date.now(),
+  head: 0,
+  indexedBlock: 0,
+  lastIndexerOkAt: 0,
+  lastIndexerError: "" as string,
+  lastSnapshotAt: 0,
+  vaults: 0,
+  keeperAddress: null as string | null,
+  keeperBalanceWei: null as bigint | null,
+  lastKeeperRunAt: 0,
+  lastKeeperAction: null as { ts: string; action: string; vault: string | null; tx: string | null; ok: boolean; note: string | null } | null,
+  lastKeeperError: "" as string,
+};
