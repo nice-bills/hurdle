@@ -39,7 +39,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     using StateLibrary for IPoolManager;
 
     /// Each rebalance can lose at most ~maxTickDeviation bps of NAV to a sandwich: its swap is
-    /// price-limited to the intersection of referenceTick ± maxTickDeviation and 10-min TWAP ± maxTickDeviation,
+    /// price-limited to the intersection of referenceTick ± maxTickDeviation and 10-min and 30-min TWAP ± maxTickDeviation,
     /// and the referenceTick (block-open price) cannot be moved within the block. Capping rebalances per
     /// epoch keeps 4 x maxTickDeviation <= minBondBps, so a curator (or MEV) cannot extract more than the
     /// bond in one epoch versus the block-open price. Residual: a price held off-market across a block
@@ -58,10 +58,11 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// A bonded curator's rebalances gate on a 10-min TWAP (not the 30-min one used for valuation), so the curator
     /// can act minutes after a real move. The 10- and 30-min TWAPs must still agree within
     /// MAX_REBALANCES_PER_EPOCH x maxTickDeviation, so moving the gate still means holding the price
-    /// across blocks for ~10 min, and the swap stays bounded by the 10-min TWAP and block-open bands. Fired-vault parks keep the 30-min gate.
+    /// across blocks for ~10 min, and the swap stays bounded by the 10-min, 30-min and block-open bands. Fired-vault parks keep the 30-min gate.
     uint32 public constant REBALANCE_TWAP_WINDOW = 600;
     /// Share of the curator's carry (free shares) paid to whoever calls `settle()` on schedule, so a
-    /// keeper is paid to keep epochs short. Paid only from carry: never from depositors or the bond.
+    /// keeper is paid to keep epochs short. Minted out of the curator's carry, never from depositors or
+    /// the bond; once minted they are ordinary non-curator shares, covered by the bond like any other.
     uint256 public constant SETTLER_BOUNTY_BPS = 500;
     /// Shares burned on the first deposit so a donation cannot inflate the share price.
     uint256 private constant DEAD_SHARES = 1000;
@@ -644,7 +645,8 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
 
     /// Gate for a bonded curator's rebalance (`fast`): spot, block-open tick and the 10-min TWAP agree
     /// within maxTickDeviation, and the 10-min TWAP is within MAX_REBALANCES_PER_EPOCH x maxTickDeviation
-    /// of the 30-min one. Any mark-to-TWAP gap the swap opens is covered by the bond at settlement.
+    /// of the 30-min one. The swap itself stays within maxTickDeviation of the 30-min TWAP too
+    /// (see _swapToRatio): while the 30-min TWAP lags, the curator can re-range but swaps less.
     /// Parks of a fired vault (no live bond behind them) use the strict gate: the 30-min TWAP in place of
     /// the 10-min one. Returns the gate's TWAP tick, which bounds the swap.
     function _checkedRebalanceTick(bool fast) private view returns (int24 twap) {
@@ -677,7 +679,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     /// Swap idle balances to the token ratio the range needs at spot. The price limit is the intersection
-    /// of referenceTick ± maxTickDeviation and 10-min TWAP ± maxTickDeviation (no swap if empty); any unswapped
+    /// of referenceTick, gate TWAP and 30-min TWAP, each ± maxTickDeviation (no swap if empty); any unswapped
     /// remainder stays idle.
     function _swapToRatio(uint160 sa, uint160 sb, int24 twap) private {
         (uint160 sp,,,) = manager.getSlot0(poolId);
@@ -691,9 +693,15 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         bool zeroForOne = a0 > target0;
         uint256 amountIn = zeroForOne ? a0 - target0 : _value(target0 - a0, 0, sp);
         if (amountIn == 0 || _value(zeroForOne ? amountIn : 0, zeroForOne ? 0 : amountIn, sp) * 1000 < total) return;
+        // Band: within maxTickDeviation of the gate TWAP, the block-open tick AND the 30-min valuation
+        // TWAP, so the swap price is never more than maxTickDeviation from the price NAV is marked at
+        // (keeps MAX_REBALANCES_PER_EPOCH x maxTickDeviation <= minBondBps meaningful for fast rebalances).
         int24 ref = oracle.referenceTick(poolId);
+        int24 t30 = oracle.twapTick(poolId);
         (int24 hi, int24 lo) = twap > ref ? (twap, ref) : (ref, twap);
-        if (hi - lo > 2 * maxTickDeviation) return; // bands do not overlap
+        if (t30 > hi) hi = t30;
+        if (t30 < lo) lo = t30;
+        if (hi - lo > 2 * maxTickDeviation) return; // bands do not overlap: re-range without swapping
         uint160 limit = TickMath.getSqrtPriceAtTick(zeroForOne ? hi - maxTickDeviation : lo + maxTickDeviation);
         if (zeroForOne ? limit >= sp : limit <= sp) return; // already at the impact bound
         manager.unlock(abi.encode(uint8(1), abi.encode(zeroForOne, amountIn, limit)));
