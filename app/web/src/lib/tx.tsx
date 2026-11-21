@@ -1,0 +1,87 @@
+"use client";
+
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
+import type { Abi, Address, TransactionReceipt } from "viem";
+import { useAccount } from "wagmi";
+import { getAccount, simulateContract, switchChain, waitForTransactionReceipt, writeContract } from "wagmi/actions";
+import { wagmiConfig } from "@/components/providers";
+import { CHAIN_ID, txUrl } from "./chain";
+import { decodeError, type DecodedError } from "./errors";
+import { IconAlert, IconCheck, IconExternal } from "@/components/icons";
+
+export type TxPhase = "idle" | "simulating" | "signing" | "pending" | "confirmed" | "failed";
+export type TxState = { phase: TxPhase; label?: string; hash?: `0x${string}`; error?: DecodedError };
+
+export type WriteReq = { address: Address; abi: Abi | readonly unknown[]; functionName: string; args?: readonly unknown[] };
+
+/** simulate (decodes custom errors before the wallet opens) → sign → wait, with one shared status line. */
+export function useTx() {
+  const qc = useQueryClient();
+  const { address } = useAccount();
+  const [state, setState] = useState<TxState>({ phase: "idle" });
+
+  const run = useCallback(
+    async (label: string, req: WriteReq): Promise<TransactionReceipt | null> => {
+      try {
+        const acct = getAccount(wagmiConfig);
+        if (!acct.address) throw new Error("Connect a wallet first.");
+        if (acct.chainId !== CHAIN_ID) {
+          setState({ phase: "signing", label: "Switch to Unichain Sepolia" });
+          await switchChain(wagmiConfig, { chainId: CHAIN_ID });
+        }
+        setState({ phase: "simulating", label });
+        const sim = await simulateContract(wagmiConfig, { ...(req as object), account: acct.address, chainId: CHAIN_ID } as never);
+        setState({ phase: "signing", label });
+        const hash = await writeContract(wagmiConfig, (sim as unknown as { request: never }).request);
+        setState({ phase: "pending", label, hash });
+        const rc = await waitForTransactionReceipt(wagmiConfig, { hash, chainId: CHAIN_ID });
+        if (rc.status !== "success") {
+          setState({ phase: "failed", label, hash, error: { title: "Reverted onchain", detail: "The transaction was mined but reverted. Open it on the explorer for the trace." } });
+          return null;
+        }
+        setState({ phase: "confirmed", label, hash });
+        setTimeout(() => qc.invalidateQueries(), 1500);
+        qc.invalidateQueries();
+        return rc;
+      } catch (e) {
+        setState((s) => ({ phase: "failed", label, hash: s.hash, error: decodeError(e) }));
+        return null;
+      }
+    },
+    [qc],
+  );
+
+  const busy = state.phase === "simulating" || state.phase === "signing" || state.phase === "pending";
+  return { run, state, busy, reset: () => setState({ phase: "idle" }), connected: Boolean(address) };
+}
+
+export function TxStatus({ state, className = "" }: { state: TxState; className?: string }) {
+  if (state.phase === "idle") return null;
+  const map: Record<TxPhase, { t: string; cls: string }> = {
+    idle: { t: "", cls: "" },
+    simulating: { t: "Checking against the contract…", cls: "border-line bg-bg-2" },
+    signing: { t: "Confirm in your wallet", cls: "border-bar/40 bg-bar-soft" },
+    pending: { t: "Pending onchain…", cls: "border-bar/40 bg-bar-soft" },
+    confirmed: { t: "Confirmed", cls: "border-good/30 bg-good-soft" },
+    failed: { t: state.error?.title ?? "Failed", cls: state.error?.rejected ? "border-line bg-bg-2" : "border-bad/30 bg-bad-soft" },
+  };
+  const m = map[state.phase];
+  const spinning = state.phase === "simulating" || state.phase === "signing" || state.phase === "pending";
+  return (
+    <div role="status" aria-live="polite" className={`fade-in rounded-lg border px-3 py-2.5 text-[13.5px] ${m.cls} ${className}`}>
+      <div className="flex items-center gap-2">
+        {spinning && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-3 border-t-transparent" aria-hidden />}
+        {state.phase === "confirmed" && <IconCheck size={15} className="text-good" />}
+        {state.phase === "failed" && !state.error?.rejected && <IconAlert size={15} className="text-bad" />}
+        <span className="font-semibold">{state.label ? `${state.label}: ` : ""}{m.t}</span>
+        {state.hash && (
+          <a href={txUrl(state.hash)} target="_blank" rel="noreferrer" className="ml-auto inline-flex shrink-0 items-center gap-1 font-mono text-[12px] text-ink-2 hover:text-ink">
+            {state.hash.slice(0, 10)}…<IconExternal size={12} />
+          </a>
+        )}
+      </div>
+      {state.phase === "failed" && state.error && <p className="mt-1 text-ink-2">{state.error.detail}</p>}
+    </div>
+  );
+}

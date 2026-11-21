@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ------------------------------------------------------------------ tokens
+   The amber "bar" is par: the hurdle every vault is measured against. It is the
+   only saturated brand color; good / bad / ice are state colors, never decoration. */
+:root {
+  color-scheme: light;
+  --bg: oklch(1 0 0);
+  --bg-2: oklch(0.973 0.006 65);
+  --bg-3: oklch(0.945 0.008 65);
+  --surface: oklch(1 0 0);
+  --line: oklch(0.905 0.008 65);
+  --line-2: oklch(0.83 0.01 65);
+  --ink: oklch(0.2 0.012 60);
+  --ink-2: oklch(0.43 0.012 60);
+  --ink-3: oklch(0.58 0.01 60);
+  --bar: oklch(0.774 0.174 65.1);
+  --bar-2: oklch(0.86 0.12 72);
+  --bar-ink: oklch(0.5 0.13 58);
+  --bar-soft: oklch(0.774 0.174 65.1 / 0.14);
+  --on-bar: oklch(0.2 0.03 60);
+  --good: oklch(0.5 0.115 162);
+  --good-soft: oklch(0.5 0.115 162 / 0.1);
+  --bad: oklch(0.53 0.2 27);
+  --bad-soft: oklch(0.53 0.2 27 / 0.09);
+  --ice: oklch(0.52 0.13 245);
+  --ice-soft: oklch(0.52 0.13 245 / 0.1);
+  --v1: oklch(0.48 0.15 262);
+  --v2: oklch(0.55 0.19 345);
+  --grid: oklch(0.93 0.006 65);
+  --shadow: 0 1px 2px oklch(0.2 0.02 60 / 0.06), 0 8px 24px -12px oklch(0.2 0.02 60 / 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: oklch(0.145 0 0);
+    --bg-2: oklch(0.178 0.004 65);
+    --bg-3: oklch(0.21 0.006 65);
+    --surface: oklch(0.17 0.003 65);
+    --line: oklch(0.275 0.006 65);
+    --line-2: oklch(0.36 0.008 65);
+    --ink: oklch(0.965 0.004 65);
+    --ink-2: oklch(0.76 0.01 65);
+    --ink-3: oklch(0.6 0.01 65);
+    --bar: oklch(0.8 0.165 68);
+    --bar-2: oklch(0.7 0.15 62);
+    --bar-ink: oklch(0.84 0.15 72);
+    --bar-soft: oklch(0.8 0.165 68 / 0.16);
+    --on-bar: oklch(0.18 0.03 60);
+    --good: oklch(0.79 0.135 162);
+    --good-soft: oklch(0.79 0.135 162 / 0.12);
+    --bad: oklch(0.72 0.17 25);
+    --bad-soft: oklch(0.72 0.17 25 / 0.12);
+    --ice: oklch(0.78 0.1 235);
+    --ice-soft: oklch(0.78 0.1 235 / 0.12);
+    --v1: oklch(0.75 0.12 262);
+    --v2: oklch(0.76 0.15 345);
+    --grid: oklch(0.225 0.004 65);
+    --shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 10px 30px -14px oklch(0 0 0 / 0.7);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: oklch(0.145 0 0);
+  --bg-2: oklch(0.178 0.004 65);
+  --bg-3: oklch(0.21 0.006 65);
+  --surface: oklch(0.17 0.003 65);
+  --line: oklch(0.275 0.006 65);
+  --line-2: oklch(0.36 0.008 65);
+  --ink: oklch(0.965 0.004 65);
+  --ink-2: oklch(0.76 0.01 65);
+  --ink-3: oklch(0.6 0.01 65);
+  --bar: oklch(0.8 0.165 68);
+  --bar-2: oklch(0.7 0.15 62);
+  --bar-ink: oklch(0.84 0.15 72);
+  --bar-soft: oklch(0.8 0.165 68 / 0.16);
+  --on-bar: oklch(0.18 0.03 60);
+  --good: oklch(0.79 0.135 162);
+  --good-soft: oklch(0.79 0.135 162 / 0.12);
+  --bad: oklch(0.72 0.17 25);
+  --bad-soft: oklch(0.72 0.17 25 / 0.12);
+  --ice: oklch(0.78 0.1 235);
+  --ice-soft: oklch(0.78 0.1 235 / 0.12);
+  --v1: oklch(0.75 0.12 262);
+  --v2: oklch(0.76 0.15 345);
+  --grid: oklch(0.225 0.004 65);
+  --shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 10px 30px -14px oklch(0 0 0 / 0.7);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-bar: var(--bar);
+  --color-bar-ink: var(--bar-ink);
+  --color-bar-soft: var(--bar-soft);
+  --color-on-bar: var(--on-bar);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-ice: var(--ice);
+  --color-ice-soft: var(--ice-soft);
+  --color-v1: var(--v1);
+  --color-v2: var(--v2);
+  --font-sans: var(--font-schibsted), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jbm), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow-card: var(--shadow);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --z-sticky: 20;
+  --z-menu: 30;
+  --z-toast: 50;
+}
+
+/* ------------------------------------------------------------------ base */
+html { -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  font-feature-settings: "ss01", "cv11";
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { text-wrap: balance; letter-spacing: -0.015em; }
+p { text-wrap: pretty; }
+::selection { background: var(--bar-soft); }
+:focus-visible { outline: 2px solid var(--bar); outline-offset: 2px; border-radius: 4px; }
+.num { font-variant-numeric: tabular-nums; }
+a { text-underline-offset: 3px; text-decoration-thickness: 1px; }
+
+/* the hurdle bar: amber with hatched stripes, used for par in every chart and legend */
+.bar-hatch {
+  background-color: var(--bar);
+  background-image: repeating-linear-gradient(-45deg, transparent 0 6px, oklch(1 0 0 / 0.42) 6px 9px);
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-3) 0%, var(--bg-2) 50%, var(--bg-3) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+.fade-in { animation: fadeIn 0.24s var(--ease-out-quart) both; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } }
+
+.pulse-dot { animation: pulse 2s var(--ease-out-quart) infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--good-soft); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* hairline table rows */
+.rows > * + * { border-top: 1px solid var(--line); }
+
+input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
+
+/* RainbowKit button sits in our header: keep its font consistent */
+[data-rk] { font-family: var(--font-sans); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}

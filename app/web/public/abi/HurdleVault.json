@@ -1,0 +1,1117 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "_manager",
+        "type": "address",
+        "internalType": "contract IPoolManager"
+      },
+      {
+        "name": "_key",
+        "type": "tuple",
+        "internalType": "struct PoolKey",
+        "components": [
+          {
+            "name": "currency0",
+            "type": "address",
+            "internalType": "Currency"
+          },
+          {
+            "name": "currency1",
+            "type": "address",
+            "internalType": "Currency"
+          },
+          {
+            "name": "fee",
+            "type": "uint24",
+            "internalType": "uint24"
+          },
+          {
+            "name": "tickSpacing",
+            "type": "int24",
+            "internalType": "int24"
+          },
+          {
+            "name": "hooks",
+            "type": "address",
+            "internalType": "contract IHooks"
+          }
+        ]
+      },
+      {
+        "name": "_curator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "_carryBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "_minBondBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "_maxTickDeviation",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "_epochSeconds",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "DEPOSIT_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_FEE_APR_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_REBALANCES_PER_EPOCH",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "REBALANCE_TWAP_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "SETTLER_BOUNTY_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "balanceOf",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "benchmark",
+    "inputs": [
+      {
+        "name": "nav0",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "s0",
+        "type": "uint160",
+        "internalType": "uint160"
+      },
+      {
+        "name": "s1",
+        "type": "uint160",
+        "internalType": "uint160"
+      },
+      {
+        "name": "dfg0X128",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "dfg1X128",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "elapsed",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "bond",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "bondShares",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "bondValue",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "carryBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "crystallize",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "paidShares",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "curator",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "deficit",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "deposit",
+    "inputs": [
+      {
+        "name": "shares",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "max0",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "max1",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "amount0",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount1",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "epochSeconds",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "epochStart",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "fired",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "firedAt",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "firstDeposit",
+    "inputs": [
+      {
+        "name": "amount0",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount1",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "receiver",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "shares",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "manager",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IPoolManager"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "maxTickDeviation",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int24",
+        "internalType": "int24"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "minBondBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "nav",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "navAt",
+    "inputs": [
+      {
+        "name": "s",
+        "type": "uint160",
+        "internalType": "uint160"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "oracle",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IHurdleOracle"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "park",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "poolId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "PoolId"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "poolKey",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "currency0",
+        "type": "address",
+        "internalType": "Currency"
+      },
+      {
+        "name": "currency1",
+        "type": "address",
+        "internalType": "Currency"
+      },
+      {
+        "name": "fee",
+        "type": "uint24",
+        "internalType": "uint24"
+      },
+      {
+        "name": "tickSpacing",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "hooks",
+        "type": "address",
+        "internalType": "contract IHooks"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "position",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "",
+        "type": "uint128",
+        "internalType": "uint128"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "postBond",
+    "inputs": [
+      {
+        "name": "amount1",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "previewDeposit",
+    "inputs": [
+      {
+        "name": "shares",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "amount0",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount1",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "previewWithdraw",
+    "inputs": [
+      {
+        "name": "shares",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "amount0",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount1",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "rebalance",
+    "inputs": [
+      {
+        "name": "tickLower",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "tickUpper",
+        "type": "int24",
+        "internalType": "int24"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "rebalance",
+    "inputs": [
+      {
+        "name": "tickLower",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "tickUpper",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "maxIdleBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "rebalancesThisEpoch",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "reclaimBond",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "settle",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "settleForWithdraw",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "start",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "timestamp",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "sqrtPriceX96",
+        "type": "uint160",
+        "internalType": "uint160"
+      },
+      {
+        "name": "feeGrowth0X128",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "feeGrowth1X128",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "nav",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "token0",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IERC20Minimal"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "token1",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IERC20Minimal"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalSupply",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "unlockCallback",
+    "inputs": [
+      {
+        "name": "data",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdraw",
+    "inputs": [
+      {
+        "name": "shares",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "amount0",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount1",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "BondPosted",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "bond",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "BondReclaimed",
+    "inputs": [
+      {
+        "name": "bondTokens",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "bondShares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Deposited",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount0",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount1",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Fired",
+    "inputs": [
+      {
+        "name": "bond",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "nav",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Rebalanced",
+    "inputs": [
+      {
+        "name": "tickLower",
+        "type": "int24",
+        "indexed": false,
+        "internalType": "int24"
+      },
+      {
+        "name": "tickUpper",
+        "type": "int24",
+        "indexed": false,
+        "internalType": "int24"
+      },
+      {
+        "name": "liquidity",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Settled",
+    "inputs": [
+      {
+        "name": "nav",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "bench",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "take",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "shortfallPaid",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "bond",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "sqrtPriceX96",
+        "type": "uint160",
+        "indexed": false,
+        "internalType": "uint160"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "SettlerPaid",
+    "inputs": [
+      {
+        "name": "settler",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Withdrawn",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "shares",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount0",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount1",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "AlreadyParked",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BondBelowFloor",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CapacityExceeded",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CuratorFired",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DeficitOutstanding",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DepositWindowClosed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "EpochNotOver",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotCurator",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotFired",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotFirstDeposit",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotParked",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OnlySelf",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PriceDeviation",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RebalanceIncomplete",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Slippage",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TooManyRebalances",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroShares",
+    "inputs": []
+  }
+]
