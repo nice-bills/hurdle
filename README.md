@@ -27,7 +27,7 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
   history. Donations are blocked (they would inflate par). Overhead is ~40k gas on the first swap of each block in steady state (~12k TWAP write + ~28k block-open fee-growth snapshot); later swaps in the same block skip both writes
   ([research/phase3-twap.md](research/phase3-twap.md)).
 - **Par is fee-capped and wash-proof within a block.** `benchmark(..., elapsed)` credits at most 300% APR
-  of the epoch's starting NAV in fees, and the vault reads fee growth as of the block's first swap
+  of the epoch's starting NAV in fees, over at most one epoch (a late settlement does not widen it), and the vault reads fee growth as of the block's first swap
   (`HurdleHook.referenceFeeGrowth`), so same-block wash swaps cannot move par at all.
 - **Settlement** (`HurdleVault.settle`, once per epoch):
   - beat par: the excess first refills the bond up to past shortfalls, then the curator earns
@@ -44,7 +44,8 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
   par to its block (settling the gap so far, same epoch clock), so a newcomer neither pays for nor
   collects earlier performance. Deposits also need spot, block-open price and TWAP to agree, and no
   unrecouped bond payout (`deficit` ≤ 1 bp of NAV), so a newcomer never repays compensation that went
-  to others.
+  to others. The curator can clear `deficit` at any time by posting fresh bond (`postBond` pays it down
+  first), so one bad epoch does not close the vault until the curator beats par again.
 - **Rebalances** (curator only, max 4 per epoch, bond at or above the floor) revert `PriceDeviation`
   unless spot, the block-open price and the **10-minute** TWAP are within `maxTickDeviation` (50 ticks)
   of each other and the 10- and 30-minute TWAPs agree within 4 × that; the swap is bounded by all three
@@ -133,7 +134,8 @@ Superseded (do not use):
 
 ```sh
 ./e2e.sh                                      # everything below in one go: build, all tests, both replays, par check, UI data + smoke (E2E_LIVE=1 adds a read-only testnet check)
-forge test                                     # 94 pass, replay skipped (Audit2Regression re-runs the 30 vault tests via inheritance)
+./e2e.sh                                       # everything: build/size, all tests + invariants, both replays, par check, UI data, UI smoke
+forge test                                     # all suites; the replay is skipped without REPLAY_CSV
 # replay a real week through the hook + two vaults (30–60 s), check par against the offchain reference, build the UI data
 REPLAY_CSV=data/weeks/2026-10-31.csv REPLAY_OUT=demo/out/range-week.csv forge test --match-contract ReplayTest -vv
 python3 data/par_check.py data/weeks/2026-10-31.csv demo/out/range-week.csv --twap
@@ -155,9 +157,10 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   never wait on settlement: if settling or the price read reverts, they pay out in kind without it.
 - NAV and par are valued at TWAP, which matters only at settlement and for crystallized carry.
 - Fee-cap residual: same-block washing has no effect, but wash swaps spread across blocks can still
-  inflate par, and drain the bond, by up to the cap (~0.57 bp of NAV per 10-minute epoch: a 2% bond in
-  about 2.4 days of continuous washing by an attacker who is also the pool's only other LP). A real fee
-  burst above the cap counts as curator excess. Neither real replay week reaches the cap.
+  inflate par, and drain the bond, by up to the cap: 300% APR × at most one epoch, i.e. ≤ 3.4 bp of NAV
+  per settlement for 1-hour epochs, however late the settlement (a 2% bond in ~59 consecutive washed
+  epochs by an attacker who is also the pool's only other LP and pays the swap fees it washes). A real
+  fee burst above the cap counts as curator excess. Neither real replay week reaches the cap.
 - TWAP lag still blocks some rebalances. Against the 30-minute TWAP alone, |spot − TWAP| > 50 ticks in
   2.6–4.6% of minutes per real week (3.4% over five weeks); the 10-minute gate cuts Chaser's refused
   re-centers from 24 to 19 (range week) and 19 to 12 (down week). Moving the gate needs the price held

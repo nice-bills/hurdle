@@ -223,7 +223,8 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         start.nav = FullMath.mulDiv(start.nav, supply + shares, supply);
         balanceOf[msg.sender] += shares;
         totalSupply = supply + shares;
-        if (_belowFloor()) revert CapacityExceeded();
+        // A fired vault is parked passive (it is par), so it needs no bond behind new deposits.
+        if (!fired && _belowFloor()) revert CapacityExceeded();
         emit Deposited(msg.sender, amount0, amount1, shares);
     }
 
@@ -314,6 +315,11 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         if (fired) revert CuratorFired();
         require(token1.transferFrom(msg.sender, address(this), amount1), "T1");
         bond += amount1;
+        // Fresh bond tokens settle the curator's debt to the bond first (deficit is in token1 value, like
+        // the bond): a curator in a drawdown can reopen deposits by paying back what the bond paid out,
+        // instead of waiting to earn it back from excess over par.
+        uint256 d = deficit;
+        if (d > 0) deficit = amount1 < d ? d - amount1 : 0;
         emit BondPosted(amount1, bond);
     }
 
@@ -422,7 +428,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         unchecked {
             // Fee growth accumulators wrap by design.
             bench = benchmark(
-                st.nav, st.sqrtPriceX96, s1, fg0 - st.feeGrowth0X128, fg1 - st.feeGrowth1X128, block.timestamp - st.timestamp
+                st.nav, st.sqrtPriceX96, s1, fg0 - st.feeGrowth0X128, fg1 - st.feeGrowth1X128, _feeElapsed(st.timestamp)
             );
         }
 
@@ -549,6 +555,14 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     /// Uses block-open fee growth, so same-block wash swaps cannot lift par (e.g. to dodge carry on exit).
+    /// Time the fee cap may grow over: capped at one epoch, so a settlement that comes late (nobody
+    /// settled on schedule) does not widen the wash-trading allowance. Real fees above the capped credit
+    /// count as curator excess; settle() is permissionless and pays a keeper bounty, so epochs stay short.
+    function _feeElapsed(uint64 since) private view returns (uint256 e) {
+        e = block.timestamp - since;
+        if (e > epochSeconds) e = epochSeconds;
+    }
+
     function _benchNow(uint160 s1) private view returns (uint256) {
         (uint256 fg0, uint256 fg1) = oracle.referenceFeeGrowth(poolId);
         unchecked {
@@ -558,7 +572,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
                 s1,
                 fg0 - start.feeGrowth0X128,
                 fg1 - start.feeGrowth1X128,
-                block.timestamp - start.timestamp
+                _feeElapsed(start.timestamp)
             );
         }
     }
