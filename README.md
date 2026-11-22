@@ -7,7 +7,9 @@ no self-reported performance. A curator whose bond runs out is fired and the vau
 
 UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and design log: [IDEA.md](IDEA.md).
 
-**Live demo:** https://nice-bills.github.io/hurdle/ (real-swap replays: [range week](https://nice-bills.github.io/hurdle/?s=range-week#play), [ETH −14% week](https://nice-bills.github.io/hurdle/?s=down-week#play); the Live panel reads the Sepolia vaults).
+**App (testnet dApp):** https://hurdle-app.onrender.com — connect a wallet on Unichain Sepolia, mint test tokens, deposit, settle, run a curator vault, swap; developer docs at [/integrate](https://hurdle-app.onrender.com/integrate). Indexer + 24/7 keeper: [health](https://hurdle-worker.onrender.com/healthz).
+
+**Static replay demo:** https://nice-bills.github.io/hurdle/ (real-swap replays: [range week](https://nice-bills.github.io/hurdle/?s=range-week#play), [ETH −14% week](https://nice-bills.github.io/hurdle/?s=down-week#play); the Live panel reads the Sepolia vaults).
 
 ## How it works
 
@@ -96,8 +98,15 @@ and later excess refills the bond before any carry.
 
 Both vaults were created through the factory (`isVault` true). Each: bond 5% of the deposit (0.1 mWETH),
 1 mWETH + 3000 mUSDC deposited, curator range deployed. Full output: `script/out/deploy-1301.json`.
-A keeper (`script/Keeper.s.sol`) trades, settles each hour and drove the scripted miss below; the live
-panel in the UI reads these vaults.
+A keeper (the Render worker, plus `script/Keeper.s.sol` for scripted moves) trades every 10 minutes and
+settles every hour. What happened on-chain (events visible in the app and on Uniscan):
+
+- 2026-11-21 19:46 UTC: scripted ETH −9.5% move. Both vaults missed par at the next settlements; their bonds
+  paid depositors (Patient 0.054 mWETH, Chaser 0.031 mWETH).
+- 2026-11-22 10:50 UTC: a second −9.5% leg. At 11:02 Patient's settlement paid its last 0.046 mWETH of bond and
+  fired it (`Fired`); the vault was then parked full range by the keeper (`Rebalanced` to full range).
+- Patient's 5% bond was not enough for two 9.5% drops on this thin test pool: its depositors end 0.77% below
+  par. The guarantee is "par while the bond lasts"; sizing the bond is the curator's and depositors' choice.
 
 Superseded (do not use):
 - second-audit fixes: hook `0x23C23680100b77Acb606995dAD2Be470A30590A0`, vaults

@@ -42,13 +42,23 @@ Real data only (mocks removed). Two bond levels (2% floor freezes; a miss below 
 to the "≥ par" badge, banner "Miss left bond below ½ floor → curator fired, vault parked passive",
 390 px layout, live panel reading the Sepolia vaults over JSON-RPC (Opus 3, Sonnet 2/3, DeepSeek 2).
 
+## Full dApp (new)
+
+- `app/web` (Next.js, wagmi/viem): https://hurdle-app.onrender.com. Vault explorer and vault pages (NAV vs par per
+  settlement, bond meter, position vs tick, events, keeper runs), deposit/withdraw with previews, settle, curator
+  console (create via factory, post bond, rebalance, reclaim), swap, real-week replays, `/integrate` developer docs.
+  Decoded revert reasons. Tested headless at 1280/390 px, light/dark, zero console errors.
+- `app/worker`: indexer (all factory/vault events → Postgres) + 24/7 keeper (own wallet), `/healthz`.
+- `e2e.sh`: one command runs build/size, all tests incl. invariants, both replays, par check, UI data, UI smoke.
+
 ## Live deployment
 
-Redeployed v3 (hook, factory, two vaults) on Unichain Sepolia; a keeper (`script/Keeper.s.sol`) trades,
-settles hourly and drives a scripted price move. Addresses and transaction hashes in README.
+Redeployed v3 (hook, factory, two vaults) on Unichain Sepolia. Two scripted −9.5% moves: both bonds paid shortfalls
+on-chain; Patient was fired at 2026-11-22 11:02 UTC and parked by the keeper; its bond ran out, so its depositors
+end 0.77% below par (README).
 
 ## Not done
 
-- Demo video and public hosting (in progress at the time of this round).
+- Demo video (in progress).
 - Gas under 40k in isolation.
 - Realized-APR fee cap.
