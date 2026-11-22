@@ -75,6 +75,10 @@ contract Handler {
     uint256 public ghostCoveredSettleViolations; // ... and depositors were left below par by > 1 bp
     uint256 public ghostWorstOwed;
     uint256 public ghostWorstPaid;
+    // last settlement, for coverage assertions
+    uint256 public lastNav;
+    uint256 public lastBench;
+    uint256 public lastPaid;
     uint256 public ghostSettleDeficitViolations;
     uint256 public ghostWorstDeficit;
     uint256 public ghostWorstDeficitNav;
@@ -116,7 +120,7 @@ contract Handler {
     /// Depositor buys shares in kind, forced into a settlement window so the path is exercised.
     function deposit(uint256 userSeed, uint256 sharesSeed) external {
         address user = users[userSeed % 3];
-        uint256 shares = _bound(sharesSeed, 1e15, 2e18);
+        uint256 shares = _depositShares(sharesSeed);
         _warpIntoDepositWindow();
         Snap memory s = _snap();
         vm.prank(user);
@@ -147,7 +151,7 @@ contract Handler {
     /// Invariant 7 probe: deposit and immediately withdraw the same shares in the same block.
     function depositThenWithdraw(uint256 userSeed, uint256 sharesSeed) external {
         address user = users[userSeed % 3];
-        uint256 shares = _bound(sharesSeed, 1e15, 2e18);
+        uint256 shares = _depositShares(sharesSeed);
         _warpIntoDepositWindow();
         Snap memory s = _snap();
 
@@ -185,10 +189,23 @@ contract Handler {
         _after(s, KIND_ROUNDTRIP, true);
     }
 
-    /// Random exact-input swap through PoolSwapTest, random direction.
+    /// Random exact-input swap through PoolSwapTest. Direction is biased to keep the price crossing the
+    /// vault's range: while spot is inside the range the seed picks the side, and once spot leaves the
+    /// range the handler reverses and pushes the price back through it. That repeatedly leaves the
+    /// concentrated position holding the losing token (all token0 below the range, all token1 above),
+    /// which is what makes random settlements miss par and actually pay a shortfall.
     function swap(uint256 sizeSeed, uint256 directionSeed) external {
-        uint256 amountIn = _bound(sizeSeed, 1e15, 100e18);
-        bool zeroForOne = directionSeed % 2 == 0;
+        uint256 amountIn = _bound(sizeSeed, 1e15, 400e18);
+        (int24 lo, int24 hi,) = vault.position();
+        (, int24 spot,,) = manager.getSlot0(pid);
+        bool zeroForOne;
+        if (hi > lo && spot >= hi) {
+            zeroForOne = true; // above the range: sell back down into it
+        } else if (hi > lo && spot <= lo) {
+            zeroForOne = false; // below the range: buy back up into it
+        } else {
+            zeroForOne = directionSeed % 2 == 0;
+        }
         Snap memory s = _snap();
         bool ok;
         try swapRouter.swap(
@@ -240,7 +257,9 @@ contract Handler {
         int24 offset = int24(int256(_bound(centerSeed, 0, 2400))) - 1200;
         int24 center = _floorToSpacing(spot + offset, sp);
         int24 width = int24(int256(_bound(widthSeed, 1, 20))) * sp;
-        int24 lo = center;
+        // Centre the range on `center`: a range whose edge sits on spot is degenerate (the position is
+        // all one token there, so a swap during the redeploy leaves nothing to mint liquidity with).
+        int24 lo = center - width;
         int24 hi = center + width;
         int24 minTick = TickMath.minUsableTick(sp);
         int24 maxTick = TickMath.maxUsableTick(sp);
@@ -290,9 +309,11 @@ contract Handler {
     // views for the invariant suite
     // ---------------------------------------------------------------------
 
-    /// Sum of shares over every address that can hold vault shares in this suite.
+    /// Sum of shares over every address that can hold vault shares in this suite, plus the locked bond
+    /// shares (held by the vault itself, outside `balanceOf`).
     function sumShares() external view returns (uint256 sum) {
-        sum = vault.balanceOf(address(0)) + vault.balanceOf(curator) + vault.balanceOf(address(this));
+        sum = vault.balanceOf(address(0)) + vault.balanceOf(curator) + vault.balanceOf(address(this))
+            + vault.bondShares();
         for (uint256 i; i < 3; ++i) {
             sum += vault.balanceOf(users[i]);
         }
@@ -351,6 +372,9 @@ contract Handler {
     function _onSettled(bytes memory data, Snap memory s) internal {
         (uint256 nav, uint256 bench, uint256 take, uint256 paid, uint256 bondAfter, uint160 price) =
             abi.decode(data, (uint256, uint256, uint256, uint256, uint256, uint160));
+        lastNav = nav;
+        lastBench = bench;
+        lastPaid = paid;
         nav;
         take;
         bondAfter;
@@ -374,12 +398,20 @@ contract Handler {
 
         // deficit may never exceed NAV at a settlement (it is created by a payment that was <= NAV)
         uint256 d = vault.deficit();
-        uint256 n = vault.nav();
-        if (d > n + n / 10_000 + 1) {
-            ghostSettleDeficitViolations++;
-            ghostWorstDeficit = d;
-            ghostWorstDeficitNav = n;
-        }
+        try vault.nav() returns (uint256 n) {
+            if (d > n + n / 10_000 + 1) {
+                ghostSettleDeficitViolations++;
+                ghostWorstDeficit = d;
+                ghostWorstDeficitNav = n;
+            }
+        } catch {}
+    }
+
+    /// Bounded deposit size: a fraction of supply, so the capacity cap is exercised but not always hit.
+    function _depositShares(uint256 seed) internal view returns (uint256) {
+        uint256 cap = vault.totalSupply() / 4;
+        if (cap < 1e12) cap = 1e12;
+        return _bound(seed, 1e12, cap);
     }
 
     function _warpIntoDepositWindow() internal {

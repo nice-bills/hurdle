@@ -28,6 +28,8 @@ import {Handler} from "./Handler.sol";
 ///
 /// forge-config: default.invariant.runs = 64
 /// forge-config: default.invariant.depth = 64
+///
+/// (The two lines above are Foundry inline config, not prose.)
 contract HurdleInvariantTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -58,11 +60,11 @@ contract HurdleInvariantTest is Test, Deployers {
         (key,) = initPoolAndAddLiquidity(currency0, currency1, IHooks(address(hook)), 3000, SQRT_PRICE_1_1);
         vm.warp(block.timestamp + 600); // the hook's TWAP needs 10 min of history
 
-        // a small bond makes the fire/reclaim path reachable: 0.5e18 bond on a 2e18 NAV, floor 2%
+        // a small bond makes the fire/reclaim path reachable: 0.1e18 bond on a 2e18 NAV (5%), floor 2%
         vault = new HurdleVault(manager, key, CURATOR, 2000, 200, 50, 600);
-        _fund(CURATOR, address(vault), 0, 0.5e18);
+        _fund(CURATOR, address(vault), 0, 0.1e18);
         vm.prank(CURATOR);
-        vault.postBond(0.5e18);
+        vault.postBond(0.1e18);
         _fund(CURATOR, address(vault), 1e18, 1e18);
         vm.prank(CURATOR);
         vault.firstDeposit(1e18, 1e18, ALICE);
@@ -107,6 +109,13 @@ contract HurdleInvariantTest is Test, Deployers {
         assertEq(handler.ghostSettleDeficitViolations(), 0, "deficit > NAV at settlement");
     }
 
+    /// 3b. Live check: the deficit never exceeds the current NAV.
+    function invariant_deficitLiveNotAboveNav() public view {
+        uint256 d = vault.deficit();
+        uint256 n = vault.nav();
+        assertLe(d, n + n / 10_000 + 1, "live deficit > NAV");
+    }
+
     /// 4. After a settlement in which the bond covered the depositor shortfall, depositors are at par
     ///    (1 bp rounding tolerance). Checked on the handler's post-settlement snapshot.
     function invariant_depositorsAtParAfterCoveredSettle() public view {
@@ -135,8 +144,78 @@ contract HurdleInvariantTest is Test, Deployers {
     }
 
     // ---------------------------------------------------------------------
-    // coverage test: the handler actually reaches the interesting paths
+    // coverage tests: the handler actually reaches the interesting paths
     // ---------------------------------------------------------------------
+
+    /// Coverage: a narrow range pushed out of the money across an epoch makes the vault miss par while
+    /// the bond still covers the miss, so the settlement pays a shortfall and depositors end at par.
+    /// Exercises invariants 3 and 4.
+    function test_coverageCoveredShortfall() public {
+        handler.rebalance(1200, 1, 10_000); // 120-tick range centred on spot
+        handler.swap(50e18, 0); // down, out of the range: the vault ends all token0 and misses par
+        handler.warp(2000); // past the epoch, TWAP caught up
+        handler.settle();
+        assertGt(handler.ghostCoveredSettlements(), 0, "no covered shortfall settlement exercised");
+        assertLt(handler.lastNav(), handler.lastBench(), "settlement was not below par");
+        assertGt(handler.lastPaid(), 0, "bond paid nothing on a covered shortfall");
+        assertEq(handler.ghostCoveredSettleViolations(), 0, "depositors below par after a covered shortfall");
+        assertFalse(vault.fired(), "a miss the bond covers must not fire the curator");
+    }
+
+    /// Coverage: a miss big enough to take the bond below half the floor is covered first, then fires the
+    /// curator, parks the vault full range and lets the curator reclaim what is left. Exercises
+    /// invariants 2, 4 and 5.
+    function test_coverageFireParkReclaim() public {
+        handler.rebalance(1200, 1, 10_000); // 120-tick range centred on spot
+        handler.swap(100e18, 0); // down, out of the range: a miss the bond covers, leaving it under the floor
+        handler.warp(2000);
+        handler.settle();
+        assertTrue(vault.fired(), "bond did not drain enough to fire");
+        assertTrue(handler.ghostFiredSeen(), "handler did not observe the firing");
+        assertGt(handler.ghostSettlements(), 0, "no settlement observed");
+        assertGt(handler.ghostCoveredSettlements(), 0, "no covered shortfall settlement exercised");
+        assertEq(handler.ghostCoveredSettleViolations(), 0, "depositors below par after a covered shortfall");
+
+        for (uint256 i; i < 12; ++i) {
+            handler.warp(2000);
+            handler.rebalance(1200, 1, 10_000); // permissionless park after firing
+        }
+        (int24 lo, int24 hi,) = vault.position();
+        assertEq(lo, TickMath.minUsableTick(SPACING), "vault not parked");
+        assertEq(hi, TickMath.maxUsableTick(SPACING), "vault not parked");
+
+        handler.warp(2000);
+        handler.reclaimBond();
+        assertGt(handler.ghostReclaimOk(), 0, "reclaimBond did not succeed");
+        assertEq(vault.bond(), 0, "bond tokens left after reclaim");
+        assertEq(vault.bondShares(), 0, "bond shares left after reclaim");
+    }
+
+    /// Coverage: a long seeded random sequence through every handler action (the same paths the fuzzer
+    /// takes, but deterministic) must reach covered shortfalls without tripping any ghost counter.
+    function test_coverageRandomSequence() public {
+        uint256 seed = 12345;
+        for (uint256 i; i < 512; ++i) {
+            seed = uint256(keccak256(abi.encode(seed)));
+            uint256 action = seed % 10;
+            if (action == 0) handler.deposit(seed >> 8, seed >> 16);
+            else if (action == 1) handler.withdraw(seed >> 8, seed >> 16);
+            else if (action == 2) handler.depositThenWithdraw(seed >> 8, seed >> 16);
+            else if (action == 3 || action == 4) handler.swap(seed >> 8, seed >> 16);
+            else if (action == 5) handler.warp(seed >> 8);
+            else if (action == 6) handler.settle();
+            else if (action == 7) handler.rebalance(seed >> 8, seed >> 16, seed >> 24);
+            else if (action == 8) handler.postBond(seed >> 8);
+            else handler.reclaimBond();
+        }
+        assertGt(handler.ghostSettlements(), 0, "no settlement observed");
+        assertGt(handler.ghostCoveredSettlements(), 0, "no covered shortfall settlement exercised");
+        assertGt(handler.ghostSwapOk(), 0, "no swap succeeded");
+        assertGt(handler.ghostRebalanceOk(), 0, "no rebalance succeeded");
+        assertEq(handler.ghostCoveredSettleViolations(), 0, "depositors below par after a covered shortfall");
+        assertEq(handler.ghostSettleDeficitViolations(), 0, "deficit > NAV at settlement");
+        assertEq(handler.ghostSettleRevertsAfterEpoch(), 0, "settle() reverted after the epoch was over");
+    }
 
     function test_handlerExercisesPaths() public {
         handler.deposit(0, 1e17);
