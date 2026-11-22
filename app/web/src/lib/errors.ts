@@ -29,6 +29,11 @@ export const ERROR_TEXT: Record<string, string> = {
   DonationsDisabled: "Donations are blocked on Hurdle pools (they would inflate par).",
   NoSwapOccurred: "The swap moved nothing (amount too small or price limit hit).",
   InvalidTwapWindow: "Invalid TWAP window.",
+  InvalidPool: "This hook only serves the canonical Hurdle pool (a dynamic-fee-free mUSDC/mWETH pool with this hook).",
+  HookNotImplemented: "This pool hook does not implement that callback.",
+  NotPoolManager: "Only the Uniswap v4 PoolManager can call this hook function.",
+  NotSelf: "Internal function: only the hook itself can call it.",
+  LockFailure: "The PoolManager lock failed: the call must run inside an unlock callback.",
 };
 
 export type DecodedError = { title: string; detail: string; name?: string; rejected?: boolean };
