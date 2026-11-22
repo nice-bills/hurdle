@@ -99,6 +99,7 @@ export interface Overview {
   vaults: VaultSummary[];
   /** Earlier deployment (v3), read-only: kept so the on-chain fire stays visible. */
   legacyVaults: VaultSummary[];
+  legacyPool: PoolState; // the v3 pool the legacy vaults are valued on
   stats: {
     vaults: number;
     tvlUsd: number;

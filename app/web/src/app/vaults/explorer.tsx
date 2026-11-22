@@ -77,7 +77,7 @@ export function VaultsExplorer() {
             The previous deployment, kept read-only as the fire showcase: Patient v3 breached its bond and was fired on 2026-11-22.
             Prices here are marked at the current pool.
           </p>
-          <VaultList vaults={data.legacyVaults} price={markPrice(data.pool)} />
+          <VaultList vaults={data.legacyVaults} price={markPrice(data.legacyPool)} />
         </section>
       )}
 

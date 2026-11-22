@@ -44,18 +44,15 @@ export const POOL_KEY = {
   hooks: ADDR.hook,
 } as const;
 
-export const POOL_ID: Hex = keccak256(
-  encodeAbiParameters(
-    [
-      { type: "address" },
-      { type: "address" },
-      { type: "uint24" },
-      { type: "int24" },
-      { type: "address" },
-    ],
-    [POOL_KEY.currency0, POOL_KEY.currency1, POOL_KEY.fee, POOL_KEY.tickSpacing, POOL_KEY.hooks],
-  ),
-);
+const poolIdOf = (c0: Address, c1: Address, fee: number, spacing: number, hooks: Address): Hex =>
+  keccak256(
+    encodeAbiParameters(
+      [{ type: "address" }, { type: "address" }, { type: "uint24" }, { type: "int24" }, { type: "address" }],
+      [c0, c1, fee, spacing, hooks],
+    ),
+  );
+
+export const POOL_ID: Hex = poolIdOf(POOL_KEY.currency0, POOL_KEY.currency1, POOL_KEY.fee, POOL_KEY.tickSpacing, POOL_KEY.hooks);
 
 /** v4-core StateLibrary: pools mapping at slot 6. */
 export function poolStateSlot(poolId: Hex = POOL_ID): Hex {
@@ -65,6 +62,15 @@ export function poolStateSlot(poolId: Hex = POOL_ID): Hex {
 /** Earlier deployment (v3): read-only, kept as the fire showcase (Patient v3 was fired on-chain). */
 export const LEGACY = deployment.legacy;
 export const LEGACY_VAULTS = [LEGACY.patientVault, LEGACY.chaserVault].map((a) => a.toLowerCase());
+
+/** A pool and the hook that holds its TWAP. v3 vaults live on their own pool (v3 hook, v3 mUSDC/mWETH), not the v4 one. */
+export type PoolRef = { poolId: Hex; hook: Address };
+export const V4_POOL: PoolRef = { poolId: POOL_ID, hook: ADDR.hook };
+export const LEGACY_POOL: PoolRef = {
+  poolId: poolIdOf(LEGACY.currency0 as Address, LEGACY.currency1 as Address, deployment.fee, deployment.tickSpacing, LEGACY.hook as Address),
+  hook: LEGACY.hook as Address,
+};
+export const poolRefFor = (vault: string): PoolRef => (LEGACY_VAULTS.includes(vault.toLowerCase()) ? LEGACY_POOL : V4_POOL);
 
 export const KNOWN_LABELS: Record<string, { name: string; note: string }> = {
   [deployment.patientVault.toLowerCase()]: { name: "Patient", note: "±10% range, rarely moves" },

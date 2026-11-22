@@ -1,6 +1,6 @@
 import { createPublicClient, decodeEventLog, http, parseAbi, type Address, type Hex } from "viem";
 import { factoryAbi, hookAbi, vaultAbi } from "@/shared/abis";
-import { ADDR, D, POOL_ID, poolStateSlot, unichainSepolia } from "@/lib/chain";
+import { ADDR, D, V4_POOL, poolStateSlot, unichainSepolia, type PoolRef } from "@/lib/chain";
 import type { VaultEvent } from "@/lib/types";
 
 const RPC = process.env.RPC_URL || D.rpc;
@@ -13,16 +13,16 @@ export const client = createPublicClient({
 
 const managerAbi = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)"]);
 
-export async function readPoolRpc() {
-  const slot = poolStateSlot();
+export async function readPoolRpc(ref: PoolRef = V4_POOL) {
+  const slot = poolStateSlot(ref.poolId);
   const res = await client.multicall({
     allowFailure: true,
     contracts: [
       { address: ADDR.poolManager, abi: managerAbi, functionName: "extsload", args: [slot] },
       { address: ADDR.poolManager, abi: managerAbi, functionName: "extsload", args: [incSlot(slot, 3n)] },
-      { address: ADDR.hook, abi: hookAbi, functionName: "twapTick", args: [POOL_ID] },
-      { address: ADDR.hook, abi: hookAbi, functionName: "consult", args: [POOL_ID, 600] },
-      { address: ADDR.hook, abi: hookAbi, functionName: "referenceTick", args: [POOL_ID] },
+      { address: ref.hook, abi: hookAbi, functionName: "twapTick", args: [ref.poolId] },
+      { address: ref.hook, abi: hookAbi, functionName: "consult", args: [ref.poolId, 600] },
+      { address: ref.hook, abi: hookAbi, functionName: "referenceTick", args: [ref.poolId] },
     ],
   });
   const raw = res[0].status === "success" ? BigInt(res[0].result as Hex) : 0n;
@@ -34,22 +34,23 @@ export async function readPoolRpc() {
   return { sqrtPriceX96, tick, liquidity: liq, twapTick: num(res[2]), twap10Tick: num(res[3]), referenceTick: num(res[4]) };
 }
 
-const sqrtAtBlock = new Map<number, Promise<bigint | null>>();
+const sqrtAtBlock = new Map<string, Promise<bigint | null>>();
 /** Pool sqrtPriceX96 at a past block (history is kept by the RPC); null when unavailable. Memoised: history never changes. */
-export function poolSqrtAtBlock(block: number): Promise<bigint | null> {
-  let p = sqrtAtBlock.get(block);
+export function poolSqrtAtBlock(block: number, ref: PoolRef = V4_POOL): Promise<bigint | null> {
+  const key = ref.poolId + ":" + block;
+  let p = sqrtAtBlock.get(key);
   if (!p) {
     p = client
-      .readContract({ address: ADDR.poolManager, abi: managerAbi, functionName: "extsload", args: [poolStateSlot()], blockNumber: BigInt(block) })
+      .readContract({ address: ADDR.poolManager, abi: managerAbi, functionName: "extsload", args: [poolStateSlot(ref.poolId)], blockNumber: BigInt(block) })
       .then((raw) => {
         const v = BigInt(raw) & ((1n << 160n) - 1n);
         return v > 0n ? v : null;
       })
       .catch(() => {
-        sqrtAtBlock.delete(block); // retry next time
+        sqrtAtBlock.delete(key); // retry next time
         return null;
       });
-    sqrtAtBlock.set(block, p);
+    sqrtAtBlock.set(key, p);
   }
   return p;
 }

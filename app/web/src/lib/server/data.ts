@@ -1,5 +1,5 @@
 import type { Address } from "viem";
-import { ADDR, D, KNOWN_LABELS, LEGACY, LEGACY_VAULTS, maxUsableTick, minUsableTick } from "@/lib/chain";
+import { ADDR, D, KNOWN_LABELS, LEGACY, LEGACY_POOL, LEGACY_VAULTS, V4_POOL, maxUsableTick, minUsableTick, poolRefFor, type PoolRef } from "@/lib/chain";
 import { usdPerEthFromSqrt, usdPerEthFromTick } from "@/lib/math";
 import { buildSeries } from "@/lib/series";
 import type { DataSource, KeeperRun, Overview, PoolState, VaultDetail, VaultEvent, VaultSummary } from "@/lib/types";
@@ -55,9 +55,10 @@ async function registry(headBlock: number): Promise<Registry> {
   };
 }
 
-async function poolState(sinceSec: number, events: VaultEvent[]): Promise<PoolState> {
-  const p = await readPoolRpc();
-  let history = (await dbPoolTicks(sinceSec)) ?? [];
+async function poolState(sinceSec: number, events: VaultEvent[], ref: PoolRef = V4_POOL): Promise<PoolState> {
+  const p = await readPoolRpc(ref);
+  // pool_ticks only tracks the v4 pool
+  let history = (ref === V4_POOL ? await dbPoolTicks(sinceSec) : null) ?? [];
   if (!history.length) {
     // no DB: settlement prices are the only free history
     const seen = new Set<number>();
@@ -81,12 +82,12 @@ async function poolState(sinceSec: number, events: VaultEvent[]): Promise<PoolSt
 }
 
 /** Pool price when the vault's first deposit landed: the start of its first settlement segment, for the USD basis. */
-async function firstDepositSqrt(events: VaultEvent[]): Promise<bigint | null> {
+async function firstDepositSqrt(events: VaultEvent[], ref: PoolRef): Promise<bigint | null> {
   const ev = [...events].sort((a, b) => a.block - b.block || a.logIndex - b.logIndex);
   const dep = ev.find((e) => e.name === "Deposited");
   const settled = ev.find((e) => e.name === "Settled");
   if (!dep || (settled && settled.block < dep.block)) return null;
-  return poolSqrtAtBlock(dep.block);
+  return poolSqrtAtBlock(dep.block, ref);
 }
 
 function summarize(
@@ -160,13 +161,14 @@ export function getOverview(): Promise<Overview> {
     for (const a of LEGACY_VAULTS)
       if (!reg.vaults.some((v) => v.address === a))
         reg.vaults.push({ address: a, curator: "", poolId: "", createdBlock: LEGACY.factoryStartBlock, label: null });
-    const [live, pool, keeper] = await Promise.all([
+    const [live, pool, legacyPool, keeper] = await Promise.all([
       readVaultsRpc(reg.vaults.map((v) => v.address as Address)),
       poolState(h.ts - 6 * 3600, reg.events),
+      poolState(h.ts - 6 * 3600, reg.events.filter((e) => LEGACY_VAULTS.includes(String(e.args.vault ?? "").toLowerCase())), LEGACY_POOL),
       dbKeeper(undefined, 10),
     ]);
     const byVault = groupEvents(reg.events);
-    const starts = await Promise.all(reg.vaults.map((r) => firstDepositSqrt(byVault.get(r.address) ?? [])));
+    const starts = await Promise.all(reg.vaults.map((r) => firstDepositSqrt(byVault.get(r.address) ?? [], poolRefFor(r.address))));
     const all = ordered(live.map((l, i) => summarize(reg.vaults[i], l.data as Record<string, unknown>, byVault.get(reg.vaults[i].address) ?? [], starts[i])));
     // current deployment = created at/after the v4 factory start block; v3 vaults are listed separately
     const vaults = all.filter((v) => !LEGACY_VAULTS.includes(v.address) && (v.createdBlock ?? D.factoryStartBlock) >= D.factoryStartBlock);
@@ -178,6 +180,7 @@ export function getOverview(): Promise<Overview> {
       head: h.n,
       headTs: h.ts,
       pool,
+      legacyPool,
       vaults,
       legacyVaults,
       stats: {
@@ -219,13 +222,14 @@ export function getVaultDetail(address: string): Promise<VaultDetail | null> {
       entry = { address: a, curator: String(probe.data.curator ?? "").toLowerCase(), poolId: String(probe.data.poolId ?? ""), createdBlock: h.n, label: null };
     }
     const events = groupEvents(reg.events).get(a) ?? [];
+    const ref = poolRefFor(a);
     const [[live], pool, snaps, keeper] = await Promise.all([
       readVaultsRpc([a as Address]),
-      poolState(h.ts - 6 * 3600, reg.events),
+      poolState(h.ts - 6 * 3600, reg.events, ref),
       dbSnapshots(a),
       dbKeeper(a, 8),
     ]);
-    const startSqrt = await firstDepositSqrt(events);
+    const startSqrt = await firstDepositSqrt(events, ref);
     const vault = summarize(entry, live.data as Record<string, unknown>, events, startSqrt);
     const { series } = buildSeries(events, startSqrt);
     return {
