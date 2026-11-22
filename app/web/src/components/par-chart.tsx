@@ -73,6 +73,8 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
   const X = (ts: number) => g.l + (t1 === t0 ? iw / 2 : ((ts - t0) / (t1 - t0)) * iw);
   const Y = (v: number) => g.t + ((dom.hi - v) / (dom.hi - dom.lo)) * ih;
   const interp = (arr: number[], p: number) => {
+    if (!arr.length) return 0;
+    p = Number.isFinite(p) ? Math.max(0, p) : arr.length - 1;
     const i = Math.floor(p), f = p - i;
     return i >= arr.length - 1 ? arr[arr.length - 1] : arr[i] + (arr[i + 1] - arr[i]) * f;
   };
@@ -162,7 +164,7 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
               </g>
             );
           })}
-          {pos != null && N > 1 && <line x1={X(interp(t, end))} x2={X(interp(t, end))} y1={g.t} y2={g.t + ih} stroke="var(--ink-3)" opacity={0.5} />}
+          {pos != null && N > 1 && Number.isFinite(X(interp(t, end))) && <line x1={X(interp(t, end))} x2={X(interp(t, end))} y1={g.t} y2={g.t + ih} stroke="var(--ink-3)" opacity={0.5} />}
           {hover != null && (
             <g>
               <line x1={X(t[hover])} x2={X(t[hover])} y1={g.t} y2={g.t + ih} stroke="var(--ink-2)" strokeWidth={1} />
