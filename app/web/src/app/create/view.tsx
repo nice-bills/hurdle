@@ -55,7 +55,7 @@ export function CreateView() {
 
 function Step({ n, title, state, children }: { n: number; title: string; state: "done" | "active" | "todo"; children?: ReactNode }) {
   return (
-    <li className="relative pl-12">
+    <li className="relative pl-10 sm:pl-12">
       <span
         className={`num absolute left-0 top-0 grid h-8 w-8 place-items-center rounded-full border text-[13px] font-semibold ${
           state === "done" ? "border-good bg-good-soft text-good" : state === "active" ? "border-bar bg-bar text-on-bar" : "border-line text-ink-3"
@@ -99,7 +99,7 @@ function Steps({ vault }: { vault: string | null }) {
           {v && d && <RebalanceForm vault={v} pool={d.pool} onDone={() => q.refetch()} />}
         </Step>
         {v && ranged && (
-          <li className="pl-12">
+          <li className="pl-10 sm:pl-12">
             <Note tone="good">
               The vault is live. Settle runs every {fmtNum(v.epochSeconds / 60, 0)} minutes; open deposits to others in each window.{" "}
               <Link href={`/vaults/${v.address}`} className="font-semibold underline">Open the vault page</Link>
