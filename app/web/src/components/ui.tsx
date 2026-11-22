@@ -134,7 +134,7 @@ export const inputCls =
   "num h-11 w-full rounded-lg border border-line bg-bg px-3 text-[15px] text-ink outline-none transition-colors placeholder:text-ink-3 hover:border-line-2 focus:border-bar focus:ring-2 focus:ring-bar-soft";
 
 export function SignedValue({ v, children, className = "" }: { v: number | null | undefined; children: ReactNode; className?: string }) {
-  const cls = v == null || Math.abs(v) < 1e-9 ? "text-ink" : v > 0 ? "text-good" : "text-bad";
+  const cls = v == null || Math.abs(v) < 5e-6 ? "text-ink" : v > 0 ? "text-good" : "text-bad";
   return <span className={`num ${cls} ${className}`}>{children}</span>;
 }
 

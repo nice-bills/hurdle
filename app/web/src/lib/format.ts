@@ -16,7 +16,8 @@ export function fmtToken(raw: bigint | string | null | undefined, decimals: numb
   if (abs >= 1000) return fmtNum(v, 0);
   if (abs >= 1) return fmtNum(v, maxSig);
   if (abs >= 0.0001) return v.toLocaleString("en-US", { maximumSignificantDigits: maxSig });
-  return v.toExponential(2);
+  if (abs < 1e-8) return "<0.00000001";
+  return v.toLocaleString("en-US", { maximumSignificantDigits: 3, maximumFractionDigits: 9 });
 }
 export const fmtEth = (raw: bigint | string | null | undefined, sig = 4) => fmtToken(raw, 18, sig);
 

@@ -70,7 +70,7 @@ function Step({ n, title, state, children }: { n: number; title: string; state: 
 }
 
 function Steps({ vault }: { vault: string | null }) {
-  const q = useVaultDetail(vault ?? "0x0000000000000000000000000000000000000000");
+  const q = useVaultDetail(vault);
   const d = vault ? q.data : undefined;
   const v = d?.vault;
   const { address } = useAccount();

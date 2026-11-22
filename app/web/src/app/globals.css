@@ -137,7 +137,8 @@ h1, h2, h3 { text-wrap: balance; letter-spacing: -0.015em; }
 p { text-wrap: pretty; }
 ::selection { background: var(--bar-soft); }
 :focus-visible { outline: 2px solid var(--bar); outline-offset: 2px; border-radius: 4px; }
-.num { font-variant-numeric: tabular-nums; }
+.num { font-variant-numeric: lining-nums; }
+.tnum { font-variant-numeric: tabular-nums lining-nums; }
 a { text-underline-offset: 3px; text-decoration-thickness: 1px; }
 
 /* the hurdle bar: amber with hatched stripes, used for par in every chart and legend */

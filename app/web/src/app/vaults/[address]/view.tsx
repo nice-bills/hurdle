@@ -69,7 +69,7 @@ function Loaded({ d }: { d: VaultDetail }) {
 
       {/* scoreboard */}
       <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line lg:grid-cols-4">
-        <Cell k="NAV" v={v.nav ? `${fmtEth(v.nav)} mWETH` : "–"} sub={navEth != null ? `${fmtUsd(navEth * d.pool.price)} at spot` : ""} />
+        <Cell k="NAV" v={v.nav ? <>{fmtEth(v.nav)} <span className="text-[13px] font-medium text-ink-2">mWETH</span></> : "–"} sub={navEth != null ? `${fmtUsd(navEth * d.pool.price)} at spot` : ""} />
         <Cell
           k="Depositors vs par"
           v={depVsPar != null ? <SignedValue v={depVsPar}>{fmtSignedPct(depVsPar, 3)}</SignedValue> : "–"}

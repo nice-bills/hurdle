@@ -1,4 +1,26 @@
-import { BaseError, ContractFunctionRevertedError, UserRejectedRequestError } from "viem";
+import { BaseError, ContractFunctionRevertedError, UserRejectedRequestError, decodeAbiParameters, decodeErrorResult, type Hex } from "viem";
+import { factoryAbi, hookAbi, swapRouterAbi, vaultAbi } from "@/shared/abis";
+
+const ALL_ABIS = [vaultAbi, hookAbi, factoryAbi, swapRouterAbi] as const;
+const WRAPPED_ERROR = "0x90bfb865"; // PoolManager WrappedError(address target, bytes4 selector, bytes reason, bytes details)
+
+/** Errors raised inside another contract (the hook, the PoolManager) are not in the called contract's ABI: try them all. */
+export function nameFromRaw(raw?: Hex | string | null, depth = 0): string | undefined {
+  if (!raw || typeof raw !== "string" || raw.length < 10 || depth > 2) return undefined;
+  if (raw.slice(0, 10).toLowerCase() === WRAPPED_ERROR) {
+    try {
+      const [, , reason] = decodeAbiParameters(
+        [{ type: "address" }, { type: "bytes4" }, { type: "bytes" }, { type: "bytes" }],
+        ("0x" + raw.slice(10)) as Hex,
+      );
+      return nameFromRaw(reason as Hex, depth + 1);
+    } catch { return undefined; }
+  }
+  for (const abi of ALL_ABIS) {
+    try { return decodeErrorResult({ abi: abi as never, data: raw as Hex }).errorName; } catch {}
+  }
+  return undefined;
+}
 
 /** Human explanations for every custom error in the Hurdle ABIs. */
 export const ERROR_TEXT: Record<string, string> = {
@@ -44,7 +66,7 @@ export function decodeError(e: unknown): DecodedError {
     if (rejected) return { title: "Rejected in wallet", detail: "You declined the request. Nothing was sent.", rejected: true };
     const rev = e.walk((x) => x instanceof ContractFunctionRevertedError);
     if (rev instanceof ContractFunctionRevertedError) {
-      const name = rev.data?.errorName ?? rev.reason ?? undefined;
+      const name = rev.data?.errorName ?? nameFromRaw((rev as unknown as { raw?: Hex }).raw) ?? rev.reason ?? undefined;
       if (name && ERROR_TEXT[name]) return { title: name, detail: ERROR_TEXT[name], name };
       if (rev.reason) return { title: "Reverted", detail: humanRequire(rev.reason), name: rev.reason };
       if (name) return { title: name, detail: "The contract reverted with " + name + ".", name };

@@ -13,9 +13,10 @@ async function getJson<T>(url: string): Promise<T> {
 export const useOverview = () =>
   useQuery({ queryKey: ["overview"], queryFn: () => getJson<Overview>("/api/overview"), refetchInterval: 20_000 });
 
-export const useVaultDetail = (address: string) =>
+export const useVaultDetail = (address: string | null) =>
   useQuery({
-    queryKey: ["vault", address.toLowerCase()],
+    enabled: Boolean(address),
+    queryKey: ["vault", (address ?? "").toLowerCase()],
     queryFn: () => getJson<VaultDetail>(`/api/vaults/${address}`),
     refetchInterval: 15_000,
     retry: (n, e) => n < 2 && !/not a Hurdle vault|not an address/.test((e as Error).message),
