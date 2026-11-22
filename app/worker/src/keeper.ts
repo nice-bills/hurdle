@@ -180,7 +180,18 @@ export function makeKeeper(db: Db, client: Client) {
       `from tick ${s0.tick}`,
     );
     // Return leg even if the first failed after landing? Only when it succeeded, otherwise price is unchanged.
-    if (down) await send("swap_up", null, swap(false, -(10n ** 30n), s0.sqrtPriceX96) as TxReq, `back to sqrtPrice ${s0.sqrtPriceX96}`);
+    if (!down) return;
+    // The public RPC is load-balanced and can answer from a block before the down leg; simulating the
+    // return leg there reverts PriceLimitAlreadyExceeded (spot == limit). Wait until spot is visibly below s0.
+    for (let i = 0; i < 15; i++) {
+      const s1 = await withRetry(() => readSlot0(client, poolId), "slot0", 4);
+      if (s1.sqrtPriceX96 < s0.sqrtPriceX96) {
+        await send("swap_up", null, swap(false, -(10n ** 30n), s0.sqrtPriceX96) as TxReq, `back to sqrtPrice ${s0.sqrtPriceX96}`);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    log("keeper", "swap_up skipped: RPC never showed the down leg");
   }
 
   async function vaultList(): Promise<string[]> {
