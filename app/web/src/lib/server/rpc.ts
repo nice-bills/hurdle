@@ -34,6 +34,26 @@ export async function readPoolRpc() {
   return { sqrtPriceX96, tick, liquidity: liq, twapTick: num(res[2]), twap10Tick: num(res[3]), referenceTick: num(res[4]) };
 }
 
+const sqrtAtBlock = new Map<number, Promise<bigint | null>>();
+/** Pool sqrtPriceX96 at a past block (history is kept by the RPC); null when unavailable. Memoised: history never changes. */
+export function poolSqrtAtBlock(block: number): Promise<bigint | null> {
+  let p = sqrtAtBlock.get(block);
+  if (!p) {
+    p = client
+      .readContract({ address: ADDR.poolManager, abi: managerAbi, functionName: "extsload", args: [poolStateSlot()], blockNumber: BigInt(block) })
+      .then((raw) => {
+        const v = BigInt(raw) & ((1n << 160n) - 1n);
+        return v > 0n ? v : null;
+      })
+      .catch(() => {
+        sqrtAtBlock.delete(block); // retry next time
+        return null;
+      });
+    sqrtAtBlock.set(block, p);
+  }
+  return p;
+}
+
 function incSlot(slot: Hex, n: bigint): Hex {
   return ("0x" + (BigInt(slot) + n).toString(16).padStart(64, "0")) as Hex;
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useOverview } from "@/lib/hooks";
 import { fmtNum, fmtUsd } from "@/lib/format";
+import { UnitToggle, markPrice } from "@/lib/unit";
 import { SourceBadge, Skeleton } from "./ui";
 import { VaultList, VaultListSkeleton } from "./vault-list";
 import { IconArrow } from "./icons";
@@ -15,7 +16,7 @@ export function LiveScoreboard() {
     { k: "TVL", v: s ? fmtUsd(s.tvlUsd) : null, sub: s ? `${fmtNum(s.tvlEth, 3)} mWETH` : "" },
     { k: "Shortfall paid to depositors", v: s ? fmtUsd(s.shortfallPaidUsd) : null },
     { k: "Carry earned by curators", v: s ? fmtUsd(s.carryUsd) : null },
-    { k: "ETH price (pool spot)", v: data ? `$${fmtNum(data.pool.price, 0)}` : null, sub: data?.pool.twapPrice ? `TWAP $${fmtNum(data.pool.twapPrice, 0)}` : "" },
+    { k: "ETH price (pool spot)", v: data ? `$${fmtNum(data.pool.price, 0)}` : null, sub: data?.pool.twapPrice ? `TWAP $${fmtNum(data.pool.twapPrice, 0)} (NAV is marked here)` : "" },
   ];
   return (
     <div>
@@ -42,11 +43,14 @@ export function LiveVaults() {
     <div>
       <div className="mb-3 flex items-end justify-between gap-3">
         <h2 className="text-[22px] font-semibold tracking-tight">Vaults right now</h2>
-        <Link href="/vaults" className="inline-flex items-center gap-1 text-[14px] font-medium hover:underline">
-          All vaults <IconArrow size={14} />
-        </Link>
+        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+          <UnitToggle />
+          <Link href="/vaults" className="inline-flex items-center gap-1 text-[14px] font-medium hover:underline">
+            All vaults <IconArrow size={14} />
+          </Link>
+        </div>
       </div>
-      {data ? <VaultList vaults={data.vaults.slice(0, 4)} price={data.pool.price} compact /> : <VaultListSkeleton />}
+      {data ? <VaultList vaults={data.vaults.slice(0, 4)} price={markPrice(data.pool)} compact /> : <VaultListSkeleton />}
     </div>
   );
 }

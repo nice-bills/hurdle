@@ -10,6 +10,8 @@ import { fmtDuration, fmtEth, fmtToken, fmtUsd } from "@/lib/format";
 import { alignTick, tickFromUsd, usdPerEthFromTick } from "@/lib/math";
 import { TxStatus, useTx } from "@/lib/tx";
 import type { PoolState, VaultSummary } from "@/lib/types";
+import { depositStatus } from "@/lib/deposit-status";
+import { markPrice } from "@/lib/unit";
 import { epochInfo } from "./vault-list";
 import { RangeBar } from "./range-bar";
 import { Note, btn, inputCls, useNow } from "./ui";
@@ -78,7 +80,7 @@ export function ActionPanel({ vault, pool }: { vault: VaultSummary; pool: PoolSt
       </div>
       <div className="p-4 sm:p-5">
         {!address ? (
-          <ConnectPrompt tab={tab} vault={vault} />
+          <ConnectPrompt tab={tab} vault={vault} pool={pool} />
         ) : tab === "deposit" ? (
           <DepositPanel vault={vault} pool={pool} />
         ) : tab === "withdraw" ? (
@@ -93,7 +95,7 @@ export function ActionPanel({ vault, pool }: { vault: VaultSummary; pool: PoolSt
   );
 }
 
-function ConnectPrompt({ tab, vault }: { tab: Tab; vault: VaultSummary }) {
+function ConnectPrompt({ tab, vault, pool }: { tab: Tab; vault: VaultSummary; pool?: PoolState }) {
   const now = useNow(1000);
   const e = epochInfo(vault, now);
   const text: Record<Tab, string> = {
@@ -102,8 +104,10 @@ function ConnectPrompt({ tab, vault }: { tab: Tab; vault: VaultSummary }) {
     settle: e.due ? "This epoch is over: anyone can settle it now and earn 5% of the carry." : `Next settlement in ${fmtDuration(e.left)}. Anyone can call it.`,
     curator: "Connect the curator's wallet to post bond and rebalance.",
   };
+  const dep = tab === "deposit" ? depositStatus(vault, now, pool ? markPrice(pool) : 0) : null;
   return (
     <div className="space-y-4">
+      {dep && <Note tone={dep.tone}>{dep.text}</Note>}
       <p className="text-[14px] text-ink-2">{text[tab]}</p>
       <ConnectButton label="Connect wallet" showBalance={false} />
     </div>
@@ -175,19 +179,17 @@ function DepositPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState })
   const capNav = vault.minBondBps > 0 ? (bondValue * 10_000n) / BigInt(vault.minBondBps) : 0n;
   const roomShares = nav > 0n && capNav > nav ? ((capNav - nav) * supply) / nav : 0n;
 
+  const status = depositStatus(vault, now, markPrice(pool));
   const reasons: string[] = [];
   if (supply === 0n) reasons.push("The curator has not made the first deposit yet.");
-  if (vault.fired) reasons.push("The curator was fired; the vault is parked passive. You can still deposit, but there is no bond behind it.");
-  if (!e.windowOpen && !vault.fired) reasons.push(`The deposit window is closed. It reopens at the next settlement, in ${fmtDuration(e.left)}.`);
-  if (nav > 0n && BigInt(vault.deficit) * 10_000n > nav) reasons.push("Deficit outstanding: the bond paid a shortfall that is not refilled yet, so new deposits wait.");
-  if (vault.status === "FROZEN") reasons.push("Frozen: the bond is below its floor. The curator must post bond before the vault takes deposits.");
-  else if (shares && roomShares < shares) reasons.push(`Over capacity: this vault can take about ${fmtEth(roomShares)} more shares until the curator posts more bond.`);
-  const blocking = reasons.filter((r) => !r.startsWith("The curator was fired"));
+  if (vault.status !== "FROZEN" && !vault.fired && shares && roomShares < shares) reasons.push(`Over capacity: this vault can take about ${fmtEth(roomShares)} more shares until the curator posts more bond.`);
+  const blocking = [...reasons, ...(status?.blocked ? [status.text] : [])];
   const need0 = q ? q[0] > w.bal0 : false, need1 = q ? q[1] > w.bal1 : false;
   const approve0 = q ? w.allow0 < max0 : false, approve1 = q ? w.allow1 < max1 : false;
 
   return (
     <div className="space-y-4">
+      {status && <Note tone={status.tone}>{status.text}</Note>}
       <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-[13px] ${e.windowOpen ? "bg-good-soft" : "bg-bg-2"}`}>
         <span className="font-semibold">{e.windowOpen ? "Deposit window open" : "Deposit window closed"}</span>
         <span className="num text-ink-2">{e.windowOpen ? (e.due ? "epoch over: your deposit settles it first" : `${fmtDuration(e.windowLeft)} left`) : `opens in ${fmtDuration(e.left)}`}</span>
@@ -196,12 +198,12 @@ function DepositPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState })
         <input id="dep-amt" inputMode="decimal" placeholder="0.10" className={inputCls} value={amt} onChange={(x) => setAmt(x.target.value.replace(/[^0-9.]/g, ""))} />
       </Field>
       <div className="rows rounded-lg border border-line px-3">
-        <Row k="Value at NAV" v={shares ? `${fmtEth(valueWei)} mWETH · ${fmtUsd((Number(valueWei) / 1e18) * pool.price)}` : "–"} />
+        <Row k="Value at NAV" v={shares ? `${fmtUsd((Number(valueWei) / 1e18) * markPrice(pool))} · ${fmtEth(valueWei)} mWETH` : "–"} />
         <Row k="You pay (quote)" v={q ? `${fmtToken(q[0], 6)} mUSDC + ${fmtEth(q[1])} mWETH` : quote.isFetching ? "quoting…" : "–"} />
         <Row k="Max with 1% slack" v={q ? `${fmtToken(max0, 6)} + ${fmtEth(max1)}` : "–"} />
         <Row k="Your balances" v={`${fmtToken(w.bal0, 6)} mUSDC · ${fmtEth(w.bal1)} mWETH`} />
       </div>
-      {reasons.map((r) => <Note key={r} tone={r.startsWith("The curator was fired") ? "info" : "warn"}>{r}</Note>)}
+      {reasons.filter((r) => r !== status?.text && !/first deposit yet/.test(r)).map((r) => <Note key={r} tone="warn">{r}</Note>)}
       {(need0 || need1) && <Note tone="info">You need more {need0 && need1 ? "mUSDC and mWETH" : need0 ? "mUSDC" : "mWETH"}: mint some below.</Note>}
       <div className="flex flex-col gap-2">
         {approve0 && (
@@ -252,7 +254,7 @@ function WithdrawPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState }
       <div className="rows rounded-lg border border-line px-3">
         <Row k="Your shares" v={fmtEth(w.shares)} />
         <Row k="Share of vault" v={supply > 0n ? `${(Number((w.shares * 1_000_000n) / supply) / 10_000).toFixed(2)}%` : "–"} />
-        <Row k="Value at NAV" v={`${fmtEth(myValue)} mWETH · ${fmtUsd((Number(myValue) / 1e18) * pool.price)}`} />
+        <Row k="Value at NAV" v={`${fmtUsd((Number(myValue) / 1e18) * markPrice(pool))} · ${fmtEth(myValue)} mWETH`} />
       </div>
       <Field id="wd-amt" label="Shares to redeem" hint={<button type="button" className="hover:underline" onClick={() => setAmt(formatUnits(w.shares, 18))}>max</button>}>
         <input id="wd-amt" inputMode="decimal" placeholder="0.0" className={inputCls} value={amt} onChange={(x) => setAmt(x.target.value.replace(/[^0-9.]/g, ""))} />

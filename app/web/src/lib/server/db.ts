@@ -95,14 +95,12 @@ export async function dbPoolTicks(sinceSec: number) {
 }
 
 export async function dbKeeper(vault?: string, limit = 12): Promise<KeeperRun[] | null> {
+  type Row = { ts: Date; action: string; vault: string | null; tx: string | null; ok: boolean; skipped?: boolean; note: string | null };
+  // SELECT *: `skipped` only exists once the worker has applied its schema, and the web must not break before that.
   const r = vault
-    ? await q<{ ts: Date; action: string; vault: string | null; tx: string | null; ok: boolean; note: string | null }>(
-        "SELECT ts, action, vault, tx, ok, note FROM keeper_runs WHERE lower(vault) = lower($1) ORDER BY ts DESC LIMIT $2",
-        [vault, limit],
-      )
-    : await q<{ ts: Date; action: string; vault: string | null; tx: string | null; ok: boolean; note: string | null }>(
-        "SELECT ts, action, vault, tx, ok, note FROM keeper_runs ORDER BY ts DESC LIMIT $1",
-        [limit],
-      );
-  return r ? r.map((x) => ({ ...x, ts: Math.floor(new Date(x.ts).getTime() / 1000) })) : null;
+    ? await q<Row>("SELECT * FROM keeper_runs WHERE lower(vault) = lower($1) ORDER BY ts DESC LIMIT $2", [vault, limit])
+    : await q<Row>("SELECT * FROM keeper_runs ORDER BY ts DESC LIMIT $1", [limit]);
+  return r
+    ? r.map((x) => ({ ts: Math.floor(new Date(x.ts).getTime() / 1000), action: x.action, vault: x.vault, tx: x.tx, ok: x.ok, skipped: Boolean(x.skipped), note: x.note }))
+    : null;
 }

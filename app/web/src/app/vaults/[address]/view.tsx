@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useVaultDetail } from "@/lib/hooks";
 import { txUrl } from "@/lib/chain";
 import { ago, fmtDuration, fmtEth, fmtSignedBp, fmtSignedPct, fmtUsd, short, utc } from "@/lib/format";
+import { UnitToggle, markPrice, money, moneyAlt, unitName, useUnit, type Unit } from "@/lib/unit";
+import { KeeperRuns } from "@/components/keeper-runs";
 import { usdPerEthFromSqrt } from "@/lib/math";
 import type { VaultDetail, VaultEvent } from "@/lib/types";
 import { ActionPanel } from "@/components/actions";
@@ -34,10 +36,13 @@ function Loaded({ d }: { d: VaultDetail }) {
   const v = d.vault;
   const now = useNow(1000);
   const e = epochInfo(v, now);
-  const navEth = v.nav ? Number(v.nav) / 1e18 : null;
+  const { unit } = useUnit();
+  const price = markPrice(d.pool);
+  const fm = (wei: bigint | string | null | undefined) => money(wei, price, unit);
   const cum = v.cumulative;
-  const depVsPar = cum ? cum.depositor / cum.par - 1 : null;
-  const stratVsPar = cum ? cum.strategy / cum.par - 1 : null;
+  // "vs par" = gap between the index lines in points of starting capital (the README / replay convention), in the chosen unit
+  const depVsPar = cum ? (unit === "usd" ? cum.depositorUsd - cum.parUsd : cum.depositor - cum.par) : null;
+  const stratVsPar = cum ? (unit === "usd" ? cum.strategyUsd - cum.parUsd : cum.strategy - cum.par) : null;
 
   return (
     <div className="pt-8">
@@ -57,7 +62,10 @@ function Loaded({ d }: { d: VaultDetail }) {
             {v.isVault && <span className="text-good">factory-registered (isVault)</span>}
           </div>
         </div>
-        <SourceBadge source={d.source} head={d.head} />
+        <div className="flex flex-col items-end gap-2">
+          <SourceBadge source={d.source} head={d.head} />
+          <UnitToggle />
+        </div>
       </header>
 
       {v.status === "FIRED" && (
@@ -69,11 +77,11 @@ function Loaded({ d }: { d: VaultDetail }) {
 
       {/* scoreboard */}
       <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line lg:grid-cols-4">
-        <Cell k="NAV" v={v.nav ? <>{fmtEth(v.nav)} <span className="text-[13px] font-medium text-ink-2">mWETH</span></> : "–"} sub={navEth != null ? `${fmtUsd(navEth * d.pool.price)} at spot` : ""} />
+        <Cell k={`NAV (${unitName(unit)})`} v={fm(v.nav)} sub={v.nav ? `${moneyAlt(v.nav, price, unit)} · ETH $${price.toFixed(0)} TWAP` : ""} />
         <Cell
-          k="Depositors vs par"
+          k={`Depositors vs par (${unitName(unit)})`}
           v={depVsPar != null ? <SignedValue v={depVsPar}>{fmtSignedPct(depVsPar, 3)}</SignedValue> : "–"}
-          sub={stratVsPar != null ? `strategy ${fmtSignedPct(stratVsPar, 3)} · ${v.totals.settlements} epochs` : "starts at the first settlement"}
+          sub={stratVsPar != null ? `strategy ${fmtSignedPct(stratVsPar, 3)} · points of starting capital · ${v.totals.settlements} epochs` : "starts at the first settlement"}
         />
         <Cell
           k="Bond / NAV"
@@ -90,17 +98,17 @@ function Loaded({ d }: { d: VaultDetail }) {
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-6">
           <Panel title="NAV vs par, per settlement" aside={<Legend items={[{ label: "Par", kind: "par" }, { label: "Depositors", kind: "solid", color: "var(--ink)" }, { label: "Strategy NAV", kind: "dash", color: "var(--ink-2)" }]} />}>
-            <SeriesChart d={d} />
+            <SeriesChart d={d} unit={unit} />
           </Panel>
 
           <div className="grid gap-6 md:grid-cols-2">
             <Panel title="Bond">
               <BondMeter bondBps={v.bondBps} minBondBps={v.minBondBps} />
               <div className="rows mt-4">
-                <KV k="Posted tokens" v={`${fmtEth(v.bond)} mWETH`} />
-                <KV k="Bond value (incl. locked shares)" v={`${fmtEth(v.bondValue)} mWETH`} />
-                <KV k="Deficit (paid, not refilled)" v={`${fmtEth(v.deficit)} mWETH`} />
-                <KV k="Capacity (bond ÷ floor)" v={v.bondValue && v.minBondBps ? `${fmtEth((BigInt(v.bondValue) * 10_000n) / BigInt(v.minBondBps))} mWETH` : "–"} />
+                <KV k="Posted tokens (mWETH)" v={fm(v.bond)} />
+                <KV k="Bond value (incl. locked shares)" v={fm(v.bondValue)} />
+                <KV k="Deficit (paid, not refilled)" v={fm(v.deficit)} />
+                <KV k="Capacity (bond ÷ floor)" v={v.bondValue && v.minBondBps ? fm((BigInt(v.bondValue) * 10_000n) / BigInt(v.minBondBps)) : "–"} />
               </div>
             </Panel>
             <Panel title="Terms">
@@ -110,7 +118,7 @@ function Loaded({ d }: { d: VaultDetail }) {
                 <KV k="Max tick deviation" v={`${v.maxTickDeviation} ticks`} />
                 <KV k="Epoch" v={fmtDuration(v.epochSeconds)} />
                 <KV k="Rebalances this epoch" v={`${v.rebalancesThisEpoch} / 4`} />
-                <KV k="Shortfall paid · carry" v={`${fmtEth(v.totals.shortfallPaid)} · ${fmtEth(v.totals.carry)}`} />
+                <KV k="Shortfall paid · carry" v={unit === "usd" ? `${fmtUsd(v.totals.shortfallPaidUsd)} · ${fmtUsd(v.totals.carryUsd)}` : `${fmtEth(v.totals.shortfallPaid)} · ${fmtEth(v.totals.carry)} mWETH`} />
               </div>
             </Panel>
           </div>
@@ -120,19 +128,12 @@ function Loaded({ d }: { d: VaultDetail }) {
           </Panel>
 
           <Panel title="Activity" aside={<span className="text-[12.5px] text-ink-2">{d.events.length} events</span>}>
-            <EventFeed events={d.events} />
+            <EventFeed events={d.events} unit={unit} price={price} />
           </Panel>
 
           {d.keeper.length > 0 && (
             <Panel title="Keeper runs">
-              <ul className="rows text-[13px]">
-                {d.keeper.map((k, i) => (
-                  <li key={i} className="flex items-center justify-between gap-3 py-2">
-                    <span className={k.ok ? "" : "text-bad"}>{k.action}{k.note ? <span className="text-ink-2"> · {k.note}</span> : null}</span>
-                    <span className="flex shrink-0 items-center gap-2 text-ink-2">{ago(k.ts)}{k.tx && <a href={txUrl(k.tx)} target="_blank" rel="noreferrer" aria-label="Open keeper transaction"><IconExternal size={13} /></a>}</span>
-                  </li>
-                ))}
-              </ul>
+              <KeeperRuns runs={d.keeper} />
             </Panel>
           )}
         </div>
@@ -140,7 +141,10 @@ function Loaded({ d }: { d: VaultDetail }) {
         <aside className="lg:sticky lg:top-20 lg:self-start">
           <ActionPanel vault={v} pool={d.pool} />
           <p className="mt-3 px-1 text-[12px] leading-relaxed text-ink-2">
-            Values are in the pool&apos;s token1 (mWETH) at the hook&apos;s TWAP, as the contract marks them. Testnet mock tokens only.
+            {unit === "usd"
+              ? "Values are in USD: mUSDC counts $1, mWETH is priced at the hook's TWAP (the price the contract marks NAV at). Charts value each settlement at its own price. Switch to mWETH to see the contract's own unit."
+              : "Values are in mWETH (the pool's token1) at the hook's TWAP, the contract's own unit. When ETH falls, par in mWETH rises: switch to USD for the depositor's real outcome."}
+            {" "}Testnet mock tokens only.
           </p>
         </aside>
       </div>
@@ -167,7 +171,7 @@ function KV({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-function SeriesChart({ d }: { d: VaultDetail }) {
+function SeriesChart({ d, unit }: { d: VaultDetail; unit: Unit }) {
   const s = d.series;
   const now = useNow(1000);
   const e = epochInfo(d.vault, now);
@@ -184,34 +188,65 @@ function SeriesChart({ d }: { d: VaultDetail }) {
       </div>
     );
   const fired = s.find((p) => p.fired);
+  const usd = unit === "usd";
+  const pick = (p: (typeof s)[number]) => (usd ? { par: p.parUsd, strategy: p.strategyUsd, depositor: p.depositorUsd } : { par: p.par, strategy: p.strategy, depositor: p.depositor });
+  const idx = s.map(pick);
+  const u = unitName(unit);
+  const when = (ts: number) => new Date(ts * 1000).toISOString().slice(11, 16);
   return (
     <div>
       <ParChart
         t={s.map((p) => p.ts)}
-        height={300}
+        height={190}
         dots={s.length < 40}
-        ariaLabel="Cumulative depositor and strategy value against par at each settlement"
+        ariaLabel={`Gap to par in points of starting capital, ${u}, at each settlement`}
+        yTitle={`vs par, ${u} (points of starting capital)`}
+        xTitle="settlement time, UTC"
         yFormat={(x) => fmtSignedPct(x, Math.abs(x) < 0.01 ? 2 : 1)}
-        xFormat={(ts) => new Date(ts * 1000).toISOString().slice(11, 16)}
+        xFormat={when}
         markers={fired ? [{ t: fired.ts, label: "Fired", tone: "bad" }] : []}
         lines={[
-          { id: "par", label: "Par", values: s.map((p) => p.par - 1), color: "var(--bar)", kind: "par" },
-          { id: "nav", label: "Strategy", values: s.map((p) => p.strategy - 1), color: "var(--ink-2)", kind: "dash" },
-          { id: "dep", label: "Depositors", values: s.map((p) => p.depositor - 1), color: "var(--ink)", kind: "solid" },
+          { id: "par0", label: "Par", values: idx.map(() => 0), color: "var(--bar)", kind: "par" },
+          { id: "nav", label: "Strategy", values: idx.map((p) => p.strategy - p.par), color: "var(--ink-2)", kind: "dash" },
+          { id: "dep", label: "Depositors", values: idx.map((p) => p.depositor - p.par), color: "var(--ink)", kind: "solid" },
+        ]}
+        tooltip={(i) => (
+          <div className="space-y-0.5">
+            <div className="font-semibold">{utc(s[i].ts)}</div>
+            <div className="num flex justify-between gap-4"><span className="text-ink-2">Depositors vs par</span>{fmtSignedPct(idx[i].depositor - idx[i].par, 3)}</div>
+            <div className="num flex justify-between gap-4"><span className="text-ink-2">Strategy vs par</span>{fmtSignedPct(idx[i].strategy - idx[i].par, 3)}</div>
+          </div>
+        )}
+      />
+      <div className="mt-4" />
+      <ParChart
+        t={s.map((p) => p.ts)}
+        height={300}
+        dots={s.length < 40}
+        ariaLabel={`Cumulative depositor, strategy and par value in ${u}, as return on starting capital, at each settlement`}
+        yTitle={`return on starting capital, ${u}`}
+        xTitle="settlement time, UTC"
+        yFormat={(x) => fmtSignedPct(x, Math.abs(x) < 0.01 ? 2 : 1)}
+        xFormat={when}
+        markers={fired ? [{ t: fired.ts, label: "Fired", tone: "bad" }] : []}
+        lines={[
+          { id: "par", label: "Par", values: idx.map((p) => p.par - 1), color: "var(--bar)", kind: "par" },
+          { id: "nav", label: "Strategy", values: idx.map((p) => p.strategy - 1), color: "var(--ink-2)", kind: "dash" },
+          { id: "dep", label: "Depositors", values: idx.map((p) => p.depositor - 1), color: "var(--ink)", kind: "solid" },
         ]}
         tooltip={(i) => (
           <div className="space-y-0.5">
             <div className="font-semibold">{utc(s[i].ts)} {s[i].kind === "rebase" ? "· deposit re-baseline" : ""}</div>
-            <div className="num flex justify-between gap-4"><span className="text-ink-2">Par</span>{fmtSignedPct(s[i].par - 1, 3)}</div>
-            <div className="num flex justify-between gap-4"><span className="text-ink-2">Depositors</span>{fmtSignedPct(s[i].depositor - 1, 3)}</div>
-            <div className="num flex justify-between gap-4"><span className="text-ink-2">Strategy</span>{fmtSignedPct(s[i].strategy - 1, 3)}</div>
+            <div className="num flex justify-between gap-4"><span className="text-ink-2">Par</span>{fmtSignedPct(idx[i].par - 1, 3)}</div>
+            <div className="num flex justify-between gap-4"><span className="text-ink-2">Depositors</span>{fmtSignedPct(idx[i].depositor - 1, 3)}</div>
+            <div className="num flex justify-between gap-4"><span className="text-ink-2">Strategy</span>{fmtSignedPct(idx[i].strategy - 1, 3)}</div>
             {i > 0 && <div className="num flex justify-between gap-4"><span className="text-ink-2">This epoch vs par</span><SignedValue v={s[i].vsPar}>{fmtSignedBp(s[i].vsPar)}</SignedValue></div>}
             <div className="num flex justify-between gap-4"><span className="text-ink-2">ETH (TWAP)</span>${s[i].price.toFixed(0)}</div>
           </div>
         )}
       />
       <p className="mt-2 text-[12px] text-ink-2">
-        Derived from Settled events: each epoch&apos;s NAV ÷ par is exact; levels exclude par&apos;s fee credit (a fraction of a bp per epoch), equally for every line.
+        {usd ? "USD: each settlement is valued at its own pool price (mUSDC = $1), so a falling ETH is a loss for par and depositors alike." : "mWETH: the contract's unit; par here rises when ETH falls."} Derived from Settled events: each epoch&apos;s NAV ÷ par is exact; levels exclude par&apos;s fee credit (a fraction of a bp per epoch), equally for every line.
       </p>
     </div>
   );
@@ -222,8 +257,18 @@ const EV_LABEL: Record<string, string> = {
   BondPosted: "Bond posted", SettlerPaid: "Settler paid", BondReclaimed: "Bond reclaimed", VaultCreated: "Vault created",
 };
 
-function describe(e: VaultEvent): React.ReactNode {
+/** USD per ETH for an event: its own Settled price, else the Settled in the same tx, else the nearest settlement, else `fallback`. */
+function eventPrice(e: VaultEvent, all: VaultEvent[], fallback: number): number {
+  if (e.name === "Settled") return usdPerEthFromSqrt(String(e.args.sqrtPriceX96));
+  const settled = all.filter((x) => x.name === "Settled");
+  const same = settled.find((x) => x.tx === e.tx);
+  const near = same ?? settled.reduce<VaultEvent | null>((b, x) => (!b || Math.abs(x.block - e.block) < Math.abs(b.block - e.block) ? x : b), null);
+  return near ? usdPerEthFromSqrt(String(near.args.sqrtPriceX96)) : fallback;
+}
+
+function describe(e: VaultEvent, unit: Unit, price: number): React.ReactNode {
   const a = e.args;
+  const m = (wei: unknown) => money(String(wei), price, unit);
   switch (e.name) {
     case "Settled": {
       const nav = BigInt(String(a.nav)), bench = BigInt(String(a.bench));
@@ -231,25 +276,25 @@ function describe(e: VaultEvent): React.ReactNode {
       const vs = Number(nav) / Math.max(1, Number(bench)) - 1;
       return (
         <>
-          NAV {fmtEth(a.nav as string)} vs par {fmtEth(a.bench as string)} · <SignedValue v={vs}>{fmtSignedBp(vs)}</SignedValue>
-          {beat ? (BigInt(String(a.take)) > 0n ? ` · curator take ${fmtEth(a.take as string)}` : "") : ` · bond paid ${fmtEth(a.shortfallPaid as string)}`}
+          NAV {m(a.nav)} vs par {m(a.bench)} · <SignedValue v={vs}>{fmtSignedBp(vs)}</SignedValue>
+          {beat ? (BigInt(String(a.take)) > 0n ? ` · curator take ${m(a.take)}` : "") : ` · bond paid ${m(a.shortfallPaid)}`}
           <span className="text-ink-2"> · ETH ${usdPerEthFromSqrt(String(a.sqrtPriceX96)).toFixed(0)}</span>
         </>
       );
     }
-    case "Fired": return <>bond {fmtEth(a.bond as string)} left at NAV {fmtEth(a.nav as string)}: parked passive</>;
+    case "Fired": return <>bond {m(a.bond)} left at NAV {m(a.nav)}: parked passive</>;
     case "Deposited": return <>{short(String(a.owner))} · {fmtEth(a.shares as string)} shares for {(Number(a.amount0) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 })} mUSDC + {fmtEth(a.amount1 as string)} mWETH</>;
     case "Withdrawn": return <>{short(String(a.owner))} · {fmtEth(a.shares as string)} shares → {(Number(a.amount0) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 })} mUSDC + {fmtEth(a.amount1 as string)} mWETH</>;
     case "Rebalanced": return <>ticks {String(a.tickLower)} → {String(a.tickUpper)}</>;
-    case "BondPosted": return <>+{fmtEth(a.amount as string)} mWETH · bond {fmtEth(a.bond as string)}</>;
+    case "BondPosted": return <>+{m(a.amount)} · bond {m(a.bond)}</>;
     case "SettlerPaid": return <>{short(String(a.settler))} earned {fmtEth(a.shares as string)} shares</>;
-    case "BondReclaimed": return <>{fmtEth(a.bondTokens as string)} mWETH + {fmtEth(a.bondShares as string)} shares</>;
+    case "BondReclaimed": return <>{m(a.bondTokens)} + {fmtEth(a.bondShares as string)} shares</>;
     case "VaultCreated": return <>by {short(String(a.curator))}</>;
     default: return null;
   }
 }
 
-function EventFeed({ events }: { events: VaultEvent[] }) {
+function EventFeed({ events, unit, price }: { events: VaultEvent[]; unit: Unit; price: number }) {
   if (!events.length) return <p className="text-[14px] text-ink-2">No events yet.</p>;
   return (
     <ul className="rows -my-1 max-h-[460px] overflow-y-auto pr-1">
@@ -265,7 +310,7 @@ function EventFeed({ events }: { events: VaultEvent[] }) {
                   {ago(e.ts)} · #{e.block.toLocaleString("en-US")} <IconExternal size={11} />
                 </a>
               </div>
-              <div className="num mt-0.5 break-words text-ink-2">{describe(e)}</div>
+              <div className="num mt-0.5 break-words text-ink-2">{describe(e, unit, eventPrice(e, events, price))}</div>
             </div>
           </li>
         );

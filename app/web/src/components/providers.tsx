@@ -14,6 +14,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { WagmiProvider, createConfig, http } from "wagmi";
+import { UnitProvider } from "@/lib/unit";
 import { unichainSepolia } from "@/lib/chain";
 
 const wcId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
@@ -97,7 +98,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={qc}>
           <RainbowKitProvider theme={rkTheme(mode)} modalSize="compact" initialChain={unichainSepolia}>
-            {children}
+            <UnitProvider>{children}</UnitProvider>
           </RainbowKitProvider>
         </QueryClientProvider>
       </WagmiProvider>

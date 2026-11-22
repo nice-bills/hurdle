@@ -4,7 +4,7 @@ import { usdPerEthFromSqrt, usdPerEthFromTick } from "@/lib/math";
 import { buildSeries } from "@/lib/series";
 import type { DataSource, KeeperRun, Overview, PoolState, VaultDetail, VaultEvent, VaultSummary } from "@/lib/types";
 import { dbCursorBlock, dbEvents, dbKeeper, dbPoolTicks, dbSnapshots, dbVaults } from "./db";
-import { head, logsRange, logsRpc, readPoolRpc, readVaultsRpc } from "./rpc";
+import { head, logsRange, logsRpc, poolSqrtAtBlock, readPoolRpc, readVaultsRpc } from "./rpc";
 
 type Registry = {
   source: DataSource;
@@ -80,10 +80,20 @@ async function poolState(sinceSec: number, events: VaultEvent[]): Promise<PoolSt
   };
 }
 
+/** Pool price when the vault's first deposit landed: the start of its first settlement segment, for the USD basis. */
+async function firstDepositSqrt(events: VaultEvent[]): Promise<bigint | null> {
+  const ev = [...events].sort((a, b) => a.block - b.block || a.logIndex - b.logIndex);
+  const dep = ev.find((e) => e.name === "Deposited");
+  const settled = ev.find((e) => e.name === "Settled");
+  if (!dep || (settled && settled.block < dep.block)) return null;
+  return poolSqrtAtBlock(dep.block);
+}
+
 function summarize(
   reg: Registry["vaults"][number],
   data: Record<string, unknown>,
   events: VaultEvent[],
+  startSqrt: bigint | null,
 ): VaultSummary {
   const s = (k: string) => (data[k] == null ? null : String(data[k]));
   const n = (k: string, d = 0) => (data[k] == null ? d : Number(data[k]));
@@ -95,7 +105,7 @@ function summarize(
   const minBondBps = n("minBondBps", 200);
   const bondBps = nav && bondValue && BigInt(nav) > 0n ? Number((BigInt(bondValue) * 1_000_000n) / BigInt(nav)) / 100 : null;
   const frozen = !fired && bondBps != null && bondBps < minBondBps;
-  const { series, totals } = buildSeries(events);
+  const { series, totals } = buildSeries(events, startSqrt);
   const lastSettled = [...events].reverse().find((e) => e.name === "Settled") ?? null;
   const last = series.length > 1 ? series[series.length - 1] : null;
   const known = KNOWN_LABELS[reg.address.toLowerCase()];
@@ -130,7 +140,7 @@ function summarize(
     lastSettle: lastSettled
       ? { ...lastSettled, vsPar: Number(lastSettled.args.nav) / Math.max(1, Number(lastSettled.args.bench)) - 1 }
       : null,
-    cumulative: last ? { strategy: last.strategy, par: last.par, depositor: last.depositor } : null,
+    cumulative: last ? { strategy: last.strategy, par: last.par, depositor: last.depositor, strategyUsd: last.strategyUsd, parUsd: last.parUsd, depositorUsd: last.depositorUsd } : null,
     totals,
     parked: fired && Number(pos[0]) === minUsableTick() && Number(pos[1]) === maxUsableTick(),
     isVault: Boolean(data.isVault),
@@ -152,10 +162,10 @@ export function getOverview(): Promise<Overview> {
       dbKeeper(undefined, 10),
     ]);
     const byVault = groupEvents(reg.events);
-    const vaults = ordered(live.map((l, i) => summarize(reg.vaults[i], l.data as Record<string, unknown>, byVault.get(reg.vaults[i].address) ?? [])));
+    const starts = await Promise.all(reg.vaults.map((r) => firstDepositSqrt(byVault.get(r.address) ?? [])));
+    const vaults = ordered(live.map((l, i) => summarize(reg.vaults[i], l.data as Record<string, unknown>, byVault.get(reg.vaults[i].address) ?? [], starts[i])));
+    const mark = pool.twapPrice ?? pool.price; // the contract marks NAV at the hook TWAP
     const tvlEth = vaults.reduce((a, v) => a + (v.nav ? Number(v.nav) / 1e18 : 0), 0);
-    const shortEth = vaults.reduce((a, v) => a + Number(v.totals.shortfallPaid) / 1e18, 0);
-    const carryEth = vaults.reduce((a, v) => a + Number(v.totals.carry) / 1e18, 0);
     return {
       source: reg.source,
       head: h.n,
@@ -165,11 +175,11 @@ export function getOverview(): Promise<Overview> {
       stats: {
         vaults: vaults.length,
         tvlEth,
-        tvlUsd: tvlEth * pool.price,
-        shortfallPaidUsd: shortEth * pool.price,
-        carryUsd: carryEth * pool.price,
+        tvlUsd: tvlEth * mark,
+        shortfallPaidUsd: vaults.reduce((a, v) => a + v.totals.shortfallPaidUsd, 0),
+        carryUsd: vaults.reduce((a, v) => a + v.totals.carryUsd, 0),
         settlements: vaults.reduce((a, v) => a + v.totals.settlements, 0),
-        depositorsBelowPar: vaults.filter((v) => v.cumulative && v.cumulative.depositor < v.cumulative.par - 1e-6).length,
+        depositorsBelowPar: vaults.filter((v) => v.cumulative && v.cumulative.depositorUsd < v.cumulative.parUsd - 1e-6).length,
       },
       keeper: keeper ?? [],
       updatedAt: Math.floor(Date.now() / 1000),
@@ -207,8 +217,9 @@ export function getVaultDetail(address: string): Promise<VaultDetail | null> {
       dbSnapshots(a),
       dbKeeper(a, 8),
     ]);
-    const vault = summarize(entry, live.data as Record<string, unknown>, events);
-    const { series } = buildSeries(events);
+    const startSqrt = await firstDepositSqrt(events);
+    const vault = summarize(entry, live.data as Record<string, unknown>, events, startSqrt);
+    const { series } = buildSeries(events, startSqrt);
     return {
       source: reg.source,
       head: h.n,

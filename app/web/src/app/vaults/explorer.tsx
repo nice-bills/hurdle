@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useOverview } from "@/lib/hooks";
 import { fmtNum, fmtUsd } from "@/lib/format";
+import { UnitToggle, markPrice } from "@/lib/unit";
 import type { VaultStatus } from "@/lib/types";
 import { VaultList, VaultListSkeleton } from "@/components/vault-list";
 import { Note, SourceBadge, StatusPill, btn } from "@/components/ui";
@@ -48,6 +49,7 @@ export function VaultsExplorer() {
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-4 text-[13px] text-ink-2">
+          <UnitToggle />
           {data && <span className="num">TVL {fmtUsd(data.stats.tvlUsd)} · ETH ${fmtNum(data.pool.price, 0)}</span>}
           <SourceBadge source={data?.source} head={data?.head} />
         </div>
@@ -59,7 +61,7 @@ export function VaultsExplorer() {
         ) : isLoading || !data ? (
           <VaultListSkeleton rows={3} />
         ) : list.length ? (
-          <VaultList vaults={list} price={data.pool.price} />
+          <VaultList vaults={list} price={markPrice(data.pool)} />
         ) : (
           <div className="rounded-xl border border-dashed border-line-2 px-6 py-12 text-center">
             <p className="font-semibold">No {f.toLowerCase()} vaults.</p>

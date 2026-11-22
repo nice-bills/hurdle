@@ -19,6 +19,10 @@ export interface SeriesPoint {
   strategy: number;
   par: number;
   depositor: number;
+  /** same indices on the USD basis (mUSDC = $1, mWETH at the settlement price) */
+  strategyUsd: number;
+  parUsd: number;
+  depositorUsd: number;
   /** this segment: nav / bench - 1 */
   vsPar: number;
   price: number;
@@ -34,6 +38,10 @@ export interface VaultTotals {
   carry: string;
   beats: number;
   misses: number;
+  /** USD, each amount valued at its own settlement price */
+  shortfallPaidUsd: number;
+  takeUsd: number;
+  carryUsd: number;
 }
 
 export interface VaultSummary {
@@ -65,7 +73,7 @@ export interface VaultSummary {
   status: VaultStatus;
   bondBps: number | null;
   lastSettle: (VaultEvent & { vsPar: number }) | null;
-  cumulative: { strategy: number; par: number; depositor: number } | null;
+  cumulative: { strategy: number; par: number; depositor: number; strategyUsd: number; parUsd: number; depositorUsd: number } | null;
   totals: VaultTotals;
   parked: boolean;
   isVault: boolean;
@@ -121,5 +129,7 @@ export interface KeeperRun {
   vault: string | null;
   tx: string | null;
   ok: boolean;
+  /** simulated, would revert for an expected reason (note = decoded error name): not a failure */
+  skipped?: boolean;
   note: string | null;
 }

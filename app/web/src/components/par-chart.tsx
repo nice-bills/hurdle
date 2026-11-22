@@ -28,6 +28,9 @@ type Props = {
   dots?: boolean;
   fixedDomain?: [number, number];
   includeZero?: boolean;
+  /** axis titles: unit and basis of the y axis, what the x axis is */
+  yTitle?: string;
+  xTitle?: string;
 };
 
 function nice(lo: number, hi: number) {
@@ -43,7 +46,7 @@ function nice(lo: number, hi: number) {
   return { lo, hi, ticks };
 }
 
-export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = (v) => v.toFixed(2), xFormat, tooltip, belowPar, ariaLabel, dots, fixedDomain, includeZero = true }: Props) {
+export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = (v) => v.toFixed(2), xFormat, tooltip, belowPar, ariaLabel, dots, fixedDomain, includeZero = true, yTitle, xTitle }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -67,7 +70,7 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
   }, [lines, fixedDomain, includeZero]);
 
   const narrow = w < 520;
-  const g = { l: narrow ? 46 : 56, r: 14, t: 14, b: 26 };
+  const g = { l: narrow ? 46 : 56, r: 14, t: yTitle ? 30 : 14, b: 26 };
   const iw = Math.max(1, w - g.l - g.r), ih = height - g.t - g.b;
   const t0 = t[0] ?? 0, t1 = t[N - 1] ?? 1;
   const X = (ts: number) => g.l + (t1 === t0 ? iw / 2 : ((ts - t0) / (t1 - t0)) * iw);
@@ -107,7 +110,7 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
   };
 
   return (
-    <div ref={ref} className="relative w-full select-none" style={{ height }}>
+    <div ref={ref} className="relative w-full select-none" style={{ height: height + (xTitle ? 18 : 0) }}>
       {w > 0 && (
         <svg
           width={w}
@@ -124,6 +127,9 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
               <rect width="3" height="8" fill="var(--surface)" opacity=".5" />
             </pattern>
           </defs>
+          {yTitle && (
+            <text x={g.l - (narrow ? 40 : 50)} y={11} className="fill-ink-2 text-[11.5px] font-medium">{yTitle}</text>
+          )}
           {dom.ticks.map((v) => (
             <g key={v}>
               <line x1={g.l} x2={w - g.r} y1={Y(v)} y2={Y(v)} stroke={Math.abs(v) < 1e-12 ? "var(--line-2)" : "var(--grid)"} />
@@ -175,6 +181,7 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
           )}
         </svg>
       )}
+      {xTitle && w > 0 && <div className="absolute inset-x-0 bottom-0 pr-3 text-right text-[11px] text-ink-2">{xTitle}</div>}
       {hover != null && tooltip && w > 0 && (
         <div
           className="pointer-events-none absolute top-2 z-[var(--z-menu)] min-w-[180px] rounded-lg border border-line bg-surface px-3 py-2 text-[12.5px] shadow-card"
