@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end validation: build, all tests, both real-week replays, par check, UI data + smoke, optional live read.
 # Usage: ./e2e.sh            (offline)      E2E_LIVE=1 ./e2e.sh   (also read-only calls to Unichain Sepolia)
+#        E2E_APP=1 ./e2e.sh  (step h: headless-chromium smoke of the live dApp, see e2e_app_smoke.mjs)
 set -euo pipefail
 cd "$(dirname "$0")"
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -110,6 +111,15 @@ PY
     bond=$(cast call "$a" "bond()(uint256)" --rpc-url "$RPC") || die "$n bond() call failed"
     echo "$n $a  nav=$nav  fired=$fired  bond=$bond"
   done
+  pass
+fi
+fi
+
+if step "h. dApp smoke (E2E_APP=1; live app, 1280 + 390 px)"; then
+if [ "${E2E_APP:-0}" != "1" ]; then skip "set E2E_APP=1 to enable (E2E_APP_URL overrides https://hurdle-app.onrender.com)"; else
+  CHROME=""; for c in /usr/bin/chromium chromium chromium-browser google-chrome-stable google-chrome; do command -v "$c" >/dev/null 2>&1 && { CHROME=$(command -v "$c"); break; }; done
+  if [ -z "$CHROME" ] || ! command -v node >/dev/null 2>&1; then die "E2E_APP=1 needs node and chromium/chrome"; fi
+  node e2e_app_smoke.mjs "$CHROME" "${E2E_APP_URL:-https://hurdle-app.onrender.com}" app/shared/deployment-1301.json || die "dApp smoke failed"
   pass
 fi
 fi

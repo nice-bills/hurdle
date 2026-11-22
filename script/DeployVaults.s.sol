@@ -47,7 +47,7 @@ contract DeployVaults is Script {
         string path;
     }
 
-    function run() external returns (HurdleVault patient, HurdleVault chaser) {
+    function run() external returns (HurdleVault patient, HurdleVault chaser, HurdleVault reckless) {
         uint256 pk = vm.envUint("PRIVATE_KEY");
         Ctx memory c = _load();
 
@@ -61,11 +61,14 @@ contract DeployVaults is Script {
         (, int24 tick,,) = c.manager.getSlot0(c.key.toId());
         address depositor = _depositor(pk);
         c.factory = new HurdleVaultFactory(c.manager, address(c.hook));
-        patient = _vault(c, vm.addr(pk), depositor, tick, 950);
-        chaser = _vault(c, vm.addr(pk), depositor, tick, 200);
+        // Bond in bps of the deposit's value: Patient and Chaser 10% (healthy, depositable demo vaults),
+        // Reckless 2.5% with a ±1% range: the scripted price move fires it.
+        patient = _vault(c, vm.addr(pk), depositor, tick, 950, 1000);
+        chaser = _vault(c, vm.addr(pk), depositor, tick, 200, 1000);
+        reckless = _vault(c, vm.addr(pk), depositor, tick, 100, 250);
         vm.stopBroadcast();
 
-        _write(c, patient, chaser, depositor);
+        _write(c, patient, chaser, reckless, depositor);
     }
 
     function _load() internal view returns (Ctx memory c) {
@@ -98,7 +101,7 @@ contract DeployVaults is Script {
 
     /// Deployer is curator (the factory makes msg.sender the curator); it funds the first deposit with shares minted to `depositor`.
     /// Bond 5% of the deposit (token1); deposit 1 mWETH + 3000 mUSDC.
-    function _vault(Ctx memory c, address curator, address depositor, int24 tick, int24 half)
+    function _vault(Ctx memory c, address curator, address depositor, int24 tick, int24 half, uint256 bondBps)
         internal
         returns (HurdleVault v)
     {
@@ -106,7 +109,8 @@ contract DeployVaults is Script {
         require(v.curator() == curator, "factory curator");
         c.usdc.approve(address(v), type(uint256).max);
         c.weth.approve(address(v), type(uint256).max);
-        v.postBond(c.wethIs0 ? 300e6 : 0.1e18); // token1 is mUSDC if mWETH is currency0
+        // Deposit is worth ~6000 mUSDC = ~2 mWETH; bond in token1 (mUSDC if mWETH is currency0).
+        v.postBond(c.wethIs0 ? 6000e6 * bondBps / 10_000 : 2e18 * bondBps / 10_000);
         (uint256 a0, uint256 a1) = c.wethIs0 ? (uint256(1e18), uint256(3000e6)) : (uint256(3000e6), uint256(1e18));
         v.firstDeposit(a0, a1, depositor);
         int24 mid = (tick / TICK_SPACING) * TICK_SPACING;
@@ -114,7 +118,9 @@ contract DeployVaults is Script {
     }
 
     /// Re-serializes the input JSON (every key step 1 wrote) plus the two vault addresses.
-    function _write(Ctx memory c, HurdleVault patient, HurdleVault chaser, address depositor) internal {
+    function _write(Ctx memory c, HurdleVault patient, HurdleVault chaser, HurdleVault reckless, address depositor)
+        internal
+    {
         string memory o = "vaults";
         vm.serializeUint(o, "chainId", vm.parseJsonUint(c.json, ".chainId"));
         vm.serializeAddress(o, "deployer", vm.parseJsonAddress(c.json, ".deployer"));
@@ -132,11 +138,13 @@ contract DeployVaults is Script {
         vm.serializeAddress(o, "factory", address(c.factory));
         vm.serializeAddress(o, "patientVault", address(patient));
         vm.serializeAddress(o, "chaserVault", address(chaser));
+        vm.serializeAddress(o, "recklessVault", address(reckless));
         vm.serializeAddress(o, "depositor", depositor);
         string memory json = vm.serializeBool(o, "broadcast", vm.isContext(VmSafe.ForgeContext.ScriptBroadcast));
         vm.writeJson(json, c.path);
         console2.log("Patient vault", address(patient));
         console2.log("Chaser vault", address(chaser));
+        console2.log("Reckless vault", address(reckless));
         console2.log("wrote", c.path);
     }
 }
