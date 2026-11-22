@@ -27,6 +27,7 @@ type Props = {
   ariaLabel: string;
   dots?: boolean;
   fixedDomain?: [number, number];
+  includeZero?: boolean;
 };
 
 function nice(lo: number, hi: number) {
@@ -42,7 +43,7 @@ function nice(lo: number, hi: number) {
   return { lo, hi, ticks };
 }
 
-export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = (v) => v.toFixed(2), xFormat, tooltip, belowPar, ariaLabel, dots, fixedDomain }: Props) {
+export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = (v) => v.toFixed(2), xFormat, tooltip, belowPar, ariaLabel, dots, fixedDomain, includeZero = true }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -61,8 +62,9 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
   const dom = useMemo(() => {
     if (fixedDomain) return nice(fixedDomain[0], fixedDomain[1]);
     const all = lines.flatMap((l) => l.values).filter(Number.isFinite);
-    return nice(Math.min(...all, 0), Math.max(...all, 0));
-  }, [lines, fixedDomain]);
+    const z = includeZero ? [0] : [];
+    return nice(Math.min(...all, ...z), Math.max(...all, ...z));
+  }, [lines, fixedDomain, includeZero]);
 
   const narrow = w < 520;
   const g = { l: narrow ? 46 : 56, r: 14, t: 14, b: 26 };
