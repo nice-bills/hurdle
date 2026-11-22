@@ -195,9 +195,9 @@ export function makeKeeper(db: Db, client: Client) {
   }
 
   async function vaultList(): Promise<string[]> {
-    const set = new Set<string>([lc(deployment.patientVault), lc(deployment.chaserVault)]);
+    const set = new Set<string>([lc(deployment.patientVault), lc(deployment.chaserVault), lc(deployment.recklessVault)]);
     try {
-      for (const r of (await db.query("SELECT address FROM vaults")).rows) set.add(r.address as string);
+      for (const r of (await db.query("SELECT address FROM vaults WHERE created_block >= $1", [deployment.factoryStartBlock])).rows) set.add(r.address as string);
     } catch (e) {
       log("keeper", `vault list from DB failed, using deployment vaults only: ${errMsg(e)}`);
     }

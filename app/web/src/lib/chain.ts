@@ -21,6 +21,7 @@ export const ADDR = {
   factory: deployment.factory as Address,
   patient: deployment.patientVault as Address,
   chaser: deployment.chaserVault as Address,
+  reckless: deployment.recklessVault as Address,
   usdc: deployment.mUSDC as Address,
   weth: deployment.mWETH as Address,
   token0: deployment.currency0 as Address,
@@ -61,9 +62,16 @@ export function poolStateSlot(poolId: Hex = POOL_ID): Hex {
   return keccak256(concat([poolId, pad(toHex(6n), { size: 32 })]));
 }
 
+/** Earlier deployment (v3): read-only, kept as the fire showcase (Patient v3 was fired on-chain). */
+export const LEGACY = deployment.legacy;
+export const LEGACY_VAULTS = [LEGACY.patientVault, LEGACY.chaserVault].map((a) => a.toLowerCase());
+
 export const KNOWN_LABELS: Record<string, { name: string; note: string }> = {
   [deployment.patientVault.toLowerCase()]: { name: "Patient", note: "±10% range, rarely moves" },
   [deployment.chaserVault.toLowerCase()]: { name: "Chaser", note: "±2% range, re-centers often" },
+  [deployment.recklessVault.toLowerCase()]: { name: "Reckless", note: "±1% range, 2.5% bond, built to get fired" },
+  [LEGACY.patientVault.toLowerCase()]: { name: "Patient (v3)", note: "±10% range, fired on-chain 2026-11-22" },
+  [LEGACY.chaserVault.toLowerCase()]: { name: "Chaser (v3)", note: "±2% range, re-centers often" },
 };
 
 export const txUrl = (h: string) => `${EXPLORER}/tx/${h}`;

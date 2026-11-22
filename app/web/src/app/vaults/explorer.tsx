@@ -70,6 +70,17 @@ export function VaultsExplorer() {
         )}
       </div>
 
+      {data && data.legacyVaults.length > 0 && (
+        <section className="mt-10" aria-label="Earlier deployment (v3)">
+          <h2 className="text-[18px] font-semibold tracking-[-0.02em]">Earlier deployment (v3) — Patient was fired on-chain</h2>
+          <p className="mb-3 mt-1 max-w-[70ch] text-[13.5px] text-ink-2">
+            The previous deployment, kept read-only as the fire showcase: Patient v3 breached its bond and was fired on 2026-11-22.
+            Prices here are marked at the current pool.
+          </p>
+          <VaultList vaults={data.legacyVaults} price={markPrice(data.pool)} />
+        </section>
+      )}
+
       <dl className="mt-8 grid gap-4 text-[13.5px] sm:grid-cols-3">
         <div className="flex gap-3"><dt><StatusPill status="ACTIVE" size="sm" /></dt><dd className="text-ink-2">Bond at or above its floor. Deposits open in the first 5 minutes of each epoch.</dd></div>
         <div className="flex gap-3"><dt><StatusPill status="FROZEN" size="sm" /></dt><dd className="text-ink-2">Bond under the floor (NAV grew). No deposits or rebalances until the curator tops up.</dd></div>

@@ -12,6 +12,7 @@ const ADDRS: { name: string; value: string; note: string }[] = [
   { name: "HurdleVaultFactory", value: D.factory, note: "create(), isVault(), VaultCreated events" },
   { name: "Patient vault", value: D.patientVault, note: "±10% range, rarely moves" },
   { name: "Chaser vault", value: D.chaserVault, note: "±2% range, re-centers often" },
+  { name: "Reckless vault", value: D.recklessVault, note: "±1% range, 2.5% bond, built to get fired" },
   { name: "mUSDC (currency0)", value: D.mUSDC, note: "6 decimals, public mint()" },
   { name: "mWETH (currency1)", value: D.mWETH, note: "18 decimals, the bond token, public mint()" },
   { name: "PoolManager", value: D.poolManager, note: "Uniswap v4 singleton" },

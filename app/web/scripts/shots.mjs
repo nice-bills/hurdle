@@ -7,8 +7,10 @@ const only = process.argv.slice(4);
 mkdirSync(out, { recursive: true });
 const PAGES = [
   ["home", "/"], ["vaults", "/vaults"],
-  ["patient", "/vaults/0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D"],
-  ["chaser", "/vaults/0xB66277b0C38B99afcbeD6AB5554d2C3505E5749e"],
+  ["patient", "/vaults/0x5126c9Ebf2cF62e9f121F55886c57075a190b22d"],
+  ["chaser", "/vaults/0x1f4Db529B5a7a766D859E9EC25Dba3C01BeF0985"],
+  ["reckless", "/vaults/0x711fAb3A68aEAFbFE6Df493e676070D550ac5EEC"],
+  ["patient-v3", "/vaults/0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D"],
   ["create", "/create"], ["swap", "/swap"], ["replay", "/replay"], ["integrate", "/integrate"],
 ].filter(([n]) => !only.length || only.includes(n));
 const browser = await chromium.launch({ executablePath: "/usr/bin/chromium", args: ["--no-sandbox"] });

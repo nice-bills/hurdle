@@ -26,7 +26,7 @@ for (const e of events) counts[e.name] = (counts[e.name] ?? 0) + 1;
 console.log(`\nWOULD INSERT ${events.length} events`, counts);
 for (const e of events.slice(-12)) console.log(JSON.stringify({ ...e, ts: e.ts.toISOString() }, replacer));
 
-const expected = [lc(deployment.patientVault), lc(deployment.chaserVault)];
+const expected = [lc(deployment.patientVault), lc(deployment.chaserVault), lc(deployment.recklessVault)];
 console.log("\nexpected vaults found:", expected.map((a) => `${a}=${known.has(a)}`).join(" "));
 console.log("pool id:", computePoolId());
 

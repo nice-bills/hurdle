@@ -84,23 +84,35 @@ and later excess refills the bond before any carry.
 
 ## Unichain Sepolia (1301)
 
-**Live (v3, deployed 2026-11-21):**
+**Live (v4, deployed 2026-11-22):**
+
+| Contract | Address |
+|---|---|
+| HurdleHook | [`0x9375e143A60547FAFaa22b53e5777A33667550A0`](https://sepolia.uniscan.xyz/address/0x9375e143A60547FAFaa22b53e5777A33667550A0) |
+| HurdleVaultFactory | [`0x17a372d93D5c11dfadfe453325315b9Dcfc98FdE`](https://sepolia.uniscan.xyz/address/0x17a372d93D5c11dfadfe453325315b9Dcfc98FdE) |
+| Patient vault (±10%) | [`0x5126c9Ebf2cF62e9f121F55886c57075a190b22d`](https://sepolia.uniscan.xyz/address/0x5126c9Ebf2cF62e9f121F55886c57075a190b22d) |
+| Chaser vault (±2%) | [`0x1f4Db529B5a7a766D859E9EC25Dba3C01BeF0985`](https://sepolia.uniscan.xyz/address/0x1f4Db529B5a7a766D859E9EC25Dba3C01BeF0985) |
+| Reckless vault (±1%, 2.5% bond, built to get fired) | [`0x711fAb3A68aEAFbFE6Df493e676070D550ac5EEC`](https://sepolia.uniscan.xyz/address/0x711fAb3A68aEAFbFE6Df493e676070D550ac5EEC) |
+| mUSDC (currency0) | `0x19e9DC387bbFf0c035d12dEFceEFF1fc0D859C49` |
+| mWETH (currency1, bond token) | `0x4F4C59E9089C43785ecc2B8780F61Ca349946bb4` |
+| Liquidity / swap routers | `0x1F1d9578aA20fc12de73a0d067ade939BBE2dd2B` / `0x8Fa7DC4E77681027c403003d59C0d1470Fe1d76d` |
+| Depositor (holds the vault shares; not the curator, so the bond covers it) | `0xE1cCCD969F34E0f7d435CeA96C63c4d78E95aD03` |
+
+Three vaults, created through the factory (`isVault` true); factory deployed at block 68509070. Full output: `script/out/deploy-1301.json`.
+The app, worker and keeper (the Render worker, plus `script/Keeper.s.sol` for scripted moves, which handles all three vaults) run against v4.
+
+**Earlier deployment (v3, 2026-11-21): the fire showcase.** Kept read-only in the app ("Earlier deployment" section); full output: `script/out/deploy-1301-v3.json`.
 
 | Contract | Address |
 |---|---|
 | HurdleHook | [`0x7EECdD6507E77db3247C9E9bccFA0AcFf5F410a0`](https://sepolia.uniscan.xyz/address/0x7EECdD6507E77db3247C9E9bccFA0AcFf5F410a0) |
 | HurdleVaultFactory | [`0x6afcE6f48644eECBA68d0b88E45496953720A904`](https://sepolia.uniscan.xyz/address/0x6afcE6f48644eECBA68d0b88E45496953720A904) |
-| Patient vault (±10%) | [`0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D`](https://sepolia.uniscan.xyz/address/0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D) |
+| Patient vault (±10%), fired on-chain | [`0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D`](https://sepolia.uniscan.xyz/address/0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D) |
 | Chaser vault (±2%) | [`0xB66277b0C38B99afcbeD6AB5554d2C3505E5749e`](https://sepolia.uniscan.xyz/address/0xB66277b0C38B99afcbeD6AB5554d2C3505E5749e) |
-| mUSDC (currency0) | `0x16dED02f19B86f66335f0d05448D8EBAf2BBC18b` |
-| mWETH (currency1, bond token) | `0x6Fe21Df36b9f00E9279640B0C5a2006d3a92F318` |
-| Liquidity / swap routers | `0x8952E2f3923157A1A4C4Da214F8cBFfFDe3caB7E` / `0xE74B11084895Eb9AdC5F34629416Ff5657eA8F12` |
-| Depositor (holds the vault shares; not the curator, so the bond covers it) | `0xE1cCCD969F34E0f7d435CeA96C63c4d78E95aD03` |
+| mUSDC / mWETH | `0x16dED02f19B86f66335f0d05448D8EBAf2BBC18b` / `0x6Fe21Df36b9f00E9279640B0C5a2006d3a92F318` |
 
-Both vaults were created through the factory (`isVault` true). Each: bond 5% of the deposit (0.1 mWETH),
-1 mWETH + 3000 mUSDC deposited, curator range deployed. Full output: `script/out/deploy-1301.json`.
-A keeper (the Render worker, plus `script/Keeper.s.sol` for scripted moves) trades every 10 minutes and
-settles every hour. What happened on-chain (events visible in the app and on Uniscan):
+Both vaults: bond 5% of the deposit (0.1 mWETH), 1 mWETH + 3000 mUSDC deposited. What happened on-chain (events visible in the app and on Uniscan):
+
 
 - 2026-11-21 19:46 UTC: scripted ETH −9.5% move. Both vaults missed par at the next settlements; their bonds
   paid depositors (Patient 0.054 mWETH, Chaser 0.031 mWETH).

@@ -36,9 +36,10 @@ contract Keeper is Script {
             tickSpacing: int24(vm.parseJsonInt(json, ".tickSpacing")),
             hooks: IHooks(vm.parseJsonAddress(json, ".hook"))
         });
-        HurdleVault[2] memory vaults = [
+        HurdleVault[3] memory vaults = [
             HurdleVault(vm.parseJsonAddress(json, ".patientVault")),
-            HurdleVault(vm.parseJsonAddress(json, ".chaserVault"))
+            HurdleVault(vm.parseJsonAddress(json, ".chaserVault")),
+            HurdleVault(vm.parseJsonAddress(json, ".recklessVault"))
         ];
 
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
@@ -58,7 +59,7 @@ contract Keeper is Script {
             router.swap(key, IPoolManager.SwapParams(false, -int256(1e30), sp), st, "");
             console2.log("round trip at tick", int256(tick));
         }
-        for (uint256 i; i < 2; ++i) {
+        for (uint256 i; i < vaults.length; ++i) {
             HurdleVault v = vaults[i];
             if (block.timestamp >= v.epochStart() + v.epochSeconds()) {
                 v.settle();

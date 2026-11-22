@@ -97,6 +97,8 @@ export interface Overview {
   headTs: number;
   pool: PoolState;
   vaults: VaultSummary[];
+  /** Earlier deployment (v3), read-only: kept so the on-chain fire stays visible. */
+  legacyVaults: VaultSummary[];
   stats: {
     vaults: number;
     tvlUsd: number;

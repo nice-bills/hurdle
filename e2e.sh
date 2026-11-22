@@ -94,18 +94,18 @@ fi
 
 if step "g. live read-only check (E2E_LIVE=1)"; then
 if [ "${E2E_LIVE:-0}" != "1" ]; then skip "set E2E_LIVE=1 to enable"; else
-  read -r PV CV < <(python3 -I - <<'PY'
+  read -r PV CV RV < <(python3 -I - <<'PY'
 import json
 d = json.load(open("script/out/deploy-1301.json"))
-p, c = d.get("patientVault"), d.get("chaserVault")
-if not (p and c):  # deploy json has no vault keys: take them from the DeployVaults broadcast (patient first, chaser second)
+p, c, r = d.get("patientVault"), d.get("chaserVault"), d.get("recklessVault")
+if not (p and c and r):  # deploy json has no vault keys: take them from the DeployVaults broadcast (patient first, chaser second)
     t = json.load(open("broadcast/DeployVaults.s.sol/1301/run-latest.json"))["transactions"]
     v = [x["contractAddress"] for x in t if x.get("transactionType") == "CREATE" and x.get("contractName") == "HurdleVault"]
-    p, c = v[0], v[1]
-print(p, c)
+    p, c, r = v[0], v[1], v[2]
+print(p, c, r)
 PY
 )
-  for pair in "patientVault:$PV" "chaserVault:$CV"; do n=${pair%%:*}; a=${pair#*:}
+  for pair in "patientVault:$PV" "chaserVault:$CV" "recklessVault:$RV"; do n=${pair%%:*}; a=${pair#*:}
     nav=$(cast call "$a" "nav()(uint256)" --rpc-url "$RPC") || die "$n nav() call failed"
     fired=$(cast call "$a" "fired()(bool)" --rpc-url "$RPC") || die "$n fired() call failed"
     bond=$(cast call "$a" "bond()(uint256)" --rpc-url "$RPC") || die "$n bond() call failed"

@@ -1,5 +1,5 @@
 import type { Address } from "viem";
-import { ADDR, D, KNOWN_LABELS, maxUsableTick, minUsableTick } from "@/lib/chain";
+import { ADDR, D, KNOWN_LABELS, LEGACY, LEGACY_VAULTS, maxUsableTick, minUsableTick } from "@/lib/chain";
 import { usdPerEthFromSqrt, usdPerEthFromTick } from "@/lib/math";
 import { buildSeries } from "@/lib/series";
 import type { DataSource, KeeperRun, Overview, PoolState, VaultDetail, VaultEvent, VaultSummary } from "@/lib/types";
@@ -148,7 +148,8 @@ function summarize(
 }
 
 function ordered(vaults: VaultSummary[]) {
-  const rank = (v: VaultSummary) => (v.address === ADDR.patient.toLowerCase() ? 0 : v.address === ADDR.chaser.toLowerCase() ? 1 : 2);
+  const order = [ADDR.patient, ADDR.chaser, ADDR.reckless, ...LEGACY_VAULTS].map((a) => a.toLowerCase());
+  const rank = (v: VaultSummary) => { const i = order.indexOf(v.address); return i < 0 ? order.length : i; };
   return vaults.sort((a, b) => rank(a) - rank(b) || (b.createdBlock ?? 0) - (a.createdBlock ?? 0));
 }
 
@@ -156,6 +157,9 @@ export function getOverview(): Promise<Overview> {
   return cached("overview", 8000, async () => {
     const h = await head();
     const reg = await registry(h.n);
+    for (const a of LEGACY_VAULTS)
+      if (!reg.vaults.some((v) => v.address === a))
+        reg.vaults.push({ address: a, curator: "", poolId: "", createdBlock: LEGACY.factoryStartBlock, label: null });
     const [live, pool, keeper] = await Promise.all([
       readVaultsRpc(reg.vaults.map((v) => v.address as Address)),
       poolState(h.ts - 6 * 3600, reg.events),
@@ -163,7 +167,10 @@ export function getOverview(): Promise<Overview> {
     ]);
     const byVault = groupEvents(reg.events);
     const starts = await Promise.all(reg.vaults.map((r) => firstDepositSqrt(byVault.get(r.address) ?? [])));
-    const vaults = ordered(live.map((l, i) => summarize(reg.vaults[i], l.data as Record<string, unknown>, byVault.get(reg.vaults[i].address) ?? [], starts[i])));
+    const all = ordered(live.map((l, i) => summarize(reg.vaults[i], l.data as Record<string, unknown>, byVault.get(reg.vaults[i].address) ?? [], starts[i])));
+    // current deployment = created at/after the v4 factory start block; v3 vaults are listed separately
+    const vaults = all.filter((v) => !LEGACY_VAULTS.includes(v.address) && (v.createdBlock ?? D.factoryStartBlock) >= D.factoryStartBlock);
+    const legacyVaults = all.filter((v) => LEGACY_VAULTS.includes(v.address));
     const mark = pool.twapPrice ?? pool.price; // the contract marks NAV at the hook TWAP
     const tvlEth = vaults.reduce((a, v) => a + (v.nav ? Number(v.nav) / 1e18 : 0), 0);
     return {
@@ -172,6 +179,7 @@ export function getOverview(): Promise<Overview> {
       headTs: h.ts,
       pool,
       vaults,
+      legacyVaults,
       stats: {
         vaults: vaults.length,
         tvlEth,
@@ -207,7 +215,7 @@ export function getVaultDetail(address: string): Promise<VaultDetail | null> {
     if (!entry) {
       // not indexed yet (just created): read it directly if the factory knows it
       const [probe] = await readVaultsRpc([a as Address]);
-      if (!probe.data.isVault) return null;
+      if (!probe.data.isVault && !LEGACY_VAULTS.includes(a)) return null;
       entry = { address: a, curator: String(probe.data.curator ?? "").toLowerCase(), poolId: String(probe.data.poolId ?? ""), createdBlock: h.n, label: null };
     }
     const events = groupEvents(reg.events).get(a) ?? [];

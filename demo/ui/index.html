@@ -511,7 +511,7 @@ async function liveBoot() {
   } catch (e) { msg.textContent = 'live.json not found: add {"rpc","patient","chaser","explorer"} to enable this panel.'; msg.className = 'lmsg err'; $('#live-refresh').hidden = true; return; }
   const c = L.cfg;
   c.rpc = c.rpc || 'https://sepolia.unichain.org'; c.explorer = (c.explorer || 'https://sepolia.uniscan.xyz').replace(/\/$/, '');
-  L.vaults = {}; ['patient', 'chaser'].forEach(k => { if (isAddr(c[k])) L.vaults[k] = c[k]; });
+  L.vaults = {}; ['patient', 'chaser', 'reckless'].forEach(k => { if (isAddr(c[k])) L.vaults[k] = c[k]; });
   if (!Object.keys(L.vaults).length) { msg.textContent = 'live.json has no valid vault addresses.'; msg.className = 'lmsg err'; return; }
   $('#live-refresh').onclick = () => liveLoad(true);
   $('#live-more').onclick = () => liveMoreEvents();

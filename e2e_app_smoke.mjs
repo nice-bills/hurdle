@@ -10,10 +10,10 @@ import { join } from 'node:path';
 const [bin, base0, depFile = 'app/shared/deployment-1301.json'] = process.argv.slice(2);
 const base = base0.replace(/\/$/, '');
 const dep = JSON.parse(readFileSync(depFile, 'utf8'));
-const vaults = new Set([dep.patientVault, dep.chaserVault].filter(Boolean));
+const vaults = new Set([dep.patientVault, dep.chaserVault, dep.recklessVault].filter(Boolean));
 try { // every factory vault the app knows about, not only the two deployed ones
   const ov = await (await fetch(`${base}/api/overview`, { signal: AbortSignal.timeout(30000) })).json();
-  for (const v of ov.vaults ?? []) vaults.add(v.address);
+  for (const v of [...(ov.vaults ?? []), ...(ov.legacyVaults ?? [])]) vaults.add(v.address);
 } catch (e) { console.log('note: could not read /api/overview, using deployment vaults only:', e.message); }
 const seen = new Set(); // addresses are case-insensitive: dedupe
 const paths = ['/', '/vaults', ...[...vaults].filter((a) => !seen.has(a.toLowerCase()) && seen.add(a.toLowerCase())).map((a) => `/vaults/${a}`), '/integrate'];

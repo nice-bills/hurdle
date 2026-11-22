@@ -26,6 +26,9 @@ export interface Deployment {
   factory: Address;
   patientVault: Address;
   chaserVault: Address;
+  recklessVault: Address;
+  /** Earlier deployment (v3), read-only: the worker never keeps it. */
+  legacy?: { factory: Address; patientVault: Address; chaserVault: Address; factoryStartBlock: number };
   mUSDC: Address;
   mWETH: Address;
   currency0: Address;

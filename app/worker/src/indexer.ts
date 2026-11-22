@@ -34,6 +34,10 @@ export interface ScanResult {
 const LABELS: Record<string, string> = {
   [lc(deployment.patientVault)]: "Patient",
   [lc(deployment.chaserVault)]: "Chaser",
+  [lc(deployment.recklessVault)]: "Reckless",
+  ...(deployment.legacy
+    ? { [lc(deployment.legacy.patientVault)]: "Patient (v3)", [lc(deployment.legacy.chaserVault)]: "Chaser (v3)" }
+    : {}),
 };
 
 /** bigint -> decimal string, address -> lowercase, so jsonb args are stable and queryable. */
@@ -147,6 +151,9 @@ export async function scanRange(client: Client, known: Set<string>, from: number
   return { created, events };
 }
 
+/** Cursor per factory: a redeploy (new factory) indexes from its own start block; old rows stay. */
+const CURSOR = `events:${deployment.factory.toLowerCase()}`;
+
 export async function persist(db: Db, res: ScanResult, cursorTo: number) {
   const c = await db.connect();
   try {
@@ -170,8 +177,8 @@ export async function persist(db: Db, res: ScanResult, cursorTo: number) {
       );
     }
     await c.query(
-      `INSERT INTO cursor (name,block) VALUES ('events',$1) ON CONFLICT (name) DO UPDATE SET block=GREATEST(cursor.block,EXCLUDED.block)`,
-      [cursorTo],
+      `INSERT INTO cursor (name,block) VALUES ($2,$1) ON CONFLICT (name) DO UPDATE SET block=GREATEST(cursor.block,EXCLUDED.block)`,
+      [cursorTo, CURSOR],
     );
     await c.query("COMMIT");
   } catch (e) {
@@ -275,7 +282,7 @@ export async function runIndexer(db: Db, client: Client, signal: { stopped: bool
       const head = Number(await withRetry(() => client.getBlockNumber(), "blockNumber"));
       const safe = head - env.confirmations;
       state.head = head;
-      const cur = await getCursor(db, "events");
+      const cur = await getCursor(db, CURSOR);
       let from = Math.max((cur ?? deployment.factoryStartBlock - 1) + 1, deployment.factoryStartBlock);
       while (from <= safe && !signal.stopped) {
         const to = Math.min(from + env.chunk - 1, safe);
@@ -295,7 +302,7 @@ export async function runIndexer(db: Db, client: Client, signal: { stopped: bool
       state.lastIndexerError = "";
 
       if (Date.now() - lastSnapshot >= env.snapshotMs && known.size) {
-        const vs = (await db.query("SELECT address, pool_id FROM vaults")).rows as { address: string; pool_id: string }[];
+        const vs = (await db.query("SELECT address, pool_id FROM vaults WHERE created_block >= $1", [deployment.factoryStartBlock])).rows as { address: string; pool_id: string }[];
         const snap = await takeSnapshots(client, vs, BigInt(safe));
         await persistSnapshots(db, snap);
         lastSnapshot = Date.now();
