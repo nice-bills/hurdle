@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS keeper_runs (
   ok      boolean NOT NULL,
   note    text
 );
+-- skipped: the keeper simulated the call, it would revert for an expected reason (note = decoded error name); not a failure.
+ALTER TABLE keeper_runs ADD COLUMN IF NOT EXISTS skipped boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS keeper_runs_ts_idx ON keeper_runs (ts DESC);
 
 CREATE TABLE IF NOT EXISTS cursor (

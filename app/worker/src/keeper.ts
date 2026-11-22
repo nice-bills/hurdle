@@ -1,7 +1,7 @@
-import { createWalletClient, http, formatEther, type Abi, type Hex } from "viem";
+import { BaseError, ContractFunctionRevertedError, createWalletClient, decodeAbiParameters, decodeErrorResult, http, formatEther, type Abi, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { chain, lc, readSlot0, computePoolId, type Client } from "./chain.js";
-import { deployment, env, erc20Abi, swapTestAbi, vaultAbi } from "./config.js";
+import { deployment, env, erc20Abi, hookAbi, swapTestAbi, vaultAbi } from "./config.js";
 import type { Db } from "./db.js";
 import { state } from "./state.js";
 import { getSqrtPriceAtTick, maxUsableTick, minUsableTick } from "./tickmath.js";
@@ -15,6 +15,40 @@ const MINT_USDC = 1_000_000n * USDC;
 const MIN_WETH = 10n * WETH;
 const MINT_WETH = 100n * WETH;
 const MAX_UINT = (1n << 256n) - 1n;
+
+/** Reverts the keeper expects in normal operation: a simulation failing with one of these is skipped, not a failure. */
+export const EXPECTED_REVERTS = new Set(["AlreadyParked", "EpochNotOver", "PriceDeviation"]);
+const SKIP_EVERY_MS = 60 * 60 * 1000; // record one skipped row per vault/action per hour
+const WRAPPED_ERROR = "0x90bfb865"; // PoolManager WrappedError(address target, bytes4 selector, bytes reason, bytes details)
+
+/** Custom-error name from raw revert data; unwraps PoolManager WrappedError (hook reverts surface that way). */
+export function revertNameFromRaw(raw: unknown, depth = 0): string | undefined {
+  if (typeof raw !== "string" || raw.length < 10 || depth > 2) return undefined;
+  if (raw.slice(0, 10).toLowerCase() === WRAPPED_ERROR) {
+    try {
+      const [, , reason] = decodeAbiParameters([{ type: "address" }, { type: "bytes4" }, { type: "bytes" }, { type: "bytes" }], ("0x" + raw.slice(10)) as Hex);
+      return revertNameFromRaw(reason, depth + 1);
+    } catch {
+      return undefined;
+    }
+  }
+  for (const abi of [vaultAbi, hookAbi]) {
+    try {
+      return decodeErrorResult({ abi, data: raw as Hex }).errorName;
+    } catch {
+      /* try next ABI */
+    }
+  }
+  return undefined;
+}
+
+/** Decoded custom-error name of a simulation/call revert, or undefined when it is not a decodable revert. */
+export function revertName(e: unknown): string | undefined {
+  if (!(e instanceof BaseError)) return undefined;
+  const rev = e.walk((x) => x instanceof ContractFunctionRevertedError);
+  if (!(rev instanceof ContractFunctionRevertedError)) return undefined;
+  return rev.data?.errorName ?? revertNameFromRaw((rev as unknown as { raw?: string }).raw);
+}
 
 interface TxReq {
   address: Hex;
@@ -41,18 +75,49 @@ export function makeKeeper(db: Db, client: Client) {
   async function record(action: string, vault: string | null, tx: string | null, ok: boolean, note: string | null) {
     state.lastKeeperAction = { ts: new Date().toISOString(), action, vault, tx, ok, note };
     log("keeper", `${action}${vault ? " " + vault : ""} ${ok ? "ok" : "FAILED"}${tx ? " " + tx : ""}${note ? " :: " + note : ""}`);
+    await insertRun(action, vault, tx, ok, false, note);
+  }
+
+  async function insertRun(action: string, vault: string | null, tx: string | null, ok: boolean, skipped: boolean, note: string | null) {
     try {
-      await db.query("INSERT INTO keeper_runs (action,vault,tx,ok,note) VALUES ($1,$2,$3,$4,$5)", [action, vault ? lc(vault) : null, tx, ok, note]);
+      await db.query("INSERT INTO keeper_runs (action,vault,tx,ok,skipped,note) VALUES ($1,$2,$3,$4,$5,$6)", [action, vault ? lc(vault) : null, tx, ok, skipped, note]);
     } catch (e) {
       log("keeper", `could not record run: ${errMsg(e)}`);
     }
   }
 
-  /** simulate -> send -> wait. Never throws; returns whether it succeeded on chain. */
+  /** The call would revert for an expected reason: nothing to do. Logged always, stored at most once per hour per vault/action. */
+  async function recordSkipped(action: string, vault: string | null, reason: string) {
+    log("keeper", `${action}${vault ? " " + vault : ""} skipped (${reason})`);
+    try {
+      const recent = await db.query(
+        "SELECT 1 FROM keeper_runs WHERE skipped AND action=$1 AND vault IS NOT DISTINCT FROM $2 AND ts > now() - ($3 * interval '1 millisecond') LIMIT 1",
+        [action, vault ? lc(vault) : null, SKIP_EVERY_MS],
+      );
+      if (recent.rows.length) return;
+    } catch (e) {
+      log("keeper", `skip throttle lookup failed: ${errMsg(e)}`);
+      return;
+    }
+    await insertRun(action, vault, null, false, true, reason);
+  }
+
+  /** simulate -> send -> wait. Never throws; returns whether it succeeded on chain.
+   *  A simulation that reverts with an expected reason (EXPECTED_REVERTS) is recorded as skipped, not failed. */
   async function send(action: string, vault: string | null, req: TxReq, note?: string): Promise<boolean> {
     let hash: Hex | undefined;
     try {
-      const { request } = await withRetry(() => client.simulateContract({ account, ...req } as never), `simulate ${action}`, 4);
+      let request: unknown;
+      try {
+        ({ request } = await withRetry(() => client.simulateContract({ account, ...req } as never), `simulate ${action}`, 4));
+      } catch (e) {
+        const name = revertName(e);
+        if (name && EXPECTED_REVERTS.has(name)) {
+          await recordSkipped(action, vault, name);
+          return false;
+        }
+        throw e;
+      }
       hash = await wallet.writeContract(request as never);
       const rc = await client.waitForTransactionReceipt({ hash, timeout: 90_000 });
       const ok = rc.status === "success";
