@@ -22,3 +22,7 @@ out-*/
 cache-*/
 data/__pycache__/
 data/weeks/*.log
+
+# forge broadcast history (run-latest.json is kept)
+broadcast/**/run-1*.json
+__pycache__/
