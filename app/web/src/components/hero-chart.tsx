@@ -32,7 +32,15 @@ export function HeroChart() {
     return () => cancelAnimationFrame(raf.current);
   }, [d]);
 
-  if (!d) return <Skeleton className="h-[300px] w-full" />;
+  if (!d)
+    return (
+      <div className="relative h-[300px] w-full" role="status" aria-label="Loading chart">
+        <Skeleton className="h-full w-full" />
+        <svg aria-hidden className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path d="M0 62 C12 58 20 70 32 55 S52 40 62 48 S84 30 100 34" fill="none" stroke="var(--ink-3)" strokeWidth="1.5" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+        </svg>
+      </div>
+    );
   const P = d.points;
   const t = P.map((p) => p.t);
   const last = P[P.length - 1];

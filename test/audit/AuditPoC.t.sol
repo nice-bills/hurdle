@@ -253,15 +253,13 @@ contract AuditPoC is Test, Deployers {
         vm.expectRevert(HurdleVault.DepositWindowClosed.selector);
         vault.deposit(1e18, 5e18, 5e18);
 
-        // At the settlement the bond pays what it can and the curator is fired: the shortfall it paid is
-        // still owed to the bond (deficit), so the newcomer cannot buy into the guarantee at all.
+        // At the settlement the bond pays what it can and the curator is fired. The shortfall it paid stays
+        // owed (deficit), but a fired vault skips the deficit gate: it never recoups, so a newcomer is
+        // not buying into a bond-backed guarantee, just a passive par vault.
         vm.warp(block.timestamp + 7200);
-        uint256 shares = vault.totalSupply() / 10;
-        vm.prank(bob);
-        vm.expectRevert(HurdleVault.DeficitOutstanding.selector);
-        vault.deposit(shares, 5e18, 5e18);
         vault.settle();
         assertTrue(vault.fired());
+        assertGt(vault.deficit(), 0);
         assertEq(t0.balanceOf(bob), 5e18);
         assertEq(t1.balanceOf(bob), 5e18);
     }

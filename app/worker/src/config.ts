@@ -67,15 +67,17 @@ export const env = {
   snapshotMs: num(process.env.SNAPSHOT_SECONDS, 120) * 1000,
   keeperMs: num(process.env.KEEPER_INTERVAL_SECONDS, 600) * 1000,
   /** Never logged. Accepts with or without 0x. */
-  keeperKey: normalizeKey(process.env.KEEPER_PRIVATE_KEY),
+  keeperKey: normalizeKey(process.env.KEEPER_PRIVATE_KEY, "KEEPER_PRIVATE_KEY"),
+  curatorKey: normalizeKey(process.env.CURATOR_PRIVATE_KEY, "CURATOR_PRIVATE_KEY"),
+  curatorMs: num(process.env.CURATOR_INTERVAL_SECONDS, 600) * 1000,
 };
 
-function normalizeKey(k: string | undefined): Hex | undefined {
+function normalizeKey(k: string | undefined, name: string): Hex | undefined {
   if (!k) return undefined;
   const t = k.trim();
   const h = (t.startsWith("0x") ? t : `0x${t}`) as Hex;
   if (!/^0x[0-9a-fA-F]{64}$/.test(h)) {
-    console.error("KEEPER_PRIVATE_KEY is set but is not a 32-byte hex key; keeper disabled");
+    console.error(`${name} is set but is not a 32-byte hex key; disabled`);
     return undefined;
   }
   return h;

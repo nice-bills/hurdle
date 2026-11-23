@@ -1,5 +1,3 @@
-**[Demo video](demo/video/hurdle-demo.mp4)** (84 s, recorded from the live dApp)
-
 # Hurdle
 
 **Portable alpha for curated liquidity.** A Uniswap v4 hook and vault where an LP curator guarantees

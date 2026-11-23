@@ -11,5 +11,7 @@ export const state = {
   keeperBalanceWei: null as bigint | null,
   lastKeeperRunAt: 0,
   lastKeeperAction: null as { ts: string; action: string; vault: string | null; tx: string | null; ok: boolean; note: string | null } | null,
+  curatorAddress: null as string | null,
+  lastCuratorRunAt: 0,
   lastKeeperError: "" as string,
 };

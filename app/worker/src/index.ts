@@ -3,6 +3,7 @@ import { env } from "./config.js";
 import { applySchema, makePool } from "./db.js";
 import { startHealth } from "./health.js";
 import { runIndexer } from "./indexer.js";
+import { makeCurator } from "./curator.js";
 import { makeKeeper } from "./keeper.js";
 import { errMsg, log, sleep } from "./util.js";
 
@@ -29,6 +30,8 @@ const client = makePublicClient();
 const keeper = makeKeeper(db, client);
 if (!keeper) log("main", "KEEPER_PRIVATE_KEY absent or invalid: running indexer only");
 
+const curator = makeCurator(db, client);
+
 const shutdown = () => {
   signal.stopped = true;
   server.close();
@@ -37,4 +40,4 @@ const shutdown = () => {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-await Promise.all([runIndexer(db, client, signal), keeper ? keeper.run(signal) : Promise.resolve()]);
+await Promise.all([runIndexer(db, client, signal), keeper ? keeper.run(signal) : Promise.resolve(), curator ? curator.run(signal) : Promise.resolve()]);

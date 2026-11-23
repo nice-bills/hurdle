@@ -122,6 +122,29 @@ contract V4Features is VaultFixture {
         assertEq(vault.balanceOf(BOB), shares, "newcomer not admitted");
     }
 
+    function test_firedVaultDepositSkipsDeficitGate() public {
+        _firedAndReclaimed();
+        // Reclaim cleared the deficit; recreate the unreclaimed case: owed deficit on a fired vault.
+        vm.store(address(vault), bytes32(uint256(5)), bytes32(uint256(1e18)));
+        assertGt(vault.deficit(), 0);
+        assertTrue(vault.fired());
+        uint256 shares = vault.balanceOf(ALICE) / 10;
+        vm.prank(BOB);
+        vault.deposit(shares, 100e18, 100e18);
+        assertEq(vault.balanceOf(BOB), shares, "fired vault with deficit refused a deposit");
+    }
+
+    function test_nonFiredVaultWithDeficitStillReverts() public {
+        _deficitVault();
+        assertGt(vault.deficit(), 0);
+        assertFalse(vault.fired());
+        _fund(BOB, address(vault), 100e18, 100e18);
+        uint256 shares = vault.balanceOf(ALICE) / 10;
+        vm.prank(BOB);
+        vm.expectRevert(HurdleVault.DeficitOutstanding.selector);
+        vault.deposit(shares, 100e18, 100e18);
+    }
+
     function test_nonFiredVaultBelowFloorStillReverts() public {
         vault = _newVault(1e18); // 5% of the 20e18 NAV; floor is 2%
         _fund(BOB, address(vault), 1000e18, 1000e18);

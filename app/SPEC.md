@@ -73,12 +73,17 @@ with human explanations).
 - Keeper (env `KEEPER_PRIVATE_KEY`, its own funded wallet, never logged): every 10 min a small round-trip swap on the
   pool (volume, fees, fresh TWAP); for every vault with `block.timestamp >= epochStart+epochSeconds` call `settle()`;
   for fired vaults not parked call `rebalance(0,0)`. Log to keeper_runs. Mint mocks to itself as needed.
+- Curator bot (env `CURATOR_PRIVATE_KEY`, optional; module `curator.ts`): every 10 min, for each current non-fired
+  vault whose `curator()` is that key's address, if spot is outside the range or within 20% of the half-width of an
+  edge, simulate then call `rebalance(lo, hi, 200)` re-centered on the spot tick with the same half-width (tick-spacing
+  aligned). PriceDeviation, TooManyRebalances, BondBelowFloor and EpochNotOver are recorded as skipped. Rows go to
+  keeper_runs as `curator_*` and show labelled "curator" in the keeper runs view; `/healthz` has a `curator` section.
 - Health endpoint on $PORT (`/healthz`) so it can run as a Render web service or background worker.
 
 ## Env
 
 web: `DATABASE_URL`, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` (optional; injected wallets must work without it).
-worker: `DATABASE_URL`, `KEEPER_PRIVATE_KEY`, `RPC_URL` (default https://sepolia.unichain.org).
+worker: `DATABASE_URL`, `KEEPER_PRIVATE_KEY`, `CURATOR_PRIVATE_KEY` (optional), `RPC_URL` (default https://sepolia.unichain.org).
 
 ## Snapshots
 

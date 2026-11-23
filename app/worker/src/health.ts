@@ -27,6 +27,11 @@ export function startHealth() {
           lastAction: state.lastKeeperAction,
           lastError: state.lastKeeperError || null,
         },
+        curator: {
+          enabled: !!state.curatorAddress,
+          address: state.curatorAddress,
+          lastRunAt: state.lastCuratorRunAt ? new Date(state.lastCuratorRunAt).toISOString() : null,
+        },
       };
       res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
       res.end(JSON.stringify(body));

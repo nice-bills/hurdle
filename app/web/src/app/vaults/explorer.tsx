@@ -75,7 +75,7 @@ export function VaultsExplorer() {
           <h2 className="text-[18px] font-semibold tracking-[-0.02em]">Earlier deployment (v3) — Patient was fired on-chain</h2>
           <p className="mb-3 mt-1 max-w-[70ch] text-[13.5px] text-ink-2">
             The previous deployment, kept read-only as the fire showcase: Patient v3 breached its bond and was fired on 2026-11-22.
-            Prices here are marked at the current pool.
+            These vaults are priced on their own (v3) pool.
           </p>
           <VaultList vaults={data.legacyVaults} price={markPrice(data.legacyPool)} />
         </section>

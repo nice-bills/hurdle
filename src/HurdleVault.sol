@@ -194,8 +194,8 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// plus the same fraction of the position's liquidity, added at spot). No price is used, so a
     /// deposit/withdraw round trip cannot trade with the vault. Only within DEPOSIT_WINDOW of an epoch
     /// settlement, after par is re-baselined to this block (no carry or shortfall pending), and only
-    /// while no shortfall is still owed to the bond (`deficit` within 1 bp of NAV), so a newcomer neither
-    /// pays for nor collects past performance. Spot, block-open price and TWAP must agree, so a
+    /// while no shortfall is still owed to the bond (`deficit` within 1 bp of NAV; not checked once fired,
+    /// since a fired vault never recoups), so a newcomer neither pays for nor collects past performance. Spot, block-open price and TWAP must agree, so a
     /// same-block sandwich cannot skew the liquidity it adds. See previewDeposit for a quote.
     function deposit(uint256 shares, uint256 max0, uint256 max1) external returns (uint256 amount0, uint256 amount1) {
         if (shares == 0) revert ZeroShares();
@@ -205,7 +205,9 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         uint256 supply = totalSupply;
         if (supply == 0) revert ZeroShares();
         uint256 navBefore = navAt(_checkedTwapSqrtPrice());
-        if (deficit * 10_000 > navBefore * DEFICIT_TOLERANCE_BPS) revert DeficitOutstanding();
+        // A fired vault skips this gate: carry/recoup never runs again, so a newcomer cannot share a recoup
+        // and only the fired curator's reclaimBond would ever clear `deficit`.
+        if (!fired && deficit * 10_000 > navBefore * DEFICIT_TOLERANCE_BPS) revert DeficitOutstanding();
         amount0 = FullMath.mulDivRoundingUp(token0.balanceOf(address(this)), shares, supply);
         amount1 = FullMath.mulDivRoundingUp(_idle1(), shares, supply);
         if (amount0 > 0) require(token0.transferFrom(msg.sender, address(this), amount0), "T0");

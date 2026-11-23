@@ -1,5 +1,5 @@
 import { BaseError, ContractFunctionRevertedError, createWalletClient, decodeAbiParameters, decodeErrorResult, http, formatEther, type Abi, type Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { chain, lc, readSlot0, computePoolId, type Client } from "./chain.js";
 import { deployment, env, erc20Abi, hookAbi, swapTestAbi, vaultAbi } from "./config.js";
 import type { Db } from "./db.js";
@@ -50,30 +50,26 @@ export function revertName(e: unknown): string | undefined {
   return rev.data?.errorName ?? revertNameFromRaw((rev as unknown as { raw?: string }).raw);
 }
 
-interface TxReq {
+export interface TxReq {
   address: Hex;
   abi: Abi;
   functionName: string;
   args?: readonly unknown[];
 }
 
-export function makeKeeper(db: Db, client: Client) {
-  if (!env.keeperKey) return null;
-  const account = privateKeyToAccount(env.keeperKey);
-  const wallet = createWalletClient({ account, chain, transport: http(env.rpcUrl, { retryCount: 2, retryDelay: 800, timeout: 30_000 }) });
-  state.keeperAddress = account.address;
+export type SendWallet = { writeContract: (req: never) => Promise<Hex> };
 
-  const key = {
-    currency0: deployment.currency0,
-    currency1: deployment.currency1,
-    fee: deployment.fee,
-    tickSpacing: deployment.tickSpacing,
-    hooks: deployment.hook,
-  };
-  const poolId = computePoolId();
-
+/** simulate/send/record helpers shared by the keeper and the curator bot (rows go to keeper_runs). */
+export function makeSender(
+  db: Db,
+  client: Client,
+  account: PrivateKeyAccount,
+  wallet: SendWallet,
+  expected: Set<string>,
+  onRecord?: (action: string, vault: string | null, tx: string | null, ok: boolean, note: string | null) => void,
+) {
   async function record(action: string, vault: string | null, tx: string | null, ok: boolean, note: string | null) {
-    state.lastKeeperAction = { ts: new Date().toISOString(), action, vault, tx, ok, note };
+    onRecord?.(action, vault, tx, ok, note);
     log("keeper", `${action}${vault ? " " + vault : ""} ${ok ? "ok" : "FAILED"}${tx ? " " + tx : ""}${note ? " :: " + note : ""}`);
     await insertRun(action, vault, tx, ok, false, note);
   }
@@ -112,7 +108,7 @@ export function makeKeeper(db: Db, client: Client) {
         ({ request } = await withRetry(() => client.simulateContract({ account, ...req } as never), `simulate ${action}`, 4));
       } catch (e) {
         const name = revertName(e);
-        if (name && EXPECTED_REVERTS.has(name)) {
+        if (name && expected.has(name)) {
           await recordSkipped(action, vault, name);
           return false;
         }
@@ -128,6 +124,38 @@ export function makeKeeper(db: Db, client: Client) {
       return false;
     }
   }
+  return { record, recordSkipped, send };
+}
+
+/** Current (v4) vaults: the deployment's three plus any the indexer found from the factory start block. */
+export async function listVaults(db: Db): Promise<string[]> {
+  const set = new Set<string>([lc(deployment.patientVault), lc(deployment.chaserVault), lc(deployment.recklessVault)]);
+  try {
+    for (const r of (await db.query("SELECT address FROM vaults WHERE created_block >= $1", [deployment.factoryStartBlock])).rows) set.add(r.address as string);
+  } catch (e) {
+    log("keeper", `vault list from DB failed, using deployment vaults only: ${errMsg(e)}`);
+  }
+  return [...set];
+}
+
+export function makeKeeper(db: Db, client: Client) {
+  if (!env.keeperKey) return null;
+  const account = privateKeyToAccount(env.keeperKey);
+  const wallet = createWalletClient({ account, chain, transport: http(env.rpcUrl, { retryCount: 2, retryDelay: 800, timeout: 30_000 }) });
+  state.keeperAddress = account.address;
+
+  const key = {
+    currency0: deployment.currency0,
+    currency1: deployment.currency1,
+    fee: deployment.fee,
+    tickSpacing: deployment.tickSpacing,
+    hooks: deployment.hook,
+  };
+  const poolId = computePoolId();
+
+  const { record, recordSkipped, send } = makeSender(db, client, account, wallet, EXPECTED_REVERTS, (action, vault, tx, ok, note) => {
+    state.lastKeeperAction = { ts: new Date().toISOString(), action, vault, tx, ok, note };
+  });
 
   async function refreshBalance() {
     try {
@@ -194,15 +222,7 @@ export function makeKeeper(db: Db, client: Client) {
     log("keeper", "swap_up skipped: RPC never showed the down leg");
   }
 
-  async function vaultList(): Promise<string[]> {
-    const set = new Set<string>([lc(deployment.patientVault), lc(deployment.chaserVault), lc(deployment.recklessVault)]);
-    try {
-      for (const r of (await db.query("SELECT address FROM vaults WHERE created_block >= $1", [deployment.factoryStartBlock])).rows) set.add(r.address as string);
-    } catch (e) {
-      log("keeper", `vault list from DB failed, using deployment vaults only: ${errMsg(e)}`);
-    }
-    return [...set];
-  }
+  const vaultList = () => listVaults(db);
 
   async function maintainVaults() {
     const block = await withRetry(() => client.getBlock(), "latest block", 4);
@@ -227,11 +247,10 @@ export function makeKeeper(db: Db, client: Client) {
           await send("settle", addr, { address: v, abi: vaultAbi, functionName: "settle" });
         }
         if (fired) {
-          const parked = Number(pos[0]) === full.lo && Number(pos[1]) === full.hi;
-          if (!parked) {
-            // Anyone may finish the park after firing. Reverts (e.g. AlreadyParked, price bands) are recorded, not fatal.
-            await send("rebalance_park", addr, { address: v, abi: vaultAbi, functionName: "rebalance", args: [0, 0] });
-          }
+          // Full-range ticks are not enough: the contract counts a vault parked only once <= 2% of NAV is idle,
+          // and each park step swaps within a price band, so keep stepping until it reverts AlreadyParked
+          // (an expected revert, skipped in simulation).
+          await send("rebalance_park", addr, { address: v, abi: vaultAbi, functionName: "rebalance", args: [0, 0] });
         }
       } catch (e) {
         await record("vault_check", addr, null, false, errMsg(e));
