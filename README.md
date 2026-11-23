@@ -101,6 +101,15 @@ and later excess refills the bond before any carry.
 Three vaults, created through the factory (`isVault` true); factory deployed at block 68509070. Full output: `script/out/deploy-1301.json`.
 The app, worker and keeper (the Render worker, plus `script/Keeper.s.sol` for scripted moves, which handles all three vaults) run against v4.
 
+**What happened on-chain (v4).** At 2026-11-22 15:46 UTC a scripted trade moved the price up 544 ticks (~5.6%),
+out of Reckless's ±1% range (rehearsed on a fork first). At the 16:39 UTC settlement (block 68513152):
+- Reckless missed par by 0.0487 mWETH (2.4% of NAV); its bond paid it, fell below ½ of the 2% floor, and the
+  curator was fired in the same transaction (`Settled`, `Fired`, `Rebalanced` to full range). One hour later
+  the last 0.0013 mWETH of bond paid the next shortfall; since then the vault tracks par passively.
+- Patient and Chaser stayed in charge: their 10% bonds paid shortfalls of 0.014 and 0.012 mWETH. On
+  2026-11-23 the curator posted that amount back (`postBond` pays the deficit down first), which reopened
+  deposits on both.
+
 **Earlier deployment (v3, 2026-11-21): the fire showcase.** Kept read-only in the app ("Earlier deployment" section); full output: `script/out/deploy-1301-v3.json`.
 
 | Contract | Address |
