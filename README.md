@@ -1,3 +1,5 @@
+**[Demo video](demo/video/hurdle-demo.mp4)** (84 s, recorded from the live dApp)
+
 # Hurdle
 
 **Portable alpha for curated liquidity.** A Uniswap v4 hook and vault where an LP curator guarantees
@@ -7,7 +9,7 @@ no self-reported performance. A curator whose bond runs out is fired and the vau
 
 UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and design log: [IDEA.md](IDEA.md).
 
-**App (testnet dApp):** https://hurdle-app.onrender.com — connect a wallet on Unichain Sepolia, mint test tokens, deposit, settle, run a curator vault, swap; developer docs at [/integrate](https://hurdle-app.onrender.com/integrate). Indexer + 24/7 keeper: [health](https://hurdle-worker.onrender.com/healthz).
+**App (testnet dApp):** https://hurdle-app.onrender.com — connect a wallet on Unichain Sepolia, mint test tokens, deposit, settle, run a curator vault, swap; developer docs at [/integrate](https://hurdle-app.onrender.com/integrate). Indexer + 24/7 keeper (plus an optional curator bot that re-centers the demo vaults' ranges when `CURATOR_PRIVATE_KEY` is set): [health](https://hurdle-worker.onrender.com/healthz).
 
 **Static replay demo:** https://nice-bills.github.io/hurdle/ (real-swap replays: [range week](https://nice-bills.github.io/hurdle/?s=range-week#play), [ETH −14% week](https://nice-bills.github.io/hurdle/?s=down-week#play); the Live panel reads the Sepolia vaults).
 
@@ -27,7 +29,7 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
   history. Donations are blocked (they would inflate par). Overhead is ~40k gas on the first swap of each block in steady state (~12k TWAP write + ~28k block-open fee-growth snapshot); later swaps in the same block skip both writes
   ([research/phase3-twap.md](research/phase3-twap.md)).
 - **Par is fee-capped and wash-proof within a block.** `benchmark(..., elapsed)` credits at most 300% APR
-  of the epoch's starting NAV in fees, over at most one epoch (a late settlement does not widen it), and the vault reads fee growth as of the block's first swap
+  of the epoch's starting NAV in fees, scaled by the real time elapsed since the epoch started (so a late settlement widens the cap; see Limits), and the vault reads fee growth as of the block's first swap
   (`HurdleHook.referenceFeeGrowth`), so same-block wash swaps cannot move par at all.
 - **Settlement** (`HurdleVault.settle`, once per epoch):
   - beat par: the excess first refills the bond up to past shortfalls, then the curator earns
@@ -100,6 +102,8 @@ and later excess refills the bond before any carry.
 
 Three vaults, created through the factory (`isVault` true); factory deployed at block 68509070. Full output: `script/out/deploy-1301.json`.
 The app, worker and keeper (the Render worker, plus `script/Keeper.s.sol` for scripted moves, which handles all three vaults) run against v4.
+
+**Live v4 note.** The live v4 vaults were deployed before the "fired vaults skip the deficit gate" fix, so the fired Reckless deficit was cleared by the curator's `reclaimBond` (done 2026-11-23, after the park completed). Pool depth was added with `script/AddDepth.s.sol` so the park could finish: before that, each park step converted only ~5% on the thin pool. A fresh deployment needs neither step.
 
 **What happened on-chain (v4).** At 2026-11-22 15:46 UTC a scripted trade moved the price up 544 ticks (~5.6%),
 out of Reckless's ±1% range (rehearsed on a fork first). At the 16:39 UTC settlement (block 68513152):
@@ -178,8 +182,11 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   never wait on settlement: if settling or the price read reverts, they pay out in kind without it.
 - NAV and par are valued at TWAP, which matters only at settlement and for crystallized carry.
 - Fee-cap residual: same-block washing has no effect, but wash swaps spread across blocks can still
-  inflate par, and drain the bond, by up to the cap: 300% APR × at most one epoch, i.e. ≤ 3.4 bp of NAV
-  per settlement for 1-hour epochs, however late the settlement (a 2% bond in ~59 consecutive washed
+  inflate par, and drain the bond, by up to the cap: 300% APR × the real elapsed time, i.e. ≤ 3.4 bp of NAV
+  per settlement for 1-hour epochs settled on time, and proportionally more if the settlement is late
+  (a 2-hour-late settle allows up to 3x that). A one-epoch clamp was tried and dropped: a late settle then
+  handed real fees to the curator as excess. The keeper settles promptly, so the cap stays near one epoch in
+  practice, but the contract does not enforce a maximum interval (a 2% bond in ~59 consecutive washed
   epochs by an attacker who is also the pool's only other LP and pays the swap fees it washes). A real
   fee burst above the cap counts as curator excess. Neither real replay week reaches the cap.
 - TWAP lag still blocks some rebalances. Against the 30-minute TWAP alone, |spot − TWAP| > 50 ticks in
