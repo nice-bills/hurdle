@@ -15,6 +15,8 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {HurdleHook} from "../src/HurdleHook.sol";
 import {HurdleVault} from "../src/HurdleVault.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {IHurdleVault} from "../src/IHurdleVault.sol";
 import {HookMiner} from "./utils/HookMiner.sol";
 
 /// Cross-block wash trading by the pool's dominant full-range LP, every block for a whole epoch
@@ -126,5 +128,59 @@ contract FeeCapAttackTest is Test, Deployers {
         assertLe(drain, cap + 1, "drain bounded by the cap x elapsed");
         (,,,, uint256 nav0) = vault.start();
         assertLe(drain / 3, nav0 * vault.MAX_FEE_APR_BPS() * EPOCH / (10_000 * 365 days) + 1, "per-hour rate unchanged");
+    }
+
+    /// The same dominant-LP wash, but the vault is IN RANGE (re-centred, +-120 ticks). It earns its share of the wash
+    /// fees as a real LP, far above par's full-range credit, so nothing is paid out: only an idle/out-of-range vault
+    /// is exposed (research/fee-cap.md section 5).
+    function _washEpoch() internal {
+        for (uint256 t; t < EPOCH; t += BLOCK_TIME) {
+            vm.warp(block.timestamp + BLOCK_TIME);
+            vm.roll(block.number + 1);
+            _wash(5e18);
+        }
+        (uint64 ts,,,,) = vault.start();
+        vm.warp(ts + EPOCH);
+        vm.roll(block.number + 1);
+    }
+
+    /// Par's uncapped fee credit and the cap over one epoch, from the vault's start snapshot.
+    function _credits() internal view returns (uint256 uncapped, uint256 cap) {
+        (, uint160 sStart, uint256 f0, uint256 f1, uint256 nav0) = vault.start();
+        (uint256 g0, uint256 g1) = hook.referenceFeeGrowth(key.toId());
+        uint160 s1 = TickMath.getSqrtPriceAtTick(hook.twapTick(key.toId()));
+        uint256 principal = vault.benchmark(nav0, sStart, s1, 0, 0, 1);
+        unchecked {
+            uncapped = vault.benchmark(nav0, sStart, s1, g0 - f0, g1 - f1, type(uint64).max / 10_000) - principal;
+        }
+        cap = nav0 * vault.MAX_FEE_APR_BPS() * EPOCH / (10_000 * 365 days);
+    }
+
+    function test_attack_inRangeVaultIsNotDrained() public {
+        vm.prank(CURATOR);
+        vault.rebalance(-120, 120);
+        uint256 bondBefore = vault.bond();
+        _washEpoch();
+        (uint256 uncapped, uint256 cap) = _credits();
+        (,,,, uint256 nav0) = vault.start();
+        vm.recordLogs();
+        vault.settle();
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 navNow;
+        uint256 bench;
+        uint256 paid;
+        for (uint256 i; i < logs.length; ++i) {
+            if (logs[i].topics[0] == IHurdleVault.Settled.selector) {
+                (navNow, bench,, paid,,) = abi.decode(logs[i].data, (uint256, uint256, uint256, uint256, uint256, uint160));
+            }
+        }
+        console2.log("in-range: vault real fee gain (nav - start nav, wei):", navNow - nav0);
+        console2.log("in-range: par credit uncapped / cap (wei):", uncapped, cap);
+        console2.log("in-range: nav / bench / paid:", navNow, bench, paid);
+        assertEq(paid, 0, "bond paid out to an in-range vault");
+        assertEq(vault.bond(), bondBefore, "bond drained");
+        assertGe(navNow, bench, "in-range vault fell below par under wash trading");
+        assertGe(navNow - nav0 + 1e12, uncapped, "vault earned less than the full-range credit");
+        assertFalse(vault.fired());
     }
 }

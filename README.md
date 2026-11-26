@@ -195,7 +195,13 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   maximum settlement interval is needed (a one-epoch clamp was tried and dropped: a late settle then handed
   real fees to the curator as excess). Worst case, an attacker who is the dominant LP (recycling the fees it
   pays) washing every block drains a 10% bond in ~46 days, down from ~12 days at the old 300% cap; the
-  attack test `test/FeeCapAttack.t.sol` measures exactly the cap per epoch. 80% is ~2x the p99 of par's
+  attack test `test/FeeCapAttack.t.sol` measures exactly the cap per epoch.
+  Only an idle or out-of-range vault is exposed. An in-range vault is a real LP in the wash: in
+  `test_attack_inRangeVaultIsNotDrained` (same wash, vault re-centred at +-120 ticks) it earns +10.6% of NAV in one
+  epoch against par's uncapped fee credit of 0.063% (168x, its concentration factor), so no shortfall arises and
+  the bond is untouched. The curator's defence is to stay in range (the live curator bot re-centres); a
+  vault left idle or out of range for days is the exposed case.
+  80% is ~2x the p99 of par's
   uncapped hourly fee credit on the two real weeks (p99 40%, max 60%), so it never binds there; a real hour above
   the cap counts as curator excess (6 of 831 hourly settlements over five weeks, all in the 138%-vol Oct 24 week;
   [research/fee-cap.md](research/fee-cap.md)).
@@ -228,9 +234,12 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
 - Audit 3 residuals (research/audit3-accounting.md, Resolution column): carry is still charged on the bond
   shares' own excess (curator-to-curator); reclaim does not cover the partial epoch it lands in; the dead
   shares count as a depositor, so the bond pays their 1000-wei slice of a miss. The covered-settle
-  guarantee needs the bond worth the whole shortfall: bond tokens that enter the vault are shared with
-  the curator's free shares, so a bond worth only the depositors' share can leave them up to `x/t` short
-  until the next settle.
+  guarantee: when the bond is worth what it takes to make depositors whole, they end at par in that same
+  settlement, even with the curator holding free shares. Bond tokens that enter the vault are shared with
+  every share, so the payout is grossed up by `t / depositorShares` and the curator's lift is re-locked as
+  bond shares. "Covered" means bond value >= `owed * (t - b) / (t - x)` (at most the whole shortfall, `b` =
+  bond shares, `x` = bond shares + curator free shares); a bond worth only the depositors' slice `owed`
+  falls short by about the curator's fraction (`test/audit/ShortfallPayout.t.sol`, 20% free shares).
 - After firing, `rebalance` is permissionless and swaps to 50/50, with the same price bounds.
 - The curator's own free shares are not covered by its bond: on a miss they take their share of the loss.
   The live demo vaults therefore mint the first deposit's shares to a separate depositor address.
@@ -238,4 +247,5 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   directly (not via the factory) are not registered; depositors should check `factory.isVault`.
 - Par is valued at the TWAP, not spot. Over the ETH −14% week the two differ by up to ~84 bp at a single settlement (28 bp at the
   week end; `data/par_check.py` without `--twap`).
-- Not audited. Testnet only (mock tokens).
+- Not externally audited. The final source has had model-based audits (audit2, audit3, research/) but no
+  external human audit. Testnet only (mock tokens).

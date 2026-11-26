@@ -649,10 +649,11 @@ contract Handler {
 
         if (bench > nav && s.t > s.x) {
             uint256 owed = FullMath.mulDiv(bench - nav, s.t - s.x, s.t);
-            // "Covered" = the bond is worth the whole shortfall. Bond tokens that enter the vault are shared with
-            // the curator's free shares (their lift is re-locked as bond shares, not paid out), so a bond worth
-            // only `owed` can leave depositors short by up to x/t; the full shortfall is always enough.
-            if (owed > 0 && s.bondV >= bench - nav) {
+            // "Covered" = the bond is worth what it takes to make depositors whole. Bond shares burn at their
+            // depositor-weighted value and bond tokens are grossed up for the curator's free shares, so the need
+            // is owed * (t - b) / (t - x) (at most the whole shortfall); a bond worth only `owed` is not covered.
+            uint256 need = FullMath.mulDiv(owed, s.t - s.b, s.t - s.x);
+            if (owed > 0 && s.bondV >= need + need / 10_000) {
                 ghostCoveredSettlements++;
                 uint256 tol = owed / 10_000 + 1; // 1 bp rounding tolerance
                 if (paid + tol < owed) {

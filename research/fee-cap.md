@@ -59,3 +59,22 @@ the old 300%. A 10%-of-NAV bond: ~46 days to drain instead of ~12.
   swings were scaled down (about 4x) because the old swings produced a fee yield between 80% and 300% APR, above
   any realistic hour (the Oct 24 week peaks at 185%). Above the cap a passive vault correctly shows excess.
 - `data/par_check.py` uses the new cap; both replays still keep depositors >= par at every settlement.
+
+## 5. In-range vs idle vault (council v4 luna item 1)
+
+Question: does the dominant-LP wash drain a vault that is in range? No. A vault in range earns its share of the
+wash fees as a real LP, and its concentrated liquidity is `~1/(1 - 1.0001^-60)` = 168x its full-range equivalent at
++-120 ticks, so it earns 168x what par credits to the virtual full-range position. Par's credit is the vault's own
+fee growth per unit of in-range liquidity times a smaller liquidity, so the vault is always above it.
+
+`test_attack_inRangeVaultIsNotDrained` (same pool, attacker 2000e18 liquidity, 120 blocks of 5e18 wash swaps,
+vault NAV 10e18, +-120 ticks):
+
+| Vault | Real fee gain | Par fee credit | Bond paid |
+|---|---|---|---|
+| In range | +1.060e18 (10.6% of NAV) | 6.29e15 uncapped (0.063%), cap 9.13e14 | 0 |
+| Idle / out of range | 0 | 8.91e15 uncapped, cap 9.13e14 (0.913 bp) | 9.13e14 (= the cap) |
+
+Only an idle or out-of-range vault is exposed, bounded by the 80% APR cap (~0.91 bp/h). Curator's defence: stay in
+range; the live curator bot re-centres. Residual: a vault idle for days (price left the range, curator offline)
+bleeds at up to the cap until it re-centres or the bond fires.

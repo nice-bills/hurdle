@@ -200,3 +200,9 @@ Verified on the scratch copy. The existing fired-vault deposit tests still pass 
 11. **Handler gaps.**
     - `sumShares` only covers fixed actors. Add every address that ever receives a `SettlerPaid` bounty.
     - Add a curator in-kind `deposit` and a curator `withdraw` action, so that `x/t` reaches levels where A shows.
+
+## Note: why carry rose in the e763be0 results table
+
+Before fix A the deficit counted the whole bond payout, so a recoup took more of each hour's excess back into the
+bond; with the deficit owed by depositor shares only (the curator's own lift is re-locked, never owed), less excess
+goes to recoup and more is left as carry, so carry rose by 0.01-0.08 point.
