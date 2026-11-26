@@ -72,16 +72,23 @@ export const env = {
   keeperKey: normalizeKey(process.env.KEEPER_PRIVATE_KEY, "KEEPER_PRIVATE_KEY"),
   curatorKey: normalizeKey(process.env.CURATOR_PRIVATE_KEY, "CURATOR_PRIVATE_KEY"),
   curatorMs: num(process.env.CURATOR_INTERVAL_SECONDS, 600) * 1000,
+  /** Cheap deficit check (repay) cadence; must beat the 300 s deposit window. */
+  curatorFastMs: num(process.env.CURATOR_FAST_SECONDS, 60) * 1000,
+  /** /healthz warns when a managed vault has been out of range this long. */
+  outOfRangeWarnMs: num(process.env.OUT_OF_RANGE_WARN_SECONDS, 30 * 60) * 1000,
   /** Keeper arbitrageur: reference tick to hold spot to. Unset: the value stored last run, else the 1 h TWAP at startup. */
   targetTick: process.env.TARGET_TICK === undefined || process.env.TARGET_TICK === "" ? null : Math.trunc(num(process.env.TARGET_TICK, NaN)),
   /** Spot is swapped back toward the target when it is further than this many ticks away. */
   arbThresholdTicks: num(process.env.ARB_THRESHOLD_TICKS, 20),
   /** Max ticks one keeper run moves spot back (bounds the swap size and the price shock per run). */
   arbMaxTicks: num(process.env.ARB_MAX_TICKS, 150),
-  /** Synthetic volume: size of each round trip's first leg, in whole mWETH (default 1 ~ $2.8k per leg). */
-  roundTripWeth: num(process.env.ROUNDTRIP_WETH, 1),
+  /**
+   * Synthetic volume: size of each round trip's first leg, in whole mWETH (default 2 ~ $5.7k per leg). On the v6 pool
+   * (~1.07e17 liquidity at spot) 2 mWETH moves price ~20 ticks, so a +-2% demo vault earns about 3 bp of NAV per hour.
+   */
+  roundTripWeth: num(process.env.ROUNDTRIP_WETH, 2),
   /** Price limit of the round trip's first leg, in ticks from spot (must be wide enough to fill roundTripWeth). */
-  roundTripTicks: num(process.env.ROUNDTRIP_TICKS, 15),
+  roundTripTicks: num(process.env.ROUNDTRIP_TICKS, 25),
   /** Wallets under this many ETH are flagged lowBalance in /healthz. */
   lowBalanceWei: BigInt(process.env.LOW_BALANCE_WEI ?? "2000000000000000"), // 0.002 ETH
 };

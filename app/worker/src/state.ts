@@ -17,4 +17,8 @@ export const state = {
   targetTick: null as number | null,
   lastArbAt: 0,
   lastKeeperError: "" as string,
+  /** Visible curator warnings, keyed by "<vault>:<kind>"; set on a problem, cleared when it resolves. Surfaced in /healthz. */
+  curatorWarnings: new Map<string, string>(),
+  /** Vault (lowercase) -> ms timestamp since which the curator has seen its position out of range. */
+  outOfRangeSince: new Map<string, number>(),
 };

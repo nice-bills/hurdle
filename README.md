@@ -113,50 +113,18 @@ Three vaults, created through the factory (`isVault` true); factory deployed at 
 **Token order (same as v5, flipped from v4):** the mocks sort so currency0 is mWETH and currency1 is mUSDC (`wethIs0 = true`). The bond, NAV, par and vault shares are all in token1, so in v5/v6 they are mUSDC (6 decimals); in v4 they were mWETH. The app, worker and keeper read the order from the deployment (no hard-coded order).
 The app, worker and keeper (the Render worker, plus `script/Keeper.s.sol` for scripted moves) run against v6 (the keeper's arbitrage target tick comes from `keeperTargetTick` in `app/shared/deployment-1301.json`: -196800, the post-move tick). The curator bot only re-centres Patient and Chaser: Reckless is deliberately unmanaged so it gets fired.
 
-**Earlier deployment (v5, 2026-11-26): Reckless was fired on-chain.** Kept read-only in the app; full output: `script/out/deploy-1301-v5.json`. Factory `0x77d21c4464290826651583eF6cF43dC1018d9e74` (start block 68852678), hook `0x3FB6cbbAA8c703830c126F59416DBe249d5D50A0`, Patient `0xE4192E10c36d46bfBE8aCD7dDe5e1e0978410c50`, Chaser `0xd4D69331910E6753B26984d6a082bb16Aa972398`, Reckless `0x594560B41d30DC10D82a2633757036b840C07075`. A scripted -593-tick move at 15:00 UTC fired Reckless at the 15:58 UTC settle; Patient and Chaser paid 50 / 40 mUSDC and were refilled; the curator bot re-centred Chaser at 16:46 UTC.
+**v6 live story (2026-11-26, all UTC, testnet, synthetic flow):**
+- 19:42:58, block 68869750: a scripted swap moved the price by −555 ticks (about −5.4%), to tick −196800 ([tx `0x402b94…`](https://sepolia.uniscan.xyz/tx/0x402b945d81e588353cca92c34cb009ab4defa46b5d9d2c2f52ca48637a3d8974)). The keeper then held spot at that target.
+- 20:41 settle: Reckless (±1%, out of range) missed par by 144.9 mUSDC; its bond paid, and it was `Fired` and parked full range in the same transaction ([tx `0xdf4810…`](https://sepolia.uniscan.xyz/tx/0xdf4810ad8b49326d66bbe131f4b769f8bff84c7d16d9130b077f10b1c0df25ae)); `rebalance(0,0)` now reverts `AlreadyParked`.
+- Patient and Chaser missed too; their bonds paid 50.3 and 102.9 mUSDC. The curator bot repaid both deficits (`postBond`) at about 20:50:41 ([Patient](https://sepolia.uniscan.xyz/tx/0xfc720161e75786a3a1c390a2b23d4b385115ed47c197b1dba7b839b78285d0f4), [Chaser](https://sepolia.uniscan.xyz/tx/0xd6b8eeb8c638dcee234a8f30fe7f5b86aa82c32a560f15fb010c3dfcaf62c030)). That was after the 300 s deposit window, so the worker now checks deficits every 60 s and right after each settle.
+- ~21:00: Chaser was re-centred (it had been out of range since 19:42; the bot's single strict `rebalance(.., 200)` kept reverting `RebalanceIncomplete`). Done by hand in two steps, `rebalance(c−200, c+200, 10000)` then `(…, 200)`; the bot now does the same two steps.
+- Carry has not shown yet on any deployment: v6 spent its first epochs out of range. The keeper's flow was raised to 2 mWETH per round trip so an in-range Chaser earns carry (see the worker README); the replays on real swap data are the carry evidence.
 
-**v6 redeploy:** same audited contracts plus the round-4 fixes (fee cap scaled by tier, deposit gate mirrors v5, keeper arbitrage, curator auto-refill). See `research/council/v4-changelog.md`.
-
-**Earlier still (v4, 2026-11-22): Reckless was fired on-chain.** History only; full output: `script/out/deploy-1301-v4.json`. Factory `0x17a372d93D5c11dfadfe453325315b9Dcfc98FdE` (start block 68509070), hook `0x9375e143A60547FAFaa22b53e5777A33667550A0`, Patient `0x5126c9Ebf2cF62e9f121F55886c57075a190b22d`, Chaser `0x1f4Db529B5a7a766D859E9EC25Dba3C01BeF0985`, Reckless `0x711fAb3A68aEAFbFE6Df493e676070D550ac5EEC`, mUSDC (currency0) `0x19e9DC387bbFf0c035d12dEFceEFF1fc0D859C49`, mWETH (currency1, bond token) `0x4F4C59E9089C43785ecc2B8780F61Ca349946bb4`.
-
-The v4 vaults were deployed before the "fired vaults skip the deficit gate" fix, so the fired Reckless deficit was cleared by the curator's `reclaimBond` (done 2026-11-23, after the park completed). Pool depth was added with `script/AddDepth.s.sol` so the park could finish: before that, each park step converted only ~5% on the thin pool. A fresh deployment needs neither step.
-
-What happened on-chain (v4). At 2026-11-22 15:46 UTC a scripted trade moved the price up 544 ticks (~5.6%),
-out of Reckless's ±1% range (rehearsed on a fork first). At the 16:39 UTC settlement (block 68513152):
-- Reckless missed par by 0.0487 mWETH (2.4% of NAV); its bond paid it, fell below ½ of the 2% floor, and the
-  curator was fired in the same transaction (`Settled`, `Fired`, `Rebalanced` to full range). One hour later
-  the last 0.0013 mWETH of bond paid the next shortfall; since then the vault tracks par passively.
-- Patient and Chaser stayed in charge: their 10% bonds paid shortfalls of 0.014 and 0.012 mWETH. On
-  2026-11-23 the curator posted that amount back (`postBond` pays the deficit down first), which reopened
-  deposits on both.
-
-**Earlier still (v3, 2026-11-21): Patient v3 was fired on-chain.** History only (no longer shown in the app); full output: `script/out/deploy-1301-v3.json`.
-
-| Contract | Address |
-|---|---|
-| HurdleHook | [`0x7EECdD6507E77db3247C9E9bccFA0AcFf5F410a0`](https://sepolia.uniscan.xyz/address/0x7EECdD6507E77db3247C9E9bccFA0AcFf5F410a0) |
-| HurdleVaultFactory | [`0x6afcE6f48644eECBA68d0b88E45496953720A904`](https://sepolia.uniscan.xyz/address/0x6afcE6f48644eECBA68d0b88E45496953720A904) |
-| Patient vault (±10%), fired on-chain | [`0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D`](https://sepolia.uniscan.xyz/address/0xa8F0dbf46b7C87477E6fe8FB4aE9474F7AF3Ba7D) |
-| Chaser vault (±2%) | [`0xB66277b0C38B99afcbeD6AB5554d2C3505E5749e`](https://sepolia.uniscan.xyz/address/0xB66277b0C38B99afcbeD6AB5554d2C3505E5749e) |
-| mUSDC / mWETH | `0x16dED02f19B86f66335f0d05448D8EBAf2BBC18b` / `0x6Fe21Df36b9f00E9279640B0C5a2006d3a92F318` |
-
-Both vaults: bond 5% of the deposit (0.1 mWETH), 1 mWETH + 3000 mUSDC deposited. What happened on-chain (events visible in the app and on Uniscan):
-
-
-- 2026-11-21 19:46 UTC: scripted ETH −9.5% move. Both vaults missed par at the next settlements; their bonds
-  paid depositors (Patient 0.054 mWETH, Chaser 0.031 mWETH).
-- 2026-11-22 10:50 UTC: a second −9.5% leg. At 11:02 Patient's settlement paid its last 0.046 mWETH of bond and
-  fired it (`Fired`); the vault was then parked full range by the keeper (`Rebalanced` to full range).
-- Patient's 5% bond was not enough for two 9.5% drops on this thin test pool: its depositors end 0.77% below
-  par. The guarantee is "par while the bond lasts"; sizing the bond is the curator's and depositors' choice.
-
-Superseded (do not use):
-- second-audit fixes: hook `0x23C23680100b77Acb606995dAD2Be470A30590A0`, vaults
-  `0xc3A2f6f4BE0b437A2cC1C3844F86c999c7391b47`, `0x3CD34e0A6E6f9606F17e00e37544DcC2a70fE586`;
-- first audit fixes: hook `0x9BaaB91A2DFB8fF9b9D86D5067E67435d56090a0`, vaults
-  `0x448071dAbcF890D6f89FB108803c20461f0D86e8`, `0x0B33F9959107469Fb0913B69f2459Cb07d18d68f`;
-- pre-audit: hook `0xd0d744918B9a2657B6097e034D51B2D93524dA80`, vaults
-  `0x72E67e9263E8c60811291d4e3F759612090316ca`, `0x8e7665e30D6bB124c5Ea7b4D340Cd6F07513603C`.
+**History (details and addresses: [research/deploy.md](research/deploy.md#deployment-history), `script/out/deploy-1301-v*.json`):**
+- v5 (2026-11-26, factory `0x77d21c4464290826651583eF6cF43dC1018d9e74`): a scripted −593-tick move at 15:00 fired Reckless at the 15:58 settle; Patient and Chaser paid 50 / 40 mUSDC and were refilled. Kept read-only in the app.
+- v4 (2026-11-22): a +544-tick move fired Reckless at the 16:39 settle (missed by 2.4% of NAV); the curator reopened Patient and Chaser deposits with `postBond`. Pool depth added with `script/AddDepth.s.sol` so the park could finish. mWETH was the bond token.
+- v3 (2026-11-21): two −9.5% legs fired Patient v3 at the 11:02 settle on 2026-11-22; its 5% bond did not cover two 9.5% drops on the thin pool (depositors ended 0.77% below par: the guarantee is par while the bond lasts).
+- Earlier audit-fix and pre-audit deployments are superseded; addresses are in research/deploy.md.
 
 ## Layout
 
@@ -265,7 +233,6 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   (shares, bond, deficit, shortfall gross-up, carry) is high-impact; do not rely on the depositor guarantee with
   meaningful funds before an external audit. Testnet only (mock tokens).
 - **Live flow is synthetic.** The testnet pool has no organic traders. All volume comes from the worker keeper's
-  round trips (size set by `ROUNDTRIP_WETH`, default 1 mWETH per leg, every 10 min), and the keeper also acts as the
+  round trips (size set by `ROUNDTRIP_WETH`, default 2 mWETH per leg, every 10 min), and the keeper also acts as the
   arbitrageur that returns spot to a reference tick after park/re-centre swaps. Carry, fees and the depositor-vs-par line on the live
-  vault pages therefore reflect that script, not market demand: expect carry on the order of a basis point per hour on an in-range
-  vault, and bond drains on the passive/out-of-range ones. The replays on real swap data (above) are the evidence for the mechanism.
+  vault pages therefore reflect that script, not market demand: expect fees on the order of 3 bp of NAV per hour on an in-range ±2% vault (2 mWETH per leg on the v6 pool depth), and bond drains on the passive/out-of-range ones. The replays on real swap data (above) are the evidence for the mechanism.
