@@ -202,16 +202,20 @@ export function makeKeeper(db: Db, client: Client) {
   }
 
   /**
-   * Reference tick the arbitrage leg holds spot to: TARGET_TICK, else the value stored by an earlier run (so a
+   * Reference tick the arbitrage leg holds spot to: TARGET_TICK, else deployment.keeperTargetTick, else the value stored by an earlier run (so a
    * restart does not re-anchor to a price the park swaps already moved), else the 1 h TWAP at startup.
-   * To script a market move on purpose, set TARGET_TICK (or UPDATE cursor SET block=<tick> WHERE name='target_tick').
+   * To script a market move on purpose, set TARGET_TICK (or UPDATE cursor SET block=<tick> WHERE name='target_tick:<hook address lowercase>').
    */
   let target: number | null = null;
+  const TARGET_KEY = `target_tick:${lc(deployment.hook)}`; // per pool: a stored v5 target never applies to v6
   async function loadTarget() {
     if (env.targetTick !== null) target = env.targetTick;
-    else {
+    else if (typeof deployment.keeperTargetTick === "number") {
+      target = deployment.keeperTargetTick;
+      log("keeper", `target tick ${target} from deployment keeperTargetTick`);
+    } else {
       try {
-        const r = await db.query("SELECT block FROM cursor WHERE name='target_tick'");
+        const r = await db.query("SELECT block FROM cursor WHERE name=$1", [TARGET_KEY]);
         if (r.rows.length) target = Number(r.rows[0].block);
       } catch (e) {
         log("keeper", `target tick lookup failed: ${errMsg(e)}`);
@@ -227,7 +231,7 @@ export function makeKeeper(db: Db, client: Client) {
     }
     state.targetTick = target;
     try {
-      await db.query("INSERT INTO cursor (name, block) VALUES ('target_tick', $1) ON CONFLICT (name) DO UPDATE SET block = EXCLUDED.block", [target]);
+      await db.query("INSERT INTO cursor (name, block) VALUES ($2, $1) ON CONFLICT (name) DO UPDATE SET block = EXCLUDED.block", [target, TARGET_KEY]);
     } catch (e) {
       log("keeper", `target tick not persisted: ${errMsg(e)}`);
     }

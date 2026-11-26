@@ -72,7 +72,7 @@ try {
   const cur = await client.query("SELECT * FROM cursor WHERE name LIKE 'events:%'");
   console.log("cursor:", JSON.stringify(cur.rows));
   check("cursor set", cur.rowCount === 1);
-  check("keeper target tick stored", (await client.query("SELECT 1 FROM cursor WHERE name='target_tick'")).rowCount === 1);
+  check("keeper target tick stored", (await client.query("SELECT 1 FROM cursor WHERE name LIKE 'target_tick%'")).rowCount === 1);
   check("pool_ticks keyed by pool id", (await client.query("SELECT 1 FROM pool_ticks WHERE pool_id IS NOT NULL")).rowCount! >= 1);
   const runs = await client.query("SELECT action, vault, ok, left(note,160) AS note FROM keeper_runs ORDER BY id LIMIT 10");
   console.log("keeper_runs:", JSON.stringify(runs.rows));

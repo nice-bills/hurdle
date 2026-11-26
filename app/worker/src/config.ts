@@ -27,7 +27,7 @@ export interface Deployment {
   patientVault: Address;
   chaserVault: Address;
   recklessVault: Address;
-  /** Earlier deployment (v3), read-only: the worker never keeps it. */
+  /** Earlier deployment (v5), read-only: the worker never keeps it. */
   legacy?: { factory: Address; patientVault: Address; chaserVault: Address; recklessVault?: Address; factoryStartBlock: number };
   mUSDC: Address;
   mWETH: Address;
@@ -41,6 +41,8 @@ export interface Deployment {
   factoryStartBlock: number;
   rpc: string;
   explorer: string;
+  /** Optional: tick the keeper arbitrage holds spot to for this pool (before the stored / TWAP default). */
+  keeperTargetTick?: number;
 }
 
 export const deployment: Deployment = JSON.parse(readFileSync(join(SHARED, "deployment-1301.json"), "utf8"));

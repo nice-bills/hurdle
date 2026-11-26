@@ -95,25 +95,29 @@ and later excess refills the bond before any carry.
 
 ## Unichain Sepolia (1301)
 
-**Live (v5, deployed 2026-11-26, block 68852678):**
+**Live (v6, deployed 2026-11-26, block 68869576):**
 
 | Contract | Address |
 |---|---|
-| HurdleHook | [`0x3FB6cbbAA8c703830c126F59416DBe249d5D50A0`](https://sepolia.uniscan.xyz/address/0x3FB6cbbAA8c703830c126F59416DBe249d5D50A0) |
-| HurdleVaultFactory | [`0x77d21c4464290826651583eF6cF43dC1018d9e74`](https://sepolia.uniscan.xyz/address/0x77d21c4464290826651583eF6cF43dC1018d9e74) |
-| Patient vault (±10%) | [`0xE4192E10c36d46bfBE8aCD7dDe5e1e0978410c50`](https://sepolia.uniscan.xyz/address/0xE4192E10c36d46bfBE8aCD7dDe5e1e0978410c50) |
-| Chaser vault (±2%) | [`0xd4D69331910E6753B26984d6a082bb16Aa972398`](https://sepolia.uniscan.xyz/address/0xd4D69331910E6753B26984d6a082bb16Aa972398) |
-| Reckless vault (±1%, 2.5% bond, built to get fired) | [`0x594560B41d30DC10D82a2633757036b840C07075`](https://sepolia.uniscan.xyz/address/0x594560B41d30DC10D82a2633757036b840C07075) |
-| mWETH (currency0) | `0x0Df1c576d01f4AD434B13b28B5d7F7e78e129AD0` |
-| mUSDC (currency1, bond / NAV token) | `0xabE4E10B0B42d0A9f8c2D8f55Be6848a42abf97a` |
-| Liquidity / swap routers | `0xA97298DDf3676B6fd3002E5404c8345f36b4c479` / `0xa33a2d3271ff358d5F62999D3148B00940F7fC54` |
+| HurdleHook | [`0x7deB3F0A5218a7eD540EC55D8fbe1d59060E10A0`](https://sepolia.uniscan.xyz/address/0x7deB3F0A5218a7eD540EC55D8fbe1d59060E10A0) |
+| HurdleVaultFactory | [`0xC39f0C0979dc16d26Af834bcadcc81d6638A74A3`](https://sepolia.uniscan.xyz/address/0xC39f0C0979dc16d26Af834bcadcc81d6638A74A3) |
+| Patient vault (±10%) | [`0x22e97BDB1E4B29033b729B0B7B6D59B56C9d095B`](https://sepolia.uniscan.xyz/address/0x22e97BDB1E4B29033b729B0B7B6D59B56C9d095B) |
+| Chaser vault (±2%) | [`0xaCd6a6228D29a099BA269B2b3d39745b24C3fD24`](https://sepolia.uniscan.xyz/address/0xaCd6a6228D29a099BA269B2b3d39745b24C3fD24) |
+| Reckless vault (±1%, 2.5% bond, built to get fired) | [`0x45ADcEcE45Cade3f8850019fAcf34ed99D0DF82D`](https://sepolia.uniscan.xyz/address/0x45ADcEcE45Cade3f8850019fAcf34ed99D0DF82D) |
+| mWETH (currency0) | `0x2B9e6d4312673e34d8df5fa239dfb4da89c8324F` |
+| mUSDC (currency1, bond / NAV token) | `0xd256e8097Eda8785449Fc50BA2d15357b72b3bac` |
+| Liquidity / swap routers | `0x13f75772a65Ef4eBD8Ae855D1C05c38F0d14199D` / `0xae190c96b3E1369f4610831CC2f033A57F9741B7` |
 | Depositor (holds the vault shares; not the curator, so the bond covers it) | `0xE1cCCD969F34E0f7d435CeA96C63c4d78E95aD03` |
 
-Three vaults, created through the factory (`isVault` true); factory deployed at block 68852678. Full output: `script/out/deploy-1301.json`.
-**Token order changed in v5:** the new mocks sort the other way, so currency0 is mWETH and currency1 is mUSDC (`wethIs0 = true`). The bond, NAV, par and vault shares are all in token1, so in v5 they are mUSDC (6 decimals); in v4 they were mWETH. The app, worker and keeper read the order from the deployment (no hard-coded order).
-The app, worker and keeper (the Render worker, plus `script/Keeper.s.sol` for scripted moves) run against v5. The curator bot only re-centres Patient and Chaser: Reckless is deliberately unmanaged so it gets fired.
+Three vaults, created through the factory (`isVault` true); factory deployed at block 68869576. Full output: `script/out/deploy-1301.json`.
+**Token order (same as v5, flipped from v4):** the mocks sort so currency0 is mWETH and currency1 is mUSDC (`wethIs0 = true`). The bond, NAV, par and vault shares are all in token1, so in v5/v6 they are mUSDC (6 decimals); in v4 they were mWETH. The app, worker and keeper read the order from the deployment (no hard-coded order).
+The app, worker and keeper (the Render worker, plus `script/Keeper.s.sol` for scripted moves) run against v6 (the keeper's arbitrage target tick comes from `keeperTargetTick` in `app/shared/deployment-1301.json`: -196800, the post-move tick). The curator bot only re-centres Patient and Chaser: Reckless is deliberately unmanaged so it gets fired.
 
-**Earlier deployment (v4, 2026-11-22): Reckless was fired on-chain.** Kept read-only in the app ("Earlier deployment" section); full output: `script/out/deploy-1301-v4.json`. Factory `0x17a372d93D5c11dfadfe453325315b9Dcfc98FdE` (start block 68509070), hook `0x9375e143A60547FAFaa22b53e5777A33667550A0`, Patient `0x5126c9Ebf2cF62e9f121F55886c57075a190b22d`, Chaser `0x1f4Db529B5a7a766D859E9EC25Dba3C01BeF0985`, Reckless `0x711fAb3A68aEAFbFE6Df493e676070D550ac5EEC`, mUSDC (currency0) `0x19e9DC387bbFf0c035d12dEFceEFF1fc0D859C49`, mWETH (currency1, bond token) `0x4F4C59E9089C43785ecc2B8780F61Ca349946bb4`.
+**Earlier deployment (v5, 2026-11-26): Reckless was fired on-chain.** Kept read-only in the app; full output: `script/out/deploy-1301-v5.json`. Factory `0x77d21c4464290826651583eF6cF43dC1018d9e74` (start block 68852678), hook `0x3FB6cbbAA8c703830c126F59416DBe249d5D50A0`, Patient `0xE4192E10c36d46bfBE8aCD7dDe5e1e0978410c50`, Chaser `0xd4D69331910E6753B26984d6a082bb16Aa972398`, Reckless `0x594560B41d30DC10D82a2633757036b840C07075`. A scripted -593-tick move at 15:00 UTC fired Reckless at the 15:58 UTC settle; Patient and Chaser paid 50 / 40 mUSDC and were refilled; the curator bot re-centred Chaser at 16:46 UTC.
+
+**v6 redeploy:** same audited contracts plus the round-4 fixes (fee cap scaled by tier, deposit gate mirrors v5, keeper arbitrage, curator auto-refill). See `research/council/v4-changelog.md`.
+
+**Earlier still (v4, 2026-11-22): Reckless was fired on-chain.** History only; full output: `script/out/deploy-1301-v4.json`. Factory `0x17a372d93D5c11dfadfe453325315b9Dcfc98FdE` (start block 68509070), hook `0x9375e143A60547FAFaa22b53e5777A33667550A0`, Patient `0x5126c9Ebf2cF62e9f121F55886c57075a190b22d`, Chaser `0x1f4Db529B5a7a766D859E9EC25Dba3C01BeF0985`, Reckless `0x711fAb3A68aEAFbFE6Df493e676070D550ac5EEC`, mUSDC (currency0) `0x19e9DC387bbFf0c035d12dEFceEFF1fc0D859C49`, mWETH (currency1, bond token) `0x4F4C59E9089C43785ecc2B8780F61Ca349946bb4`.
 
 The v4 vaults were deployed before the "fired vaults skip the deficit gate" fix, so the fired Reckless deficit was cleared by the curator's `reclaimBond` (done 2026-11-23, after the park completed). Pool depth was added with `script/AddDepth.s.sol` so the park could finish: before that, each park step converted only ~5% on the thin pool. A fresh deployment needs neither step.
 

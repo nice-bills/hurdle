@@ -23,6 +23,12 @@ App parked check, /integrate snippets, curator-bot gates (deposit window, Rebala
 - Curator bot (worker, curator key) re-centres Patient and Chaser near their range edges (Opus 5: "no curator skill shown live"). Reckless is unmanaged by design.
 - Scripted −593-tick move 2026-11-26 15:00 UTC (rehearsed on a fork): at the 15:58 settle Reckless missed par, its bond paid, it was fired and parked full range; Patient and Chaser paid 50 / 40 mUSDC and stayed in charge; the curator refilled both bonds (deficit 0, deposits open). v4 kept read-only as the earlier deployment.
 
+## v6 redeploy (2026-11-26, block 68869576)
+
+- Redeployed from 9fdb7c5 (+3e6814c, deploy script only: `HOOK_SALT_START`): fee cap scaled by tier plus the round-4 fixes (deposit gate mirrors v5, keeper arbitrage + flow, curator auto-refill/idle/gas buffer, pool_ticks per pool). Same token order as v5. v5 kept read-only as `legacy`.
+- Pool depth added with `script/AddDepth.s.sol`; scripted -555-tick move at 19:42 UTC (to tick -196800) so Reckless v6 fires at the ~20:41 UTC settle.
+- Keeper holds spot to `keeperTargetTick` (-196800) from `app/shared/deployment-1301.json`, so it does not undo the scripted move; stored targets are keyed per pool.
+
 ## Not done
 
 - Demo video and UI redesign: deliberately after this review loop.

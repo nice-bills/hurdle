@@ -74,6 +74,10 @@ with human explanations).
 - Keeper (env `KEEPER_PRIVATE_KEY`, its own funded wallet, never logged): every 10 min a small round-trip swap on the
   pool (volume, fees, fresh TWAP); for every vault with `block.timestamp >= epochStart+epochSeconds` call `settle()`;
   for fired vaults not parked call `rebalance(0,0)`. Log to keeper_runs. Mint mocks to itself as needed.
+- Keeper arbitrage target: spot is swapped back toward a target tick. Order: env `TARGET_TICK`, then `keeperTargetTick`
+  in `shared/deployment-1301.json` (optional, per deployment/pool; use it to hold a scripted move, e.g. v6 = -196800),
+  then the value stored in `cursor` (`target_tick:<hook>`, keyed per pool so an old pool's target never applies to a new
+  one), then the 1 h TWAP at startup. `/healthz` shows the active `targetTick`.
 - Curator bot (env `CURATOR_PRIVATE_KEY`, optional; module `curator.ts`): every 10 min, for each current non-fired
   vault whose `curator()` is that key's address, if spot is outside the range or within 20% of the half-width of an
   edge, simulate then call `rebalance(lo, hi, 200)` re-centered on the spot tick with the same half-width (tick-spacing

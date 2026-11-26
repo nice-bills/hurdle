@@ -28,7 +28,7 @@ await go('/replay',3500);await cap('Beat par: the curator earns carry. Miss par:
 await go('/vaults',4000);await cap('Live on Unichain Sepolia. Patient and Chaser are healthy, bonds refilled, deposits open each epoch.');await sleep(5000);
 await shot('frame-2-vaults-live.png');await sleep(4000);
 // 5
-await go('/vaults/0x594560B41d30DC10D82a2633757036b840C07075',4500);await cap('Reckless was built to fail. Fired on-chain 2026-11-22 16:39 UTC. The vault now parks full range.');await sleep(5000);
+await go('/vaults/0x711fAb3A68aEAFbFE6Df493e676070D550ac5EEC',4500);await cap('Reckless was built to fail. Fired on-chain 2026-11-22 16:39 UTC. The vault now parks full range.');await sleep(5000);
 await shot('frame-3-reckless-fired.png');await scroll(350);await sleep(4500);
 // 6
 await go('/vaults',3500);await cap('Earlier v3 Patient was also fired on-chain, 2026-11-22 11:02 UTC.');await scroll(500);await sleep(8500);
@@ -36,7 +36,7 @@ await go('/vaults',3500);await cap('Earlier v3 Patient was also fired on-chain, 
 await go('/replay',3500);await cap('Real swaps, real weeks. Depositors were never below par at any of 166 settlements.');
 const wk=p.getByText('ETH −14% week').first();if(await wk.count())await wk.click().catch(()=>{});await sleep(3000);await scroll(250);await sleep(6000);
 // 8
-await go('/vaults/0xE4192E10c36d46bfBE8aCD7dDe5e1e0978410c50',4500);await cap('Deposit in kind in the first 5 minutes of each epoch. Your shares are covered by the bond.');await scroll(380);await sleep(7000);
+await go('/vaults/0x22e97BDB1E4B29033b729B0B7B6D59B56C9d095B',4500);await cap('Deposit in kind in the first 5 minutes of each epoch. Your shares are covered by the bond.');await scroll(380);await sleep(7000);
 // 9
 await go('/integrate',3500);await cap('Builders: one factory, one hook, a few calls. Read the docs.');await sleep(3000);await scroll(600);await sleep(5000);
 console.log('errs',errs);
