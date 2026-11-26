@@ -18,6 +18,7 @@ const MAX_UINT = (1n << 256n) - 1n;
 
 /** Reverts the keeper expects in normal operation: a simulation failing with one of these is skipped, not a failure. */
 export const EXPECTED_REVERTS = new Set(["AlreadyParked", "EpochNotOver", "PriceDeviation"]);
+const SETTLE_CHECK_MS = 60_000;
 const SKIP_EVERY_MS = 60 * 60 * 1000; // record one skipped row per vault/action per hour
 const WRAPPED_ERROR = "0x90bfb865"; // PoolManager WrappedError(address target, bytes4 selector, bytes reason, bytes details)
 
@@ -271,21 +272,35 @@ export function makeKeeper(db: Db, client: Client) {
     state.lastKeeperRunAt = Date.now();
   }
 
+  /** Cheap check between full ticks, so a finished epoch is settled within about a minute (no swaps, no mints). */
+  async function settleOnly() {
+    const eth = await refreshBalance();
+    if (eth !== null && eth < MIN_ETH) return;
+    await maintainVaults();
+    state.lastKeeperRunAt = Date.now();
+  }
+
+  let lastFull = 0;
   return {
     address: account.address,
     tick,
     async run(signal: { stopped: boolean }) {
-      log("keeper", `starting; keeper ${account.address}, every ${env.keeperMs / 1000}s`);
+      log("keeper", `starting; keeper ${account.address}, full tick every ${env.keeperMs / 1000}s, settle check every ${Math.min(env.keeperMs, SETTLE_CHECK_MS) / 1000}s`);
       await refreshBalance();
       await sleep(15_000);
       while (!signal.stopped) {
         try {
-          await tick();
+          if (Date.now() - lastFull >= env.keeperMs) {
+            lastFull = Date.now();
+            await tick();
+          } else {
+            await settleOnly();
+          }
         } catch (e) {
           state.lastKeeperError = errMsg(e);
           log("keeper", `tick error (continuing): ${errMsg(e)}`);
         }
-        await sleep(env.keeperMs);
+        await sleep(Math.min(env.keeperMs, SETTLE_CHECK_MS));
       }
     },
   };

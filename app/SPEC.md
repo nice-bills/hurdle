@@ -5,13 +5,13 @@ Render (paid plans). Two services plus Postgres, one repo dir each:
 
 - `app/web`: Next.js 15 (App Router, TypeScript), wagmi v2 + viem v2 + RainbowKit (or ConnectKit), Tailwind.
   Pinned exact versions. Server routes read Postgres; the browser writes to chain through the wallet.
-- `app/worker`: Node 22 + TypeScript + viem. Two loops in one process: **indexer** and **keeper**.
+- `app/worker`: Node 22 + TypeScript + viem. Three loops in one process: **indexer**, **keeper** and an optional **curator bot** (CURATOR_PRIVATE_KEY).
 - Postgres (Render): tables below. Schema in `app/worker/schema.sql`; the worker applies it at boot (idempotent).
 
 Shared: `app/shared/abi/*.json` (HurdleVault, HurdleVaultFactory, HurdleHook, PoolSwapTest, MockERC20 ABIs,
 exported from the Foundry build) and `app/shared/deployment-1301.json` (addresses: hook, factory, patientVault,
 chaserVault, mUSDC, mWETH, currency0/1, fee, tickSpacing, swapRouter, liquidityRouter, poolManager,
-factoryStartBlock, rpc, explorer). Never hardcode addresses elsewhere.
+factoryStartBlock, rpc, explorer; plus recklessVault and a `legacy` block with the v3 addresses). Never hardcode addresses elsewhere.
 
 ## Contracts (read src/ for exact semantics; README.md explains the mechanism)
 
@@ -36,7 +36,7 @@ factoryStartBlock, rpc, explorer). Never hardcode addresses elsewhere.
 - `events(id pk, vault, block, tx, log_index, ts, name, args jsonb, unique(tx,log_index))`
 - `snapshots(vault, block, ts, nav numeric, bond numeric, bond_value numeric, deficit numeric, fired bool, total_supply numeric, lo int, hi int, tick int, pk(vault,block))` every ~2 min
 - `pool_ticks(block pk, ts, tick, sqrt_price numeric)`
-- `keeper_runs(id pk, ts, action, vault, tx, ok bool, note)`
+- `keeper_runs(id pk, ts, action, vault, tx, ok bool, skipped bool, note)`
 - `cursor(name pk, block)`
 
 ## Web pages

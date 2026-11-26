@@ -143,7 +143,7 @@ function summarize(
       : null,
     cumulative: last ? { strategy: last.strategy, par: last.par, depositor: last.depositor, strategyUsd: last.strategyUsd, parUsd: last.parUsd, depositorUsd: last.depositorUsd } : null,
     totals,
-    parked: fired && Number(pos[0]) === minUsableTick() && Number(pos[1]) === maxUsableTick(),
+    parked: fired && Number(pos[0]) === minUsableTick() && Number(pos[1]) === maxUsableTick() && data.parkedOnChain !== false,
     isVault: Boolean(data.isVault),
   };
 }

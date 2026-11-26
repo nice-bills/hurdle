@@ -33,10 +33,13 @@ const send = (method, params = {}, sessionId) => new Promise((res, rej) => {
   const i = ++id; pending.set(i, { res, rej }); ws.send(JSON.stringify({ id: i, method, params, sessionId }));
 });
 
+await send('Target.setDiscoverTargets', { discover: true }); // gives us Target.targetDestroyed
 let failures = 0;
 async function check(scenario, width) {
   const url = `${base}/?s=${scenario}#play`;
-  const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
+  // fresh, isolated browser context per check: no shared HTTP cache or teardown races between tabs
+  const { browserContextId } = await send('Target.createBrowserContext');
+  const { targetId } = await send('Target.createTarget', { url: 'about:blank', browserContextId });
   const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
   const errs = [];
   const l = m => {
@@ -49,7 +52,15 @@ async function check(scenario, width) {
   await send('Runtime.enable', {}, sessionId); await send('Log.enable', {}, sessionId); await send('Page.enable', {}, sessionId);
   await send('Emulation.setDeviceMetricsOverride', { width, height: width < 600 ? 844 : 800, deviceScaleFactor: 1, mobile: width < 600 }, sessionId);
   await send('Page.navigate', { url }, sessionId);
-  await sleep(4000); // load + a few seconds of playback
+  // poll for the render (up to 10 s) instead of a fixed sleep, then let playback run a moment
+  const probe = `(() => ({ cards: document.querySelectorAll('#cards > *').length, msg: (document.querySelector('#msg')||{}).textContent || '',
+    main: document.querySelector('#svgMain') ? document.querySelector('#svgMain').childElementCount : 0 }))()`;
+  for (let i = 0; i < 40; i++) {
+    await sleep(250);
+    const p = (await send('Runtime.evaluate', { returnByValue: true, expression: probe }, sessionId)).result.value;
+    if ((p.cards && p.main) || p.msg) break;
+  }
+  await sleep(1500);
   const { result } = await send('Runtime.evaluate', { returnByValue: true, expression: `(() => {
     const de = document.documentElement;
     return { sw: Math.max(de.scrollWidth, document.body.scrollWidth), iw: window.innerWidth,
@@ -67,7 +78,13 @@ async function check(scenario, width) {
   problems.forEach(p => console.log('   - ' + p));
   if (!ok) failures++;
   listeners.splice(listeners.indexOf(l), 1);
+  const destroyed = new Promise(res => {
+    const d = m => { if (m.method === 'Target.targetDestroyed' && m.params.targetId === targetId) { listeners.splice(listeners.indexOf(d), 1); res(); } };
+    listeners.push(d);
+  });
   await send('Target.closeTarget', { targetId });
+  await Promise.race([destroyed, sleep(3000)]);
+  await send('Target.disposeBrowserContext', { browserContextId }).catch(() => {});
 }
 for (const s of ['range-week', 'down-week']) for (const w of [1280, 390]) await check(s, w);
 ws.close(); cleanup();

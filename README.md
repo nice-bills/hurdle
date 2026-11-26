@@ -19,7 +19,7 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
   Derivation: [research/benchmark-math.md](research/benchmark-math.md). The formula matches a real v4
   full-range position to ~2.5e-18 of capital ([research/phase2-harness.md](research/phase2-harness.md)),
   and on the real-swap replay the on-chain par matches an exact offchain computation (same fee cap) to
-  within 0.01 bp at every hourly settlement, both weeks
+  within 0.001 bp at every hourly settlement, both weeks (e2e gate: 0.01 bp)
   (`python3 data/par_check.py data/weeks/2026-10-31.csv demo/out/range-week.csv --twap`).
 - **Manipulation-resistant price.** `HurdleHook` (flags `afterInitialize | beforeSwap | beforeDonate`)
   writes a tick accumulator in `beforeSwap`, before the price moves, so same-block manipulation has zero
@@ -78,7 +78,7 @@ under the floor. Values in USD; "vs par" is the gap in points of starting capita
 | | Chaser | −2.04% | +0.48% | 9.91% | 0.11% | no (1 top-up) |
 
 Depositors are never below par at any of the 166 hourly settlements, in either week. On-chain par
-matches an independent offchain computation within 0.001 bp at every settlement
+matches an independent offchain computation within 0.001 bp at every settlement (e2e gate: 0.01 bp)
 (`data/par_check.py --twap`); the fee cap never binds. "Bond paid" is gross: misses are paid per epoch
 and later excess refills the bond before any carry.
 
@@ -147,7 +147,7 @@ Superseded (do not use):
 | `src/HurdleHook.sol` | v4 hook: TWAP observations, block-open reference tick, donate block |
 | `src/HurdleVault.sol` | curator vault: settlement, bond, carry, fire rule |
 | `src/HurdleVaultFactory.sol` | creates vaults only on canonical-hook pools; `isVault` registry |
-| `test/` | unit tests, v2/v3 feature tests, audit regression tests (`test/audit/`), stateful invariants (`test/invariant/`), benchmark harness vs real v4 accounting, real-swap replay |
+| `test/` | unit tests, v2/v3/v4 feature tests, audit regression tests (`test/audit/`), stateful invariants (`test/invariant/`), benchmark harness vs real v4 accounting, real-swap replay |
 | `data/` | five weeks of real ETH/USDC swaps (Uniswap v3 mainnet) + Python reference (`par_check.py`) |
 | `demo/` | replay → JSON (`build_json.py`) and the chart UI (`ui/`) |
 | `script/` | Unichain Sepolia deploy, two steps: `DeployHurdleHook.s.sol` (hook, mocks, routers, pool), `DeployVaults.s.sol` (vaults, 10+ min later) ([research/deploy.md](research/deploy.md)) |
@@ -156,8 +156,7 @@ Superseded (do not use):
 ## Run
 
 ```sh
-./e2e.sh                                      # everything below in one go: build, all tests, both replays, par check, UI data + smoke (E2E_LIVE=1 adds a read-only testnet check)
-./e2e.sh                                       # everything: build/size, all tests + invariants, both replays, par check, UI data, UI smoke
+./e2e.sh                                       # everything: build/size, all tests + invariants, both replays, par check, UI data, UI smoke (E2E_LIVE=1 adds a read-only testnet check; E2E_APP=1 the dApp smoke)
 forge test                                     # all suites; the replay is skipped without REPLAY_CSV
 # replay a real week through the hook + two vaults (30–60 s), check par against the offchain reference, build the UI data
 REPLAY_CSV=data/weeks/2026-10-31.csv REPLAY_OUT=demo/out/range-week.csv forge test --match-contract ReplayTest -vv

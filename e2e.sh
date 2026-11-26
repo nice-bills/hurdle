@@ -85,7 +85,8 @@ if [ -z "$CHROME" ] || ! command -v node >/dev/null 2>&1; then skip "needs node 
   PORT=$(python3 -I -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1])")
   python3 -I -m http.server "$PORT" --bind 127.0.0.1 --directory demo/ui >"$SCRATCH/http.log" 2>&1 &
   SERVER_PID=$!
-  for _ in $(seq 50); do curl -fs "http://127.0.0.1:$PORT/scenarios.json" >/dev/null 2>&1 && break; sleep 0.1; done
+  UP=""; for _ in $(seq 50); do curl -fs "http://127.0.0.1:$PORT/scenarios.json" >/dev/null 2>&1 && { UP=1; break; }; sleep 0.1; done
+  [ -n "$UP" ] || die "UI smoke: local http.server did not come up (see $SCRATCH/http.log)"
   node e2e_ui_smoke.mjs "$CHROME" "http://127.0.0.1:$PORT" || die "UI smoke failed"
   kill "$SERVER_PID" 2>/dev/null || true; SERVER_PID=""
   pass

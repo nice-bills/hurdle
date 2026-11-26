@@ -1,7 +1,6 @@
 # Unichain Sepolia deploy (chain id 1301)
 
-Status: **Live (second-audit fixes, deployed 2026-11-17).** Addresses: README "Unichain Sepolia" table
-and `script/out/deploy-1301.json`. The first deposit is funded by the curator (deployer) with shares minted
+Status: **historical.** The current deployment is v4 (hook, factory, three vaults, 2026-11-22); see the README "Unichain Sepolia" table, `script/out/deploy-1301.json` and `app/shared/deployment-1301.json`. The text below describes the second-audit deploy (2026-11-17) and older ones. The first deposit is funded by the curator (deployer) with shares minted
 to a separate depositor address derived from the deployer key (`keccak256(abi.encode(pk, "hurdle-depositor"))`),
 so the bond really covers it. To withdraw as the depositor, rebuild that key locally; it is never logged.
 Deploy with `FOUNDRY_CONFIG=script/foundry.deploy.toml` (optimizer; vault 18.7 KB).

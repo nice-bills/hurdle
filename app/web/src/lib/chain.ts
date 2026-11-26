@@ -73,11 +73,11 @@ export const LEGACY_POOL: PoolRef = {
 export const poolRefFor = (vault: string): PoolRef => (LEGACY_VAULTS.includes(vault.toLowerCase()) ? LEGACY_POOL : V4_POOL);
 
 export const KNOWN_LABELS: Record<string, { name: string; note: string }> = {
-  [deployment.patientVault.toLowerCase()]: { name: "Patient", note: "±10% range, rarely moves" },
-  [deployment.chaserVault.toLowerCase()]: { name: "Chaser", note: "±2% range, re-centers often" },
+  [deployment.patientVault.toLowerCase()]: { name: "Patient", note: "±10% wide range, re-centered by the demo bot near its edges" },
+  [deployment.chaserVault.toLowerCase()]: { name: "Chaser", note: "±2% range, re-centered by the demo bot" },
   [deployment.recklessVault.toLowerCase()]: { name: "Reckless", note: "±1% range, 2.5% bond, built to get fired" },
   [LEGACY.patientVault.toLowerCase()]: { name: "Patient (v3)", note: "±10% range, fired on-chain 2026-11-22" },
-  [LEGACY.chaserVault.toLowerCase()]: { name: "Chaser (v3)", note: "±2% range, re-centers often" },
+  [LEGACY.chaserVault.toLowerCase()]: { name: "Chaser (v3)", note: "±2% range, read-only since v4" },
 };
 
 export const txUrl = (h: string) => `${EXPLORER}/tx/${h}`;

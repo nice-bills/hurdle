@@ -9,9 +9,10 @@ import { maxUsableTick, minUsableTick } from "./tickmath.js";
 import { errMsg, log, sleep, withRetry } from "./util.js";
 
 /** Reverts the curator bot expects in normal operation: recorded as skipped, not failed. */
-export const CURATOR_EXPECTED = new Set(["PriceDeviation", "TooManyRebalances", "BondBelowFloor", "EpochNotOver"]);
+export const CURATOR_EXPECTED = new Set(["PriceDeviation", "TooManyRebalances", "BondBelowFloor", "RebalanceIncomplete"]);
 const EDGE_FRACTION = 0.2; // re-center when spot is within 20% of the half-width of an edge
 const MAX_IDLE_BPS = 200;
+const DEPOSIT_WINDOW = 300; // seconds at the start of an epoch; matches HurdleVault.DEPOSIT_WINDOW
 
 /** New [lo, hi] centred on `tick`, same width as the current position, aligned to tickSpacing; null when no move is needed. */
 export function planRecenter(tick: number, lo: number, hi: number, spacing: number, minTick: number, maxTick: number): [number, number] | null {
@@ -41,15 +42,18 @@ export function makeCurator(db: Db, client: Client) {
     const spot = (await withRetry(() => readSlot0(client, poolId), "slot0", 4)).tick;
     const minT = minUsableTick(spacing);
     const maxT = maxUsableTick(spacing);
+    const now = Number((await withRetry(() => client.getBlock(), "latest block", 4)).timestamp);
     for (const addr of await listVaults(db)) {
       const v = addr as Hex;
       try {
-        const [curator, fired, pos] = (await withRetry(
-          () => client.multicall({ contracts: ["curator", "fired", "position"].map((functionName) => ({ address: v, abi: vaultAbi, functionName })), allowFailure: false }),
+        const [curator, fired, pos, epochStart] = (await withRetry(
+          () => client.multicall({ contracts: ["curator", "fired", "position", "epochStart"].map((functionName) => ({ address: v, abi: vaultAbi, functionName })), allowFailure: false }),
           `curator state ${addr}`,
           4,
-        )) as [Hex, boolean, readonly [number, number, bigint]];
+        )) as [Hex, boolean, readonly [number, number, bigint], bigint];
         if (fired || lc(curator) !== lc(account.address)) continue;
+        if (pos[2] === 0n) continue; // no position yet (before the first deposit): a rebalance would only revert
+        if (now <= Number(epochStart) + DEPOSIT_WINDOW) continue; // never move liquidity under a depositor's quote
         const plan = planRecenter(spot, pos[0], pos[1], spacing, minT, maxT);
         if (!plan) continue;
         await send("curator_rebalance", addr, { address: v, abi: vaultAbi, functionName: "rebalance", args: [plan[0], plan[1], MAX_IDLE_BPS] }, `spot ${spot}: [${pos[0]},${pos[1]}] -> [${plan[0]},${plan[1]}]`);

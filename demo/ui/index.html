@@ -213,9 +213,14 @@ const cap1 = n => n[0].toUpperCase() + n.slice(1);
 const when = t => new Date(t * 1000).toISOString().slice(5, 16).replace('T', ' ') + ' UTC';
 
 // ---------- load ----------
+// no-store + one retry: a flaky or cache-racing first fetch should not surface as a load error
+async function fetchJson(url) {
+  try { return await fetch(url, { cache: 'no-store' }); }
+  catch (e) { await new Promise(r => setTimeout(r, 400)); return await fetch(url, { cache: 'no-store' }); }
+}
 async function boot() {
   let list;
-  try { list = await (await fetch('scenarios.json')).json(); }
+  try { list = await (await fetchJson('scenarios.json')).json(); }
   catch (e) { return showMsg('Cannot load scenarios.json. Serve this folder over HTTP (see README).'); }
   const sel = $('#scenario');
   sel.innerHTML = list.map(s => `<option value="${esc(s.id)}">${esc(s.label || s.id)}</option>`).join('');
@@ -230,7 +235,7 @@ async function load(id) {
   pause(); showMsg('');
   let d;
   try {
-    const r = await fetch(`data/${encodeURIComponent(id)}.json`);
+    const r = await fetchJson(`data/${encodeURIComponent(id)}.json`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     d = await r.json();
     if (!d.points || !d.points.length) throw new Error('no points');

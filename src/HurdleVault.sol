@@ -121,7 +121,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     error CapacityExceeded();
     error TooManyRebalances();
     error AlreadyParked();
-    /// In-kind deposits are only accepted in the block the vault settled (deposit() settles a finished epoch).
+    /// In-kind deposits are only accepted within DEPOSIT_WINDOW (300 s) of the epoch start (deposit() settles a finished epoch first).
     error DepositWindowClosed();
     error NotFired();
     /// reclaimBond needs the fired vault parked full range (≤ 2% of NAV idle).

@@ -32,6 +32,8 @@ export function depositStatus(v: VaultSummary, now: number, price: number): Depo
     return { blocked: true, tone: "warn", text: "Deposits are closed: the curator has not made the first deposit yet." };
 
   if (v.fired) {
+    // Mirrors the deployed v4 bytecode (7f1792a), where fired vaults still apply the deficit gate. Current src
+    // (45bde1f+) skips it for fired vaults: drop this branch when the next deployment ships that change.
     if (deficitOutstanding(v)) {
       const d = BigInt(v.deficit);
       return {

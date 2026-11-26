@@ -1,6 +1,6 @@
-import { createPublicClient, decodeEventLog, http, parseAbi, type Address, type Hex } from "viem";
+import { BaseError, ContractFunctionRevertedError, createPublicClient, decodeEventLog, http, parseAbi, type Address, type Hex } from "viem";
 import { factoryAbi, hookAbi, vaultAbi } from "@/shared/abis";
-import { ADDR, D, V4_POOL, poolStateSlot, unichainSepolia, type PoolRef } from "@/lib/chain";
+import { ADDR, D, LEGACY, LEGACY_VAULTS, V4_POOL, maxUsableTick, minUsableTick, poolStateSlot, unichainSepolia, type PoolRef } from "@/lib/chain";
 import type { VaultEvent } from "@/lib/types";
 
 const RPC = process.env.RPC_URL || D.rpc;
@@ -68,11 +68,11 @@ type Field = (typeof VIEW_FIELDS)[number];
 export async function readVaultsRpc(addrs: Address[]) {
   const contracts = addrs.flatMap((address) => [
     ...VIEW_FIELDS.map((functionName) => ({ address, abi: vaultAbi, functionName }) as const),
-    { address: ADDR.factory, abi: factoryAbi, functionName: "isVault", args: [address] } as const,
+    { address: LEGACY_VAULTS.includes(address.toLowerCase()) ? (LEGACY.factory as Address) : ADDR.factory, abi: factoryAbi, functionName: "isVault", args: [address] } as const,
   ]);
   const res = await client.multicall({ allowFailure: true, contracts: contracts as never });
   const per = VIEW_FIELDS.length + 1;
-  return addrs.map((address, i) => {
+  const rows = addrs.map((address, i) => {
     const out: Partial<Record<Field | "isVault", unknown>> = {};
     VIEW_FIELDS.forEach((f, j) => {
       const r = res[i * per + j] as { status: string; result?: unknown };
@@ -82,6 +82,31 @@ export async function readVaultsRpc(addrs: Address[]) {
     out.isVault = iv.status === "success" ? iv.result : false;
     return { address, data: out };
   });
+  // Mirror the contract's park test (full-range ticks AND idle <= 2% of NAV): simulate the permissionless
+  // rebalance and treat an AlreadyParked revert as parked. Only fired vaults at full range need the probe.
+  await Promise.all(
+    rows.map(async (r) => {
+      const d = r.data as Record<string, unknown>;
+      const pos = d.position as readonly [number, number, bigint] | null;
+      if (!d.fired || !pos || Number(pos[0]) !== minUsableTick() || Number(pos[1]) !== maxUsableTick()) return;
+      d.parkedOnChain = await probeParked(r.address);
+    }),
+  );
+  return rows;
+}
+
+async function probeParked(address: Address): Promise<boolean | null> {
+  try {
+    await client.simulateContract({ address, abi: vaultAbi, functionName: "rebalance", args: [0, 0], account: ADDR.factory });
+    return false; // the call would succeed: parking is not finished (idle too high)
+  } catch (e) {
+    if (e instanceof BaseError) {
+      const rev = e.walk((x) => x instanceof ContractFunctionRevertedError) as ContractFunctionRevertedError | null;
+      if (rev?.data?.errorName === "AlreadyParked") return true;
+      if (rev) return false;
+    }
+    return null; // RPC trouble: fall back to the tick check
+  }
 }
 
 // ---------------------------------------------------------------- logs (fallback indexer, in memory)

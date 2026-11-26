@@ -8,10 +8,10 @@ import { Code, CopyButton } from "@/components/code";
 import { IconDownload } from "@/components/icons";
 
 const ADDRS: { name: string; value: string; note: string }[] = [
-  { name: "HurdleHook", value: D.hook, note: "Uniswap v4 hook: TWAP oracle, par math, price gate" },
+  { name: "HurdleHook", value: D.hook, note: "Uniswap v4 hook: TWAP oracle and price gate (par math lives in the vault)" },
   { name: "HurdleVaultFactory", value: D.factory, note: "create(), isVault(), VaultCreated events" },
-  { name: "Patient vault", value: D.patientVault, note: "±10% range, rarely moves" },
-  { name: "Chaser vault", value: D.chaserVault, note: "±2% range, re-centers often" },
+  { name: "Patient vault", value: D.patientVault, note: "±10% range, re-centered by the demo bot near its edges" },
+  { name: "Chaser vault", value: D.chaserVault, note: "±2% range, re-centered by the demo bot" },
   { name: "Reckless vault", value: D.recklessVault, note: "±1% range, 2.5% bond, built to get fired" },
   { name: "mUSDC (currency0)", value: D.mUSDC, note: "6 decimals, public mint()" },
   { name: "mWETH (currency1)", value: D.mWETH, note: "18 decimals, the bond token, public mint()" },
@@ -22,7 +22,7 @@ const ADDRS: { name: string; value: string; note: string }[] = [
 const ABIS = [
   { file: "HurdleVault.json", note: "vault views, deposit / withdraw / settle / rebalance, events and errors" },
   { file: "HurdleVaultFactory.json", note: "create() and VaultCreated" },
-  { file: "HurdleHook.json", note: "oracle views (observe, TWAP) and hook errors" },
+  { file: "HurdleHook.json", note: "oracle views (consult, twapTick, referenceTick, referenceFeeGrowth, oracleState) and hook errors" },
   { file: "PoolSwapTest.json", note: "swap router" },
   { file: "MockERC20.json", note: "mUSDC / mWETH incl. public mint" },
   { file: "deployment-1301.json", note: "every address above, plus fee, tickSpacing and the start block" },
@@ -61,7 +61,7 @@ export async function send(req: Parameters<typeof publicClient.simulateContract>
 
 const READ = `
 // Everything is a view call. Amounts are raw integers: shares and mWETH have 18 decimals, mUSDC has 6.
-const [nav, bond, deficit, fired, supply] = await Promise.all([
+const [nav, bondValue, deficit, fired, supply] = await Promise.all([
   publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: "nav" }),        // mWETH wei
   publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: "bondValue" }),  // bond in mWETH wei
   publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: "deficit" }),
@@ -88,7 +88,7 @@ const max1 = need1 + need1 / 100n + 1n;
 await send({ address: USDC, abi: erc20Abi, functionName: "approve", args: [VAULT, maxUint256] });
 await send({ address: WETH, abi: erc20Abi, functionName: "approve", args: [VAULT, maxUint256] });
 
-// Reverts: DepositWindowClosed, DeficitOutstanding, CapacityExceeded, Slippage, ZeroShares.
+// Reverts: DepositWindowClosed, DeficitOutstanding, CapacityExceeded, Slippage, ZeroShares, PriceDeviation, InsufficientHistory.
 await send({ address: VAULT, abi: vaultAbi, functionName: "deposit", args: [shares, max0, max1] });
 `;
 
@@ -126,7 +126,8 @@ const args = [poolKey, 2000,     200,         50,               3600];
 //  carry 20% (max 50%) · bond floor 2% of NAV (1%..50%) · 4 * maxTickDeviation <= minBondBps · epoch >= 600 s
 
 const rc = await send({ address: "${D.factory}", abi: factoryAbi, functionName: "create", args });
-// The new vault address is the first topic of VaultCreated(vault, curator, poolId) in the receipt.
+// The new vault address is the first topic after the event signature (topics[1]) of VaultCreated(vault, curator, poolId) in the receipt,
+// or decodeEventLog(...).args.vault.
 
 // Then, as the curator:
 //   1. postBond(amount1)                     mWETH, approve first. The bond is what pays a miss.
@@ -183,12 +184,15 @@ setInterval(() => tick().catch(console.error), 60_000);
 
 const EVENTS = `
 // Index the track record from events. Settled is the scoreboard: it carries NAV and par (bench) for each epoch.
-const logs = await publicClient.getContractEvents({
-  address: VAULT, abi: vaultAbi, eventName: "Settled", fromBlock: ${D.factoryStartBlock}n,
-});
+const head = await publicClient.getBlockNumber();
+const logs = [];
+for (let from = ${D.factoryStartBlock}n; from <= head; from += 1000n) {
+  const to = from + 999n < head ? from + 999n : head;
+  logs.push(...(await publicClient.getContractEvents({ address: VAULT, abi: vaultAbi, eventName: "Settled", fromBlock: from, toBlock: to })));
+}
 // Settled(nav, bench, take, shortfallPaid, bond, sqrtPriceX96)
 //   nav vs bench is the epoch's result against par. shortfallPaid > 0 means the bond paid depositors.
-// Page getLogs in windows of at most 1,000 blocks: the public RPC rejects wider ranges.
+// The loop pages in windows of at most 1,000 blocks: the public RPC rejects wider ranges.
 `;
 
 const TABS = [

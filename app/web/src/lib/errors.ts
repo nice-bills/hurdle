@@ -1,7 +1,17 @@
 import { BaseError, ContractFunctionRevertedError, UserRejectedRequestError, decodeAbiParameters, decodeErrorResult, type Hex } from "viem";
 import { factoryAbi, hookAbi, swapRouterAbi, vaultAbi } from "@/shared/abis";
 
-const ALL_ABIS = [vaultAbi, hookAbi, factoryAbi, swapRouterAbi] as const;
+/** The few Uniswap v4 PoolManager / pool errors a custom range or swap can hit (not in any Hurdle ABI). */
+const poolManagerAbi = [
+  { type: "error", name: "TickMisaligned", inputs: [{ name: "tick", type: "int24" }, { name: "tickSpacing", type: "int24" }] },
+  { type: "error", name: "TicksMisordered", inputs: [{ name: "tickLower", type: "int24" }, { name: "tickUpper", type: "int24" }] },
+  { type: "error", name: "TickLowerOutOfBounds", inputs: [{ name: "tickLower", type: "int24" }] },
+  { type: "error", name: "TickUpperOutOfBounds", inputs: [{ name: "tickUpper", type: "int24" }] },
+  { type: "error", name: "PriceLimitAlreadyExceeded", inputs: [{ name: "sqrtPriceCurrentX96", type: "uint160" }, { name: "sqrtPriceLimitX96", type: "uint160" }] },
+  { type: "error", name: "PriceLimitOutOfBounds", inputs: [{ name: "sqrtPriceLimitX96", type: "uint160" }] },
+] as const;
+
+const ALL_ABIS = [vaultAbi, hookAbi, factoryAbi, swapRouterAbi, poolManagerAbi] as const;
 const WRAPPED_ERROR = "0x90bfb865"; // PoolManager WrappedError(address target, bytes4 selector, bytes reason, bytes details)
 
 /** Errors raised inside another contract (the hook, the PoolManager) are not in the called contract's ABI: try them all. */
@@ -36,7 +46,7 @@ export const ERROR_TEXT: Record<string, string> = {
   NotFired: "Only a fired curator can reclaim its bond.",
   NotParked: "The fired vault is not parked full range yet. Anyone can finish the park first (Finish parking).",
   DeficitOutstanding:
-    "The bond paid a shortfall that has not been refilled yet. New deposits wait until the curator beats par enough to refill it, so newcomers never repay compensation that went to others.",
+    "The bond paid a shortfall that has not been refilled yet. New deposits wait until the curator beats par enough to refill it or posts fresh bond (postBond pays the deficit down first), so newcomers never repay compensation that went to others.",
   BondBelowFloor: "The bond is below its floor (minBondBps of NAV). Post more bond before rebalancing.",
   RebalanceIncomplete:
     "More of the vault's value than your idle limit stayed outside the new range (the swap hit its price bound). Nothing changed and the rebalance slot was kept.",
@@ -55,6 +65,12 @@ export const ERROR_TEXT: Record<string, string> = {
   HookNotImplemented: "This pool hook does not implement that callback.",
   NotPoolManager: "Only the Uniswap v4 PoolManager can call this hook function.",
   NotSelf: "Internal function: only the hook itself can call it.",
+  TickMisaligned: "The range ticks must be multiples of the pool's tick spacing.",
+  TicksMisordered: "The lower tick must be below the upper tick.",
+  TickLowerOutOfBounds: "The lower tick is outside the usable range.",
+  TickUpperOutOfBounds: "The upper tick is outside the usable range.",
+  PriceLimitAlreadyExceeded: "The swap price limit is already past the current price.",
+  PriceLimitOutOfBounds: "The swap price limit is outside the allowed range.",
   LockFailure: "The PoolManager lock failed: the call must run inside an unlock callback.",
 };
 
@@ -91,6 +107,8 @@ function humanRequire(r: string) {
     BOND: "minBondBps must be between 100 (1%) and 5000 (50%).",
     EPOCH: "Epochs must be at least 600 seconds.",
     NATIVE: "Native ETH pools are not supported.",
+    PAY: "The vault could not pay the pool manager: check balances and approvals.",
+    PM: "Only the Uniswap v4 PoolManager can call this.",
   };
   return map[r] ?? r;
 }
