@@ -128,7 +128,7 @@ export function makeSender(
   return { record, recordSkipped, send };
 }
 
-/** Current (v4) vaults: the deployment's three plus any the indexer found from the factory start block. */
+/** Current (v5) vaults: the deployment's three plus any the indexer found from the factory start block. */
 export async function listVaults(db: Db): Promise<string[]> {
   const set = new Set<string>([lc(deployment.patientVault), lc(deployment.chaserVault), lc(deployment.recklessVault)]);
   try {
@@ -174,8 +174,8 @@ export function makeKeeper(db: Db, client: Client) {
     let ok = true;
     const router = deployment.swapRouter;
     for (const [token, min, mint, label] of [
-      [deployment.currency0, MIN_USDC, MINT_USDC, "mUSDC"],
-      [deployment.currency1, MIN_WETH, MINT_WETH, "mWETH"],
+      [deployment.mUSDC, MIN_USDC, MINT_USDC, "mUSDC"], // by token identity, not pool order (v5: currency0 = mWETH)
+      [deployment.mWETH, MIN_WETH, MINT_WETH, "mWETH"],
     ] as const) {
       if ((await bal(token)) < min) {
         ok = (await send(`mint_${label}`, null, { address: token, abi: erc20Abi, functionName: "mint", args: [account.address, mint] })) && ok;

@@ -3,7 +3,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { chain, lc, readSlot0, computePoolId, type Client } from "./chain.js";
 import { deployment, env, vaultAbi } from "./config.js";
 import type { Db } from "./db.js";
-import { listVaults, makeSender } from "./keeper.js";
+import { makeSender } from "./keeper.js";
 import { state } from "./state.js";
 import { maxUsableTick, minUsableTick } from "./tickmath.js";
 import { errMsg, log, sleep, withRetry } from "./util.js";
@@ -28,6 +28,12 @@ export function planRecenter(tick: number, lo: number, hi: number, spacing: numb
   return [newLo, newHi];
 }
 
+/**
+ * Explicit allow-list: the bot manages ONLY Patient and Chaser. Reckless is deliberately unmanaged ("built to get
+ * fired") and never recentred, and vaults other people create are never touched. Source: deployment-1301.json.
+ */
+export const curatorVaults = (): string[] => [lc(deployment.patientVault), lc(deployment.chaserVault)];
+
 /** Optional bot: keeps the curator's own demo vaults centred on spot. Enabled only with CURATOR_PRIVATE_KEY. */
 export function makeCurator(db: Db, client: Client) {
   if (!env.curatorKey) return null;
@@ -43,7 +49,7 @@ export function makeCurator(db: Db, client: Client) {
     const minT = minUsableTick(spacing);
     const maxT = maxUsableTick(spacing);
     const now = Number((await withRetry(() => client.getBlock(), "latest block", 4)).timestamp);
-    for (const addr of await listVaults(db)) {
+    for (const addr of curatorVaults()) {
       const v = addr as Hex;
       try {
         const [curator, fired, pos, epochStart] = (await withRetry(

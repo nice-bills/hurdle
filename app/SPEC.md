@@ -6,6 +6,7 @@ Render (paid plans). Two services plus Postgres, one repo dir each:
 - `app/web`: Next.js 15 (App Router, TypeScript), wagmi v2 + viem v2 + RainbowKit (or ConnectKit), Tailwind.
   Pinned exact versions. Server routes read Postgres; the browser writes to chain through the wallet.
 - `app/worker`: Node 22 + TypeScript + viem. Three loops in one process: **indexer**, **keeper** and an optional **curator bot** (CURATOR_PRIVATE_KEY).
+  The curator bot acts on an explicit allow-list only: `patientVault` and `chaserVault` from `shared/deployment-1301.json` (`curatorVaults()` in `src/curator.ts`). `recklessVault` (deliberately unmanaged, built to get fired) and third-party vaults are never touched; the keeper still settles/parks all vaults.
 - Postgres (Render): tables below. Schema in `app/worker/schema.sql`; the worker applies it at boot (idempotent).
 
 Shared: `app/shared/abi/*.json` (HurdleVault, HurdleVaultFactory, HurdleHook, PoolSwapTest, MockERC20 ABIs,

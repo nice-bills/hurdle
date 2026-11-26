@@ -36,7 +36,11 @@ const LABELS: Record<string, string> = {
   [lc(deployment.chaserVault)]: "Chaser",
   [lc(deployment.recklessVault)]: "Reckless",
   ...(deployment.legacy
-    ? { [lc(deployment.legacy.patientVault)]: "Patient (v3)", [lc(deployment.legacy.chaserVault)]: "Chaser (v3)" }
+    ? {
+        [lc(deployment.legacy.patientVault)]: "Patient (v4)",
+        [lc(deployment.legacy.chaserVault)]: "Chaser (v4)",
+        ...(deployment.legacy.recklessVault ? { [lc(deployment.legacy.recklessVault)]: "Reckless (v4)" } : {}),
+      }
     : {}),
 };
 
