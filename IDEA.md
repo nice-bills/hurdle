@@ -62,7 +62,7 @@ On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
 1. Onchain benchmark matches an independent offchain Python computation of the full-range passive LP within 1 bp. **MET** (current code, with the 300% APR fee cap applied in both): max 0.001 bp (range week; e2e gate 0.01 bp) and 0.000 bp (down week) over 166 hourly settlements, no epoch reached the cap (`data/par_check.py --twap`).
 2. A losing curator's depositors end ≥ benchmark (bond paid the shortfall) and a curator whose bond runs out is fired; a winning curator is paid exactly `carry × (vaultReturn − benchmark)` per epoch, after refilling any bond it has paid out. **MET**: depositors ≥ par at every settlement of both weeks, Patient fired on day 6.2 of the down week; carry exactness is asserted per epoch in `test/HurdleVault.t.sol`.
 3. Swap gas overhead < 40k. **MET only in steady state:** ~40k on the first swap of a block (12k TWAP write + 28k block-open fee-growth snapshot added by the second audit), ~58k measured in isolation with cold slots; later swaps in the same block pay ~0 (`research/phase3-twap.md`).
-4. Testnet deploy (Unichain Sepolia) + demo UI + video. Deploy **MET** (two-step, `research/deploy.md`; see README for the live addresses), UI **MET** (`demo/ui`), video **MET** (`demo/video/hurdle-demo.mp4`).
+4. Testnet deploy (Unichain Sepolia) + demo UI + video. Deploy **MET** (two-step, `research/deploy.md`; see README for the live addresses), UI **MET** (`demo/ui`), video **not yet** (final recording after the UI is settled).
 
 ## Workflow (riskiest first)
 
@@ -71,7 +71,7 @@ On a replay of ≥7 days of real swaps through a local v4 pool with the hook:
 3. ~~Epoch snapshots + TWAP observation~~ DONE: written in `beforeSwap` so same-block manipulation has zero weight; steady-state swap overhead 12k gas (`research/phase3-twap.md`). Real data: 42,280 ETH/USDC swaps, 7 days (`data/`). Open: in that down week both toy curators ended below par, so the demo week must show Patient beating par (pick a range-bound week or tune Patient).
 4. ~~Vault + settlement~~ DONE (`src/HurdleVault.sol`): TWAP-valued NAV and par, carry, bond pays shortfall, shortfall recouped into the bond before carry (noise nets out), bond-capped AUM, epoch-gated settle, spot–TWAP deviation guard, swap-to-ratio rebalancing.
 5. ~~Fire rule + passive fallback~~ DONE: fired vault parks 50/50 full range and tracks par (test within 10 bp).
-6. Demo: ~~replay~~ (`test/Replay.t.sol`, real weeks) ~~chart UI~~ (`demo/ui`) ~~deploy~~ (two steps: `script/DeployHurdleHook.s.sol`, then `script/DeployVaults.s.sol` 10+ min later via the factory, `research/deploy.md`). Video: done (`demo/video/hurdle-demo.mp4`).
+6. Demo: ~~replay~~ (`test/Replay.t.sol`, real weeks) ~~chart UI~~ (`demo/ui`) ~~deploy~~ (two steps: `script/DeployHurdleHook.s.sol`, then `script/DeployVaults.s.sol` 10+ min later via the factory, `research/deploy.md`). Video: not yet (recorded after the UI is settled).
 7. ~~Stretch: earned capacity~~ DONE as AUM cap = bond / minBond.
 
 Replay results (real ETH/USDC swaps, hourly epochs, 5% bond, values in USD, current code): see the table in [README.md](README.md#results-on-real-swaps). Depositors are never below par at any of the 166 hourly settlements in either week. History: the pre-audit run fired Chaser on day 4 from NAV drift; the second audit made only a paid miss fire (`research/audit2.md`); the 10-minute rebalance gate (v3) let Chaser re-center sooner, which took it from −2.1% to +0.65% vs par in the range week.

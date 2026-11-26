@@ -30,5 +30,5 @@ Commits 673f014 → cc7dfdb. By v2 council item (Luna 8/10, Sonnet 8/10).
 
 ## Not done
 
-- (Demo video landed in c11c654: `demo/video/hurdle-demo.mp4`.)
+- Demo video: not yet. `demo/video/` holds a discarded draft; the final recording comes after the UI is settled.
 - Realized-APR fee cap; independent audit.
