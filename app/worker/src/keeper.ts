@@ -10,10 +10,11 @@ import { errMsg, log, sleep, withRetry } from "./util.js";
 const MIN_ETH = BigInt(process.env.KEEPER_MIN_ETH_WEI ?? "300000000000000"); // default 0.0003 ETH: below this the keeper skips transactions
 const USDC = 10n ** 6n;
 const WETH = 10n ** 18n;
-const MIN_USDC = 20_000n * USDC;
-const MINT_USDC = 1_000_000n * USDC;
-const MIN_WETH = 10n * WETH;
-const MINT_WETH = 100n * WETH;
+// Sized for the arbitrage leg (up to ARB_MAX_TICKS on a ~1e17-liquidity pool is ~15 mWETH) plus the round trip.
+const MIN_USDC = 100_000n * USDC;
+const MINT_USDC = 5_000_000n * USDC;
+const MIN_WETH = 40n * WETH;
+const MINT_WETH = 400n * WETH;
 const MAX_UINT = (1n << 256n) - 1n;
 
 /** Reverts the keeper expects in normal operation: a simulation failing with one of these is skipped, not a failure. */
@@ -115,7 +116,15 @@ export function makeSender(
         }
         throw e;
       }
-      hash = await wallet.writeContract(request as never);
+      // Gas buffer: the simulation's estimate can be a hair short when state moves between simulate and mine
+      // (an OutOfGas on a re-centre cost a vault hours out of range). 1.3x on every send.
+      let gas: bigint | undefined;
+      try {
+        gas = ((await client.estimateContractGas({ account, ...req } as never)) * 13n) / 10n;
+      } catch {
+        gas = undefined; // fall back to the wallet's own estimate
+      }
+      hash = await wallet.writeContract((gas ? { ...(request as object), gas } : request) as never);
       const rc = await client.waitForTransactionReceipt({ hash, timeout: 90_000 });
       const ok = rc.status === "success";
       await record(action, vault, hash, ok, ok ? (note ?? null) : "transaction reverted on chain");
@@ -192,20 +201,73 @@ export function makeKeeper(db: Db, client: Client) {
     return ok;
   }
 
-  /** Small round trip: ~5 ticks down then back to the starting price. Volume, fees and fresh TWAP observations. */
-  async function roundTrip() {
-    const s0 = await withRetry(() => readSlot0(client, poolId), "slot0", 4);
-    const settings = { takeClaims: false, settleUsingBurn: false };
-    const swap = (zeroForOne: boolean, amount: bigint, limit: bigint) => ({
+  /**
+   * Reference tick the arbitrage leg holds spot to: TARGET_TICK, else the value stored by an earlier run (so a
+   * restart does not re-anchor to a price the park swaps already moved), else the 1 h TWAP at startup.
+   * To script a market move on purpose, set TARGET_TICK (or UPDATE cursor SET block=<tick> WHERE name='target_tick').
+   */
+  let target: number | null = null;
+  async function loadTarget() {
+    if (env.targetTick !== null) target = env.targetTick;
+    else {
+      try {
+        const r = await db.query("SELECT block FROM cursor WHERE name='target_tick'");
+        if (r.rows.length) target = Number(r.rows[0].block);
+      } catch (e) {
+        log("keeper", `target tick lookup failed: ${errMsg(e)}`);
+      }
+    }
+    if (target === null) {
+      try {
+        target = Number(await withRetry(() => client.readContract({ address: deployment.hook, abi: hookAbi, functionName: "consult", args: [poolId, 3600] }), "1h twap", 3));
+      } catch {
+        target = (await withRetry(() => readSlot0(client, poolId), "slot0", 4)).tick; // not enough history yet: current spot
+      }
+      log("keeper", `target tick initialised to ${target} (1 h TWAP at startup)`);
+    }
+    state.targetTick = target;
+    try {
+      await db.query("INSERT INTO cursor (name, block) VALUES ('target_tick', $1) ON CONFLICT (name) DO UPDATE SET block = EXCLUDED.block", [target]);
+    } catch (e) {
+      log("keeper", `target tick not persisted: ${errMsg(e)}`);
+    }
+  }
+
+  const swapReq = (zeroForOne: boolean, amount: bigint, limit: bigint) =>
+    ({
       address: deployment.swapRouter,
       abi: swapTestAbi,
       functionName: "swap",
-      args: [key, { zeroForOne, amountSpecified: amount, sqrtPriceLimitX96: limit }, settings, "0x"],
-    });
+      args: [key, { zeroForOne, amountSpecified: amount, sqrtPriceLimitX96: limit }, { takeClaims: false, settleUsingBurn: false }, "0x"],
+    }) as TxReq;
+
+  /**
+   * Keeper as arbitrageur: park steps and re-centres swap against the pool and leave spot off the market, which
+   * the vaults then book as a "market move". Each run, if |spot - target| > ARB_THRESHOLD_TICKS, swap back toward
+   * the target by at most ARB_MAX_TICKS (a larger gap closes over several runs).
+   */
+  async function arbitrage() {
+    if (target === null) await loadTarget();
+    if (target === null) return;
+    const s0 = await withRetry(() => readSlot0(client, poolId), "slot0", 4);
+    const gap = s0.tick - target;
+    if (Math.abs(gap) <= env.arbThresholdTicks) return;
+    const step = Math.min(Math.abs(gap), env.arbMaxTicks);
+    const toTick = s0.tick + (gap > 0 ? -step : step);
+    // spot above target (higher tick): sell token0 (zeroForOne) to push it down; below: buy token0 to lift it
+    const ok = await send("arb_to_target", null, swapReq(gap > 0, -(10n ** 30n), getSqrtPriceAtTick(toTick)), `spot ${s0.tick} -> ${toTick} (target ${target})`);
+    if (ok) state.lastArbAt = Date.now();
+  }
+
+  /** Round trip: roundTripTicks down (capped by ROUNDTRIP_WETH of input) then back to the starting price. Synthetic volume, fees and fresh TWAP observations. */
+  async function roundTrip() {
+    const s0 = await withRetry(() => readSlot0(client, poolId), "slot0", 4);
+    const swap = swapReq;
+    const size = BigInt(Math.round(env.roundTripWeth * 1e6)) * 10n ** 12n; // whole mWETH, 6 decimals of precision
     const down = await send(
       "swap_down",
       null,
-      swap(true, -(5n * 10n ** 16n), getSqrtPriceAtTick(s0.tick - 5)) as TxReq,
+      swap(true, -size, getSqrtPriceAtTick(s0.tick - env.roundTripTicks)),
       `from tick ${s0.tick}`,
     );
     // Return leg even if the first failed after landing? Only when it succeeded, otherwise price is unchanged.
@@ -266,8 +328,13 @@ export function makeKeeper(db: Db, client: Client) {
       return;
     }
     // Swaps need funded, approved mocks; settling/parking does not, so it runs regardless.
-    if (await ensureMocks()) await roundTrip();
+    if (await ensureMocks()) {
+      await arbitrage();
+      await roundTrip();
+    }
     await maintainVaults();
+    // park steps and settlements just moved spot: bring it back now, not ten minutes later
+    if (await ensureMocks()) await arbitrage();
     await refreshBalance();
     state.lastKeeperRunAt = Date.now();
   }
@@ -287,6 +354,11 @@ export function makeKeeper(db: Db, client: Client) {
     async run(signal: { stopped: boolean }) {
       log("keeper", `starting; keeper ${account.address}, full tick every ${env.keeperMs / 1000}s, settle check every ${Math.min(env.keeperMs, SETTLE_CHECK_MS) / 1000}s`);
       await refreshBalance();
+      try {
+        await loadTarget();
+      } catch (e) {
+        log("keeper", `target tick init failed (will retry on first arbitrage): ${errMsg(e)}`);
+      }
       await sleep(15_000);
       while (!signal.stopped) {
         try {

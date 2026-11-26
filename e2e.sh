@@ -36,6 +36,11 @@ size=$(grep -E '^\| *HurdleVault *\|' "$SCRATCH/build.txt" | head -1 | awk -F'|'
 [ -n "$size" ] || die "could not find HurdleVault in forge build --sizes output"
 echo "HurdleVault runtime size: $size bytes (limit 24576)"
 [ "$size" -lt 24576 ] || die "HurdleVault runtime $size >= 24576"
+# the factory embeds the vault's creation code and is deployed too: EIP-170 applies to its runtime as well
+fsize=$(grep -E '^\| *HurdleVaultFactory *\|' "$SCRATCH/build.txt" | head -1 | awk -F'|' '{gsub(/[ ,]/,"",$3); print $3}')
+[ -n "$fsize" ] || die "could not find HurdleVaultFactory in forge build --sizes output"
+echo "HurdleVaultFactory runtime size: $fsize bytes (limit 24576)"
+[ "$fsize" -lt 24576 ] || die "HurdleVaultFactory runtime $fsize >= 24576"
 pass
 fi
 
@@ -89,6 +94,13 @@ if [ -z "$CHROME" ] || ! command -v node >/dev/null 2>&1; then skip "needs node 
   [ -n "$UP" ] || die "UI smoke: local http.server did not come up (see $SCRATCH/http.log)"
   node e2e_ui_smoke.mjs "$CHROME" "http://127.0.0.1:$PORT" || die "UI smoke failed"
   kill "$SERVER_PID" 2>/dev/null || true; SERVER_PID=""
+  pass
+fi
+fi
+
+if step "f2. dApp deposit gate mirrors the v5 contract (unit-level)"; then
+if ! command -v node >/dev/null 2>&1; then skip "needs node >= 22.6"; else
+  node --no-warnings e2e_deposit_gate.mjs || die "deposit gate check failed"
   pass
 fi
 fi

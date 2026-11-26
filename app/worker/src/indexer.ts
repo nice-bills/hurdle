@@ -257,7 +257,7 @@ export async function takeSnapshots(client: Client, vaults: { address: string; p
   }
   const poolId = lc(computePoolId());
   const s0 = await slot(poolId);
-  return { snaps, poolTick: s0 ? { block: Number(block), ts, tick: s0.tick, sqrt_price: s0.sqrtPriceX96.toString() } : null };
+  return { snaps, poolTick: s0 ? { pool_id: poolId, block: Number(block), ts, tick: s0.tick, sqrt_price: s0.sqrtPriceX96.toString() } : null };
 }
 
 export async function persistSnapshots(db: Db, res: Awaited<ReturnType<typeof takeSnapshots>>) {
@@ -270,7 +270,7 @@ export async function persistSnapshots(db: Db, res: Awaited<ReturnType<typeof ta
   }
   if (res.poolTick) {
     const p = res.poolTick;
-    await db.query(`INSERT INTO pool_ticks (block,ts,tick,sqrt_price) VALUES ($1,$2,$3,$4) ON CONFLICT (block) DO NOTHING`, [p.block, p.ts, p.tick, p.sqrt_price]);
+    await db.query(`INSERT INTO pool_ticks (pool_id,block,ts,tick,sqrt_price) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (pool_id,block) DO NOTHING`, [p.pool_id, p.block, p.ts, p.tick, p.sqrt_price]);
   }
 }
 

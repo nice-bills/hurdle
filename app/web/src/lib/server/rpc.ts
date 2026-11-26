@@ -82,6 +82,15 @@ export async function readVaultsRpc(addrs: Address[]) {
     out.isVault = iv.status === "success" ? iv.result : false;
     return { address, data: out };
   });
+  // The contract's deficit gate excludes bond shares and the curator's free shares, so read the latter.
+  const cb = await client.multicall({
+    allowFailure: true,
+    contracts: rows.map((r) => ({ address: r.address, abi: vaultAbi, functionName: "balanceOf", args: [String((r.data as Record<string, unknown>).curator ?? "0x0000000000000000000000000000000000000000") as Address] }) as const) as never,
+  });
+  rows.forEach((r, i) => {
+    const x = cb[i] as { status: string; result?: unknown };
+    (r.data as Record<string, unknown>).curatorShares = x.status === "success" ? x.result : null;
+  });
   // Mirror the contract's park test (full-range ticks AND idle <= 2% of NAV): simulate the permissionless
   // rebalance and treat an AlreadyParked revert as parked. Only fired vaults at full range need the probe.
   await Promise.all(

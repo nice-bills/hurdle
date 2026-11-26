@@ -193,7 +193,7 @@
     "internalType": "uint256"
    }
   ],
-  "stateMutability": "pure"
+  "stateMutability": "view"
  },
  {
   "type": "function",
@@ -421,6 +421,19 @@
     "name": "",
     "type": "address",
     "internalType": "contract IPoolManager"
+   }
+  ],
+  "stateMutability": "view"
+ },
+ {
+  "type": "function",
+  "name": "maxFeeAprBps",
+  "inputs": [],
+  "outputs": [
+   {
+    "name": "",
+    "type": "uint256",
+    "internalType": "uint256"
    }
   ],
   "stateMutability": "view"
@@ -704,7 +717,13 @@
  {
   "type": "function",
   "name": "settleForWithdraw",
-  "inputs": [],
+  "inputs": [
+   {
+    "name": "settler",
+    "type": "address",
+    "internalType": "address"
+   }
+  ],
   "outputs": [],
   "stateMutability": "nonpayable"
  },

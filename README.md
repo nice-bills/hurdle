@@ -26,8 +26,8 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
   weight. All NAV and par valuations use the TWAP, which reverts until the pool has 10 minutes of
   history. Donations are blocked (they would inflate par). Overhead is ~40k gas on the first swap of each block in steady state (~12k TWAP write + ~28k block-open fee-growth snapshot); later swaps in the same block skip both writes
   ([research/phase3-twap.md](research/phase3-twap.md)).
-- **Par is fee-capped and wash-proof within a block.** `benchmark(..., elapsed)` credits at most 80% APR
-  of the epoch's starting NAV in fees, scaled by the real time elapsed since the epoch started (so a late settlement widens the cap; see Limits), and the vault reads fee growth as of the block's first swap
+- **Par is fee-capped and wash-proof within a block.** `benchmark(..., elapsed)` credits at most `maxFeeAprBps` APR
+  of the epoch's starting NAV in fees (80% on the 0.05% tier it was calibrated on; scaled linearly by the pool's fee tier, see Limits), scaled by the real time elapsed since the epoch started (so a late settlement widens the cap; see Limits), and the vault reads fee growth as of the block's first swap
   (`HurdleHook.referenceFeeGrowth`), so same-block wash swaps cannot move par at all.
 - **Settlement** (`HurdleVault.settle`, once per epoch):
   - beat par: the excess first refills the bond up to past shortfalls, then the curator earns
@@ -192,9 +192,15 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   the withdrawn shares first pay their pro-rata share of the pending recoup and carry. Withdrawals
   never wait on settlement: if settling or the price read reverts, they pay out in kind without it.
 - NAV and par are valued at TWAP, which matters only at settlement and for crystallized carry.
-- Fee-cap residual: same-block washing has no effect, but wash swaps spread across blocks can still
-  inflate par, and drain the bond, by up to the cap: 80% APR × the real elapsed time, i.e. ≤ 0.91 bp of NAV
-  per hour (~22 bp per day). The cap is a rate, so settling late does not widen the per-hour exposure and no
+- Fee-cap residual (wash-fee bound): same-block washing has no effect, but wash swaps spread across blocks can still
+  inflate par, and drain the bond, by up to the cap: 80% APR × the real elapsed time on the 0.05% tier, i.e. ≤ 0.91 bp of NAV
+  per hour (~22 bp per day). The cap is calibrated on the 0.05% tier but the factory accepts any canonical-hook pool, so
+  the vault constructor scales it by fee tier: `maxFeeAprBps = 8_000 × key.fee / 500`, at most 100_000 (1000% APR,
+  reached at 6_250 pips). The bound per hour scales the same way: 0.91 bp/h at 0.05%, 5.5 bp/h at 0.3% (measured in
+  `test/FeeCapAttack.t.sol`, which runs on a 0.3% pool), and a vault on a 1% tier or a dynamic-fee pool is held to
+  the 1000% ceiling (~11.4 bp/h). Real fee APR scales with the tier too, so the cap clips real hours no more
+  often than on 0.05%. It is a per-vault immutable (`maxFeeAprBps()`), so depositors can read it; to pick a
+  different calibration, change the base `MAX_FEE_APR_BPS` and the ceiling at deploy time ([research/fee-cap.md](research/fee-cap.md) section 6). The cap is a rate, so settling late does not widen the per-hour exposure and no
   maximum settlement interval is needed (a one-epoch clamp was tried and dropped: a late settle then handed
   real fees to the curator as excess). Worst case, an attacker who is the dominant LP (recycling the fees it
   pays) washing every block drains a 10% bond in ~46 days, down from ~12 days at the old 300% cap; the
@@ -250,5 +256,12 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   directly (not via the factory) are not registered; depositors should check `factory.isVault`.
 - Par is valued at the TWAP, not spot. Over the ETH −14% week the two differ by up to ~84 bp at a single settlement (28 bp at the
   week end; `data/par_check.py` without `--twap`).
-- Not externally audited. The final source has had model-based audits (audit2, audit3, research/) but no
-  external human audit. Testnet only (mock tokens).
+- **Model audits only, no external human audit.** The final source has had model-based audits (audit2, audit3,
+  research/) and a multi-model review council, but no independent human Solidity review. The custom accounting
+  (shares, bond, deficit, shortfall gross-up, carry) is high-impact; do not rely on the depositor guarantee with
+  meaningful funds before an external audit. Testnet only (mock tokens).
+- **Live flow is synthetic.** The testnet pool has no organic traders. All volume comes from the worker keeper's
+  round trips (size set by `ROUNDTRIP_WETH`, default 1 mWETH per leg, every 10 min), and the keeper also acts as the
+  arbitrageur that returns spot to a reference tick after park/re-centre swaps. Carry, fees and the depositor-vs-par line on the live
+  vault pages therefore reflect that script, not market demand: expect carry on the order of a basis point per hour on an in-range
+  vault, and bond drains on the passive/out-of-range ones. The replays on real swap data (above) are the evidence for the mechanism.

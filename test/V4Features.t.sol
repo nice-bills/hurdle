@@ -6,6 +6,8 @@ import {PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
+import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {HurdleHook} from "../src/HurdleHook.sol";
 import {HurdleVault} from "../src/HurdleVault.sol";
 import {VaultFixture} from "./VaultFixture.sol";
@@ -122,11 +124,32 @@ contract V4Features is VaultFixture {
         assertEq(vault.balanceOf(BOB), shares, "newcomer not admitted");
     }
 
+    /// Fired, parked, bond not reclaimed: reached by real calls only (losing epochs, then park steps).
+    function _firedParkedUnreclaimed() internal {
+        vault = _newVault(0.6e18);
+        int24 tick;
+        for (uint256 epoch; epoch < 12 && !vault.fired(); ++epoch) tick = _losingEpoch(tick);
+        assertTrue(vault.fired(), "never fired");
+        bool parkedOk;
+        for (uint256 i; i < 10; ++i) {
+            vm.roll(block.number + 1);
+            vm.warp(block.timestamp + 600);
+            (bool ok, bytes memory ret) = address(vault).call(abi.encodeWithSignature("rebalance(int24,int24)", int24(0), int24(0)));
+            if (!ok) {
+                assertEq(bytes4(ret), HurdleVault.AlreadyParked.selector, "park step failed for another reason");
+                parkedOk = true;
+                break;
+            }
+        }
+        assertTrue(parkedOk, "never parked");
+        _fund(BOB, address(vault), 100e18, 100e18);
+        vm.roll(block.number + 1);
+        vm.warp(vault.epochStart() + vault.epochSeconds() + 10); // the deposit settles first and opens its window
+    }
+
     function test_firedVaultDepositSkipsDeficitGate() public {
-        _firedAndReclaimed();
-        // Reclaim cleared the deficit; recreate the unreclaimed case: owed deficit on a fired vault.
-        vm.store(address(vault), bytes32(uint256(5)), bytes32(uint256(1e18)));
-        assertGt(vault.deficit(), 0);
+        _firedParkedUnreclaimed();
+        assertGt(vault.deficit(), 0, "scenario: no unreclaimed deficit");
         assertTrue(vault.fired());
         uint256 shares = vault.balanceOf(ALICE) / 10;
         vm.prank(BOB);
@@ -182,4 +205,28 @@ contract V4Features is VaultFixture {
         vm.clearMockedCalls();
     }
 
+
+    // ---------------------------------------------------------------------
+    // 4. fee cap scales with the pool's fee tier
+    // ---------------------------------------------------------------------
+
+    function _vaultWithFee(uint24 fee) internal returns (HurdleVault v) {
+        PoolKey memory k = key;
+        k.fee = fee;
+        v = new HurdleVault(manager, k, CURATOR, 2000, 200, 50, 600);
+    }
+
+    function test_feeCapScalesWithFeeTier() public {
+        assertEq(_vaultWithFee(500).maxFeeAprBps(), 8_000, "0.05% tier is the calibration");
+        assertEq(_vaultWithFee(100).maxFeeAprBps(), 1_600, "0.01%");
+        assertEq(_vaultWithFee(3000).maxFeeAprBps(), 48_000, "0.3%");
+        assertEq(_vaultWithFee(10_000).maxFeeAprBps(), 100_000, "1% hits the ceiling (160_000 -> 100_000)");
+        assertEq(_vaultWithFee(0x800000).maxFeeAprBps(), 100_000, "dynamic-fee flag cannot lift the ceiling");
+        // benchmark() uses the vault's own cap
+        uint160 s = TickMath.getSqrtPriceAtTick(0);
+        uint256 nav0 = 100e18;
+        uint256 huge = 1 << 127;
+        uint256 expect3000 = nav0 + nav0 * 48_000 * 600 / (10_000 * 365 days);
+        assertEq(_vaultWithFee(3000).benchmark(nav0, s, s, huge, huge, 600), expect3000);
+    }
 }

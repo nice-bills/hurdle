@@ -44,13 +44,21 @@ CREATE TABLE IF NOT EXISTS snapshots (
 );
 CREATE INDEX IF NOT EXISTS snapshots_vault_ts_idx ON snapshots (vault, ts DESC);
 
+-- pool_ticks is keyed by pool id (a redeploy changes the pool; mixing pools made the price chart garbage).
+-- Idempotent migration of the old single-pool shape (PRIMARY KEY (block), no pool_id): add the column, drop
+-- the old primary key and the unattributable legacy rows (a few days of chart history, rebuilt by the indexer).
 CREATE TABLE IF NOT EXISTS pool_ticks (
-  block       bigint PRIMARY KEY,
+  pool_id     text,
+  block       bigint NOT NULL,
   ts          timestamptz NOT NULL,
   tick        integer NOT NULL,
   sqrt_price  numeric NOT NULL
 );
-CREATE INDEX IF NOT EXISTS pool_ticks_ts_idx ON pool_ticks (ts DESC);
+ALTER TABLE pool_ticks ADD COLUMN IF NOT EXISTS pool_id text;
+ALTER TABLE pool_ticks DROP CONSTRAINT IF EXISTS pool_ticks_pkey;
+DELETE FROM pool_ticks WHERE pool_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS pool_ticks_pool_block_idx ON pool_ticks (pool_id, block);
+CREATE INDEX IF NOT EXISTS pool_ticks_ts_idx ON pool_ticks (pool_id, ts DESC);
 
 CREATE TABLE IF NOT EXISTS keeper_runs (
   id      bigserial PRIMARY KEY,

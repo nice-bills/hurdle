@@ -57,8 +57,8 @@ async function registry(headBlock: number): Promise<Registry> {
 
 async function poolState(sinceSec: number, events: VaultEvent[], ref: PoolRef = V4_POOL): Promise<PoolState> {
   const p = await readPoolRpc(ref);
-  // pool_ticks only tracks the v4 pool
-  let history = (ref === V4_POOL ? await dbPoolTicks(sinceSec) : null) ?? [];
+  // pool_ticks is keyed by pool id: only this pool's own ticks (the legacy pool has none once its rows age out)
+  let history = (await dbPoolTicks(sinceSec, ref.poolId)) ?? [];
   if (!history.length) {
     // no DB: settlement prices are the only free history
     const seen = new Set<number>();
@@ -129,6 +129,7 @@ function summarize(
     bond: s("bond") ?? "0",
     bondValue,
     bondShares: s("bondShares") ?? "0",
+    curatorShares: s("curatorShares") ?? "0",
     deficit: s("deficit") ?? "0",
     totalSupply: s("totalSupply") ?? "0",
     lo: Number(pos[0]),

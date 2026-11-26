@@ -62,6 +62,8 @@ export interface VaultSummary {
   bond: string;
   bondValue: string | null;
   bondShares: string;
+  /** curator's free shares (balanceOf[curator]); with bondShares they do not owe `deficit` */
+  curatorShares: string;
   deficit: string;
   totalSupply: string;
   lo: number;

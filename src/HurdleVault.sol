@@ -46,11 +46,18 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// bond in one epoch versus the block-open price. Residual: a price held off-market across a block
     /// boundary passes every check (that costs the attacker a block of arbitrage exposure).
     uint256 public constant MAX_REBALANCES_PER_EPOCH = 4;
-    /// Cap on the benchmark's fee credit, as an APR on the epoch's starting NAV (80%). Calibrated to the
-    /// two real replay weeks: par's uncapped hourly fee credit peaked at 60% APR (p99 40%), so 80% is ~2x
-    /// p99 and never binds there (research/fee-cap.md). Bounds a cross-block wash trade to ~0.91 bp of NAV
-    /// per hour (~22 bp per day), however late settlement is.
+    /// Cap on the benchmark's fee credit, as an APR on the epoch's starting NAV, for the 0.05% (500 pip) tier:
+    /// 80%. Calibrated to the two real replay weeks on that tier: par's uncapped hourly fee credit peaked at
+    /// 60% APR (p99 40%), so 80% is ~2x p99 and never binds there (research/fee-cap.md). Bounds a cross-block
+    /// wash trade to ~0.91 bp of NAV per hour (~22 bp per day) on that tier, however late settlement is.
+    /// Other tiers scale it linearly with the pool fee (`maxFeeAprBps`), up to MAX_FEE_APR_CEILING_BPS.
     uint256 public constant MAX_FEE_APR_BPS = 8_000;
+    /// Hard ceiling on the scaled cap (1000% APR), so a 1% tier or a dynamic-fee flag cannot disable it.
+    uint256 private constant MAX_FEE_APR_CEILING_BPS = 100_000;
+    /// The cap actually used by this vault: MAX_FEE_APR_BPS x key.fee / 500, at most MAX_FEE_APR_CEILING_BPS.
+    /// Real fee APR scales with the tier's fee, so the cap does too; the wash-trade bound in bp of NAV per
+    /// hour scales the same way (0.91 bp/h at 0.05%, 5.5 bp/h at 0.3%).
+    uint256 public immutable maxFeeAprBps;
     /// In-kind deposits are refused while `deficit` exceeds this share of NAV (1 bp): a newcomer would
     /// otherwise help refill the bond for payouts that earlier holders received.
     uint256 private constant DEFICIT_TOLERANCE_BPS = 1;
@@ -156,6 +163,8 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         require(_epochSeconds >= 600, "EPOCH");
         require(Currency.unwrap(_key.currency0) != address(0), "NATIVE");
         epochSeconds = _epochSeconds;
+        // 16 bps of APR per pip of fee (500 pips -> 8_000), at most MAX_FEE_APR_CEILING_BPS (reached at 6_250 pips).
+        maxFeeAprBps = _key.fee >= 6_250 ? MAX_FEE_APR_CEILING_BPS : uint256(_key.fee) * 16;
         manager = _manager;
         oracle = IHurdleOracle(address(_key.hooks));
         poolKey = _key;
@@ -575,20 +584,20 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     // ---------------------------------------------------------------------
 
     /// Value of a full-range position worth `nav0` at s0, after moving to s1 and earning dfg per unit L
-    /// over `elapsed` seconds. The fee credit is capped at MAX_FEE_APR_BPS of nav0: wash swaps raise
+    /// over `elapsed` seconds. The fee credit is capped at `maxFeeAprBps` (MAX_FEE_APR_BPS scaled by fee tier) of nav0: wash swaps raise
     /// feeGrowthGlobal, which this virtual liquidity collects without paying the swap fees.
     /// Residual: an attacker (e.g. the dominant LP, who recycles the fees it pays) can still inflate par up
-    /// to the cap (80% APR = ~0.91 bp of NAV per hour, linear in elapsed time, so a late settle gains the
+    /// to the cap (80% APR on the 0.05% tier = ~0.91 bp of NAV per hour; scaled by tier, linear in elapsed time, so a late settle gains the
     /// attacker nothing per hour), and a real fee burst above the cap shows up as curator excess.
     function benchmark(uint256 nav0, uint160 s0, uint160 s1, uint256 dfg0X128, uint256 dfg1X128, uint256 elapsed)
         public
-        pure
+        view
         returns (uint256)
     {
         uint256 l = FullMath.mulDiv(nav0, Q96, 2 * uint256(s0)); // full range: V = 2 L s
         uint256 principal = FullMath.mulDiv(l, 2 * uint256(s1), Q96);
         uint256 fees = _value(FullMath.mulDiv(l, dfg0X128, Q128), FullMath.mulDiv(l, dfg1X128, Q128), s1);
-        uint256 maxFees = FullMath.mulDiv(nav0, MAX_FEE_APR_BPS * elapsed, 10_000 * 365 days);
+        uint256 maxFees = FullMath.mulDiv(nav0, maxFeeAprBps * elapsed, 10_000 * 365 days);
         return principal + (fees < maxFees ? fees : maxFees);
     }
 

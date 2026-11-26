@@ -100,6 +100,7 @@ function Loaded({ d }: { d: VaultDetail }) {
         <div className="min-w-0 space-y-6">
           <Panel title="NAV vs par, per settlement" aside={<Legend items={[{ label: "Par", kind: "par" }, { label: "Depositors", kind: "solid", color: "var(--ink)" }, { label: "Strategy NAV", kind: "dash", color: "var(--ink-2)" }]} />}>
             <SeriesChart d={d} unit={unit} bondIsWeth={bondIsWeth} />
+            <p className="mt-3 text-[12.5px] text-ink-2">Live flow is synthetic: on this testnet pool the only trades are the keeper&apos;s scripted round trips, so fees and carry here are small and illustrative, not market demand.</p>
           </Panel>
 
           <div className="grid gap-6 md:grid-cols-2">

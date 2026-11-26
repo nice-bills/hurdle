@@ -13,5 +13,8 @@ export const state = {
   lastKeeperAction: null as { ts: string; action: string; vault: string | null; tx: string | null; ok: boolean; note: string | null } | null,
   curatorAddress: null as string | null,
   lastCuratorRunAt: 0,
+  curatorBalanceWei: null as bigint | null,
+  targetTick: null as number | null,
+  lastArbAt: 0,
   lastKeeperError: "" as string,
 };

@@ -76,6 +76,7 @@ contract FeeCapAttackTest is Test, Deployers {
         vm.stopPrank();
     }
 
+    /// (wash sizes are 6x the 0.05%-tier calibration because this pool is the 0.3% tier, whose cap is 6x looser.)
     /// One round trip in one block: sell `amt` token0, then buy back to the starting price.
     function _wash(uint256 amt) internal {
         (uint160 s0,,,) = manager.getSlot0(key.toId());
@@ -96,7 +97,7 @@ contract FeeCapAttackTest is Test, Deployers {
         for (uint256 t; t < span; t += BLOCK_TIME) {
             vm.warp(block.timestamp + BLOCK_TIME);
             vm.roll(block.number + 1);
-            _wash(5e18);
+            _wash(30e18);
         }
         vm.warp(ts + span);
         vm.roll(block.number + 1);
@@ -106,7 +107,7 @@ contract FeeCapAttackTest is Test, Deployers {
         unchecked {
             uncapped = vault.benchmark(nav0, sStart, s1, g0 - f0, g1 - f1, type(uint64).max / 10_000) - principal;
         }
-        cap = nav0 * vault.MAX_FEE_APR_BPS() * span / (10_000 * 365 days);
+        cap = nav0 * vault.maxFeeAprBps() * span / (10_000 * 365 days);
         vault.settle();
         drain = bondBefore - vault.bond();
     }
@@ -127,7 +128,7 @@ contract FeeCapAttackTest is Test, Deployers {
         console2.log("3-epoch-late settle: bond drain / cap:", drain, cap);
         assertLe(drain, cap + 1, "drain bounded by the cap x elapsed");
         (,,,, uint256 nav0) = vault.start();
-        assertLe(drain / 3, nav0 * vault.MAX_FEE_APR_BPS() * EPOCH / (10_000 * 365 days) + 1, "per-hour rate unchanged");
+        assertLe(drain / 3, nav0 * vault.maxFeeAprBps() * EPOCH / (10_000 * 365 days) + 1, "per-hour rate unchanged");
     }
 
     /// The same dominant-LP wash, but the vault is IN RANGE (re-centred, +-120 ticks). It earns its share of the wash
@@ -137,7 +138,7 @@ contract FeeCapAttackTest is Test, Deployers {
         for (uint256 t; t < EPOCH; t += BLOCK_TIME) {
             vm.warp(block.timestamp + BLOCK_TIME);
             vm.roll(block.number + 1);
-            _wash(5e18);
+            _wash(30e18);
         }
         (uint64 ts,,,,) = vault.start();
         vm.warp(ts + EPOCH);
@@ -153,7 +154,7 @@ contract FeeCapAttackTest is Test, Deployers {
         unchecked {
             uncapped = vault.benchmark(nav0, sStart, s1, g0 - f0, g1 - f1, type(uint64).max / 10_000) - principal;
         }
-        cap = nav0 * vault.MAX_FEE_APR_BPS() * EPOCH / (10_000 * 365 days);
+        cap = nav0 * vault.maxFeeAprBps() * EPOCH / (10_000 * 365 days);
     }
 
     function test_attack_inRangeVaultIsNotDrained() public {

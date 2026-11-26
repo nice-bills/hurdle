@@ -322,7 +322,7 @@ contract AuditPoC is Test, Deployers {
         int256 d0 = int256(t0.balanceOf(address(this))) - int256(a0);
         int256 d1 = int256(t1.balanceOf(address(this))) - int256(a1);
         int256 pnl = d0 + d1; // price is back at 1:1
-        uint256 cap = nav0 * vault.MAX_FEE_APR_BPS() * 600 / (10_000 * 365 days);
+        uint256 cap = nav0 * vault.maxFeeAprBps() * 600 / (10_000 * 365 days);
         console2.log("bond paid out / cap:", bondBefore - vault.bond(), cap);
         console2.log("attacker P&L (token1 wei):");
         console2.logInt(pnl);

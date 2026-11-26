@@ -136,3 +136,17 @@ No `--verify` set: add `--verify --verifier blockscout --verifier-url https://un
 
 Before broadcasting, re-run the step 1 dry run: the mined hook address depends on `HurdleHook` bytecode, so any `src/` change moves it.
 Redeploy done 2026-11-17 (step 1 11:25 UTC, step 2 12 min later); the superseded table above is history.
+
+## Operations notes (round 4)
+
+- **Live flow is synthetic.** Nothing trades the testnet pool except the worker keeper (round trips, `ROUNDTRIP_WETH`,
+  `ROUNDTRIP_TICKS`) and the arbitrage leg that returns spot to `TARGET_TICK` (default: the 1 h TWAP at first start,
+  then the value stored in the `cursor` table). Carry on the live vaults is that script's output.
+- **Do not deploy the worker near the deadline.** Each worker redeploy restarts the process: the keeper's first
+  tick is delayed (15 s boot + a full interval), uptime resets, and a deploy in the judging window can leave a
+  settlement or park step unserved for minutes. Freeze worker deploys (code and env) well before submission; the
+  target tick and all state live in Postgres, so a late restart is safe, only late.
+- Fee cap scales by tier since the v6 vault: redeploying the factory/vaults is needed to get it onchain
+  (`research/fee-cap.md` section 6). Size check: `HurdleVaultFactory` embeds the vault, runtime 24,559 B vs 24,576
+  (EIP-170) with `script/foundry.deploy.toml` (optimizer on, 200 runs): 17 B of headroom, so any further vault change
+  must be re-measured with `forge build --sizes`.

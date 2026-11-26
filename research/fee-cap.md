@@ -35,7 +35,7 @@ Par's uncapped fee credit per hourly settlement, as an APR on the epoch's starti
 - A lower cap (e.g. 50%) would sit below the replay max (60%) and start clipping real hours; 80% is the tightest
   round value that keeps both replays unclipped with margin.
 
-## 3. Attacker cost vs gain (dominant full-range LP, 3000 pips fee tier)
+## 3. Attacker cost vs gain (dominant full-range LP; figures at the 0.05% cap, see section 6 for other tiers)
 
 Bound: at 80% APR par gains at most 0.91 bp of NAV per hour (21.9 bp/day), versus 3.42 bp/hour (82 bp/day) at
 the old 300%. A 10%-of-NAV bond: ~46 days to drain instead of ~12.
@@ -44,7 +44,8 @@ the old 300%. A 10%-of-NAV bond: ~46 days to drain instead of ~12.
   or by short-selling the curator's credibility). `test/FeeCapAttack.t.sol` (attacker holds 2000e18 of the pool's
   liquidity, vault NAV 10e18 idle so it earns none of the wash fees, 120 blocks of wash trading per epoch):
   uncapped credit would be 8.9e15 wei (8.9 bp), the bond actually pays 9.13e14 = exactly the cap (0.913 bp);
-  a settle 3 epochs late pays exactly 3x (same hourly rate).
+  a settle 3 epochs late pays exactly 3x (same hourly rate). (The test pool is now the 0.3% tier, whose cap is 6x
+  looser, so it washes 6x more volume: drain = cap = 5.48 bp.)
 - Cost: the wash fee `f x volume`, of which the attacker gets back its own LP share `w` (dominant LP: w -> 1,
   cost -> 0 apart from gas). The attacker needs fees of `cap x NAV x L_pool / L_par` to saturate the cap;
   its net cost is the (1 - w) part, paid to the other LPs. For a non-dominant attacker the cost exceeds the gain
@@ -78,3 +79,21 @@ vault NAV 10e18, +-120 ticks):
 Only an idle or out-of-range vault is exposed, bounded by the 80% APR cap (~0.91 bp/h). Curator's defence: stay in
 range; the live curator bot re-centres. Residual: a vault idle for days (price left the range, curator offline)
 bleeds at up to the cap until it re-centres or the bond fires.
+
+## 6. Scaling by fee tier (council v5 opus item 4)
+
+The calibration above is for ETH/USDC on the 0.05% tier (500 pips). The factory accepts any pool with the
+canonical hook, and real fee APR scales with the pool's fee, so a fixed 80% would be far too tight on a 0.3% or 1%
+tier (par under-credited every hour, curator paid carry on fees it did not beat). The vault constructor now sets
+
+    maxFeeAprBps = MAX_FEE_APR_BPS x key.fee / 500   (= 16 bps of APR per pip), at most 100_000 (1000% APR)
+
+as an immutable: 8_000 at 500 pips (unchanged for the live pool), 1_600 at 100, 48_000 at 3_000, 100_000 from 6_250 pips
+up (the 1% tier and the dynamic-fee flag, 0x800000, land on the ceiling). `benchmark()` reads it, so it is `view` now.
+
+Attack bound per hour, in bp of NAV, scales with it: `maxFeeAprBps x 1e4 / (1e4 x 8760)` = 0.91 (0.05%), 5.5 (0.3%),
+11.4 (ceiling). Measured on the 0.3% pool in `test/FeeCapAttack.t.sol`: drain = cap exactly (5.48e15 wei on 1e19 NAV =
+5.48 bp per hour; 3 epochs late = 3x). `test_feeCapScalesWithFeeTier` pins the table above. The tier scaling keeps the
+no-bind property on the replays, which are 0.05% data. The ceiling bounds the worst case when a tier would
+otherwise disable the cap. To pick another calibration, change `MAX_FEE_APR_BPS` (base at 500 pips) and
+`MAX_FEE_APR_CEILING_BPS` in `HurdleVault.sol` before deploying; there is no admin knob after deployment.

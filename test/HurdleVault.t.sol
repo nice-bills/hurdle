@@ -574,7 +574,7 @@ contract HurdleVaultTest is VaultFixture {
         uint160 s = TickMath.getSqrtPriceAtTick(0);
         uint256 huge = 1 << 127; // 0.5 token per unit L
         uint256 nav0 = 100e18;
-        uint256 cap = nav0 * 8_000 * 600 / (10_000 * 365 days);
+        uint256 cap = nav0 * vault.maxFeeAprBps() * 600 / (10_000 * 365 days);
         assertEq(vault.benchmark(nav0, s, s, huge, huge, 600), nav0 + cap);
         uint256 small = 1e20;
         assertEq(vault.benchmark(nav0, s, s, 0, small, 600), nav0 + nav0 / 2 * small / (1 << 128)); // under the cap

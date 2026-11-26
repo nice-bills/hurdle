@@ -86,10 +86,10 @@ export async function dbSnapshots(vault: string, bondDecimals = 18, limit = 720)
     });
 }
 
-export async function dbPoolTicks(sinceSec: number) {
+export async function dbPoolTicks(sinceSec: number, poolId: string) {
   const r = await q<{ ts: Date; tick: number }>(
-    "SELECT ts, tick FROM pool_ticks WHERE ts >= to_timestamp($1) ORDER BY ts ASC LIMIT 2000",
-    [sinceSec],
+    "SELECT ts, tick FROM pool_ticks WHERE pool_id = $2 AND ts >= to_timestamp($1) ORDER BY ts ASC LIMIT 2000",
+    [sinceSec, poolId.toLowerCase()],
   );
   return r ? r.map((x) => ({ ts: Math.floor(new Date(x.ts).getTime() / 1000), tick: x.tick })) : null;
 }
