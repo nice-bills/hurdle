@@ -56,7 +56,13 @@ contract DeployHurdleHook is Script {
 
         // Under `forge script`, `new X{salt: s}` is sent through the deterministic CREATE2 deployer.
         (address hookAddress, bytes32 salt) =
-            HookMiner.find(CREATE2_FACTORY, flags, type(HurdleHook).creationCode, abi.encode(address(manager)));
+            HookMiner.findFrom(
+                CREATE2_FACTORY,
+                flags,
+                type(HurdleHook).creationCode,
+                abi.encode(address(manager)),
+                vm.envOr("HOOK_SALT_START", uint256(0))
+            );
 
         vm.startBroadcast(pk);
 

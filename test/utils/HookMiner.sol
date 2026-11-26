@@ -22,11 +22,23 @@ library HookMiner {
         view
         returns (address, bytes32)
     {
+        return findFrom(deployer, flags, creationCode, constructorArgs, 0);
+    }
+
+    /// @notice As `find`, but searches salts [start, start + MAX_LOOP). Redeploying identical hook bytecode from the
+    /// same CREATE2 deployer uses up the low salts, so later deploys start further on.
+    function findFrom(
+        address deployer,
+        uint160 flags,
+        bytes memory creationCode,
+        bytes memory constructorArgs,
+        uint256 start
+    ) internal view returns (address, bytes32) {
         address hookAddress;
         bytes memory creationCodeWithArgs = abi.encodePacked(creationCode, constructorArgs);
 
-        uint256 salt;
-        for (salt; salt < MAX_LOOP; salt++) {
+        uint256 salt = start;
+        for (; salt < start + MAX_LOOP; salt++) {
             hookAddress = computeAddress(deployer, salt, creationCodeWithArgs);
             if (uint160(hookAddress) & FLAG_MASK == flags && hookAddress.code.length == 0) {
                 return (hookAddress, bytes32(salt));
