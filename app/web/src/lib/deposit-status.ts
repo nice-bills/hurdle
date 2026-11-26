@@ -19,7 +19,7 @@ const deficitOutstanding = (v: VaultSummary) => {
 /**
  * Why a deposit is impossible right now, in one line; null when deposits are open and nothing is in the way.
  * Mirrors HurdleVault.deposit: window (the first DEPOSIT_WINDOW seconds of an epoch, or an overdue epoch that the
- * deposit settles first), no first deposit yet, DeficitOutstanding, and the bond floor (a fired vault skips it).
+ * deposit settles first), no first deposit yet, DeficitOutstanding, and the bond floor (a fired vault skips both but must be parked: NotParked).
  */
 export function depositStatus(v: VaultSummary, now: number, price: number): DepositStatus | null {
   const end = v.epochStart + v.epochSeconds;
@@ -32,6 +32,15 @@ export function depositStatus(v: VaultSummary, now: number, price: number): Depo
     return { blocked: true, tone: "warn", text: "Deposits are closed: the curator has not made the first deposit yet." };
 
   if (v.fired) {
+    // Current src (audit3): a fired vault takes deposits only while parked (NotParked otherwise). The deployed
+    // bytecode predates this; the line is still accurate advice there (an unparked fired vault holds the
+    // fired curator's range with no bond behind it).
+    if (!v.parked)
+      return {
+        blocked: true,
+        tone: "warn",
+        text: "Deposits are closed (NotParked): this fired vault has not finished parking full range, so it has no bond and is not yet at par. Anyone can finish the park (Finish parking); deposits reopen once it is parked.",
+      };
     // Mirrors the deployed v4 bytecode (7f1792a), where fired vaults still apply the deficit gate. Current src
     // (45bde1f+) skips it for fired vaults: drop this branch when the next deployment ships that change.
     if (deficitOutstanding(v)) {

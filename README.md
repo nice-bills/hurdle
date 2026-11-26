@@ -43,8 +43,9 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
   pays out, so no price is used (`previewDeposit` quotes it, never under). A deposit first re-baselines
   par to its block (settling the gap so far, same epoch clock), so a newcomer neither pays for nor
   collects earlier performance. Deposits also need spot, block-open price and TWAP to agree, and no
-  unrecouped bond payout (`deficit` ≤ 1 bp of NAV), so a newcomer never repays compensation that went
-  to others. The curator can clear `deficit` at any time by posting fresh bond (`postBond` pays it down
+  unrecouped bond payout (`deficit` ≤ 1 bp of the depositors' NAV), so a newcomer never repays
+  compensation that went to others. A fired vault takes deposits only while it is parked full range
+  (`NotParked` otherwise), since an unparked fired vault holds the fired curator's range with no bond. The curator can clear `deficit` at any time by posting fresh bond (`postBond` pays it down
   first), so one bad epoch does not close the vault until the curator beats par again.
 - **Rebalances** (curator only, max 4 per epoch, bond at or above the floor) revert `PriceDeviation`
   unless spot, the block-open price and the **10-minute** TWAP are within `maxTickDeviation` (50 ticks)
@@ -53,15 +54,22 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
   the price NAV is marked at. `rebalance(lo, hi, maxIdleBps)` reverts `RebalanceIncomplete` (keeping the
   slot) if a front-run left more than `maxIdleBps` of NAV unswapped.
 - **Keepers are paid.** `settle()` is permissionless; a third party calling it on schedule gets 5% of
-  that epoch's carry (`SETTLER_BOUNTY_BPS`, minted out of the curator's carry, never from depositors).
+  that epoch's carry (`SETTLER_BOUNTY_BPS`, minted out of the curator's carry, never from depositors). A
+  `deposit` or `withdraw` that happens to settle a finished epoch pays the same bounty to its caller, so a
+  1-share withdraw cannot front-run the keeper and keep the whole carry.
 - **After firing**, anyone can finish the park (uncounted calls, strict 30-minute gate); one epoch after
   the park the curator can `reclaimBond()` what is left, since the parked vault holds exactly the
   passive position par describes.
 - **Factory.** `HurdleVaultFactory` only creates vaults on pools whose hook is the canonical
   `HurdleHook`, and records them in `isVault`, so depositors check one flag instead of the pool's hook.
 - **Capacity:** deposits are capped at `bond / minBondBps`.
-- **Withdrawals** take the withdrawer's pro-rata share of `deficit` with them (recouped if ahead of par,
-  forgiven otherwise), so the remaining holders' per-share charge never grows.
+- **Deficit is owed by depositor shares only.** A shortfall is paid to depositors, not to the locked bond
+  shares or the curator's own free shares, so a recoup is grossed up to dilute depositors by exactly the
+  `deficit` it clears, and the deposit gate, `crystallize` and withdrawals all measure `deficit` against
+  depositor shares. A miss followed by an equal beat is therefore neutral between curator and depositors
+  (audit 3, finding A). The curator's own withdrawals neither take nor forgive any `deficit`.
+- **Withdrawals** take the withdrawer's pro-rata share of `deficit` (of depositor shares) with them
+  (recouped if ahead of par, forgiven otherwise), so the remaining holders' per-share charge never grows.
 
 ## Results on real swaps
 
@@ -72,12 +80,15 @@ under the floor. Values in USD; "vs par" is the gap in points of starting capita
 
 | Week | Vault | Strategy vs par | Depositor vs par | Bond paid (gross) | Carry | Fired |
 |---|---|---|---|---|---|---|
-| Range (Oct 31 – Nov 6) | Patient | +1.92% | +1.57% | 2.63% | 0.39% | no |
-| | Chaser | +0.65% | +2.58% | 8.83% | 0.64% | no |
-| ETH −14% (Nov 7 – 13) | Patient | −3.93% | +0.10% | 8.77% | 0.02% | day 6.2 |
-| | Chaser | −2.04% | +0.48% | 9.91% | 0.11% | no (1 top-up) |
+| Range (Oct 31 – Nov 6) | Patient | +1.92% | +1.56% | 2.63% | 0.40% | no |
+| | Chaser | +0.65% | +2.57% | 8.83% | 0.69% | no |
+| ETH −14% (Nov 7 – 13) | Patient | −3.93% | +0.10% | 8.77% | 0.05% | day 6.2 |
+| | Chaser | −2.04% | +0.48% | 9.91% | 0.19% | no (1 top-up) |
 
-Depositors are never below par at any of the 166 hourly settlements, in either week. On-chain par
+Depositors are never below par at any of the 166 hourly settlements, in either week (minimum depositor/par
+1.00004 over both weeks). Numbers moved slightly with the audit 3 accounting fix (deficit owed by depositor
+shares only): depositor-vs-par by at most 0.01 point, carry up by 0.01–0.08 point (the curator's recoup now
+repays depositors' deficit only), the bond paid and fire day unchanged. On-chain par
 matches an independent offchain computation within 0.001 bp at every settlement (e2e gate: 0.01 bp)
 (`data/par_check.py --twap`); the fee cap never binds on these two weeks. "Bond paid" is gross: misses are paid per epoch
 and later excess refills the bond before any carry.
@@ -212,7 +223,14 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   vault at 85% of in-range liquidity, par undercounts a real full-range LP by 23 bp over the test
   (`test_endogenousPar`), in the curator's favour. Negligible on deep pools; a risk on thin ones.
 - Settler bounty shares, once minted, are ordinary non-curator shares and are covered by the bond. A
-  curator settling from a second address collects its own 5%, which changes nothing for depositors.
+  curator settling from a second address collects its own 5% as covered shares (no deposit window or
+  capacity check; bounded at 5% of carry, the same as the known withdraw-and-redeposit route).
+- Audit 3 residuals (research/audit3-accounting.md, Resolution column): carry is still charged on the bond
+  shares' own excess (curator-to-curator); reclaim does not cover the partial epoch it lands in; the dead
+  shares count as a depositor, so the bond pays their 1000-wei slice of a miss. The covered-settle
+  guarantee needs the bond worth the whole shortfall: bond tokens that enter the vault are shared with
+  the curator's free shares, so a bond worth only the depositors' share can leave them up to `x/t` short
+  until the next settle.
 - After firing, `rebalance` is permissionless and swaps to 50/50, with the same price bounds.
 - The curator's own free shares are not covered by its bond: on a miss they take their share of the loss.
   The live demo vaults therefore mint the first deposit's shares to a separate depositor address.

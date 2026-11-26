@@ -50,6 +50,15 @@ contract Handler {
         uint256 x; // bondShares + curator free shares before the action (excluded holders)
         uint256 bond; // bond tokens before the action
         uint256 bondV; // bondValue() before the action
+        uint256 b; // bondShares before
+        uint256 c; // curator free shares before
+        uint256 deficit; // deficit before
+        uint256 startNav; // start.nav before
+        uint64 startTs; // start.timestamp before
+        uint256 user; // actor's shares before (deposit/withdraw)
+        address actor;
+        uint256 shares; // shares moved by the action
+        bool fired;
     }
 
     // ---- ghost accounting -------------------------------------------------
@@ -92,6 +101,28 @@ contract Handler {
     uint256 public ghostWorstProfitIn;
     uint256 public ghostWorstProfitOut;
 
+    // ---- audit3 ghosts ----------------------------------------------------
+    // 1. deficit reconciliation
+    uint256 public ghostDeficitPaid; // sum of Settled.shortfallPaid
+    uint256 public ghostDeficitRecouped; // depositors' dilution from recoups, derived from Settled.take
+    uint256 public ghostDeficitForgiven; // deficit that left with exiting depositors (or reclaimBond)
+    uint256 public ghostDeficitPaydown; // postBond paydown
+    uint256 public ghostDeficitUnexplained; // actions whose deficit change differs from the derived one
+    // 3, 6, 7, 8, 9, 10: per-action violation counters
+    uint256 public ghostConservationViolations;
+    uint256 public ghostShortfallEffectViolations;
+    uint256 public ghostCarryGateViolations;
+    uint256 public ghostFiredDepositViolations;
+    uint256 public ghostWithdrawSplitViolations;
+    uint256 public ghostParPerShareViolations;
+    uint256 public ghostDeficitPerShareViolations;
+    uint256 public ghostCuratorActions;
+    uint256 public ghostKeeperSettles;
+    // 11. every address that ever received bounty shares
+    address[] public seenHolders;
+    mapping(address => bool) public isSeen;
+    address[3] public keepers = [address(0xBEEF01), address(0xBEEF02), address(0xBEEF03)];
+
     constructor(
         HurdleVault _vault,
         IPoolManager _manager,
@@ -123,6 +154,9 @@ contract Handler {
         uint256 shares = _depositShares(sharesSeed);
         _warpIntoDepositWindow();
         Snap memory s = _snap();
+        s.actor = user;
+        s.user = vault.balanceOf(user);
+        s.shares = shares;
         vm.prank(user);
         bool ok;
         try vault.deposit(shares, type(uint256).max, type(uint256).max) {
@@ -132,6 +166,61 @@ contract Handler {
         _after(s, KIND_DEPOSIT, ok);
     }
 
+    /// Curator co-invests in kind (raises x/t, where finding A showed).
+    function curatorDeposit(uint256 sharesSeed) external {
+        uint256 shares = _depositShares(sharesSeed);
+        _warpIntoDepositWindow();
+        Snap memory s = _snap();
+        s.actor = curator;
+        s.user = vault.balanceOf(curator);
+        s.shares = shares;
+        vm.prank(curator);
+        bool ok;
+        try vault.deposit(shares, type(uint256).max, type(uint256).max) {
+            ok = true;
+            ghostDepositOk++;
+            ghostCuratorActions++;
+        } catch {}
+        _after(s, KIND_DEPOSIT, ok);
+    }
+
+    /// Curator withdraws some of its free shares.
+    function curatorWithdraw(uint256 sharesSeed) external {
+        uint256 bal = vault.balanceOf(curator);
+        if (bal == 0) return;
+        uint256 shares = _bound(sharesSeed, 1, bal);
+        Snap memory s = _snap();
+        s.actor = curator;
+        s.user = vault.balanceOf(curator);
+        s.shares = shares;
+        vm.prank(curator);
+        bool ok;
+        try vault.withdraw(shares) {
+            ok = true;
+            ghostWithdrawOk++;
+            ghostCuratorActions++;
+        } catch {}
+        _after(s, KIND_WITHDRAW, ok);
+    }
+
+    /// A keeper (a fresh non-curator address) settles on schedule and collects the bounty.
+    function keeperSettle(uint256 keeperSeed) external {
+        uint256 es = vault.epochStart();
+        uint256 ee = vault.epochSeconds();
+        if (block.timestamp < es + ee) vm.warp(es + ee);
+        Snap memory s = _snap();
+        bool ok;
+        vm.prank(keepers[keeperSeed % 3]);
+        try vault.settle() {
+            ok = true;
+            ghostSettleOk++;
+            ghostKeeperSettles++;
+        } catch {
+            ghostSettleRevertsAfterEpoch++;
+        }
+        _after(s, KIND_SETTLE, ok);
+    }
+
     /// Depositor exits pro-rata.
     function withdraw(uint256 userSeed, uint256 sharesSeed) external {
         address user = users[userSeed % 3];
@@ -139,6 +228,9 @@ contract Handler {
         if (bal == 0) return;
         uint256 shares = _bound(sharesSeed, 1, bal);
         Snap memory s = _snap();
+        s.actor = user;
+        s.user = vault.balanceOf(user);
+        s.shares = shares;
         vm.prank(user);
         bool ok;
         try vault.withdraw(shares) {
@@ -154,6 +246,9 @@ contract Handler {
         uint256 shares = _depositShares(sharesSeed);
         _warpIntoDepositWindow();
         Snap memory s = _snap();
+        s.actor = user;
+        s.user = vault.balanceOf(user);
+        s.shares = shares;
 
         vm.prank(user);
         bool ok;
@@ -282,6 +377,7 @@ contract Handler {
     function postBond(uint256 amountSeed) external {
         uint256 amt = _bound(amountSeed, 1, 2e17);
         Snap memory s = _snap();
+        s.shares = amt; // the posted amount
         vm.prank(curator);
         bool ok;
         try vault.postBond(amt) {
@@ -317,6 +413,20 @@ contract Handler {
         for (uint256 i; i < 3; ++i) {
             sum += vault.balanceOf(users[i]);
         }
+        // every address that ever received a SettlerPaid bounty (keepers, depositors that settled implicitly)
+        for (uint256 i; i < seenHolders.length; ++i) {
+            address h = seenHolders[i];
+            if (h == address(0) || h == curator || h == address(this) || _isUser(h)) continue;
+            sum += vault.balanceOf(h);
+        }
+    }
+
+    function _isUser(address a) internal view returns (bool) {
+        return a == users[0] || a == users[1] || a == users[2];
+    }
+
+    function seenHoldersLength() external view returns (uint256) {
+        return seenHolders.length;
     }
 
     // ---------------------------------------------------------------------
@@ -327,6 +437,11 @@ contract Handler {
         s.t = vault.totalSupply();
         s.x = vault.bondShares() + vault.balanceOf(curator);
         s.bond = vault.bond();
+        s.b = vault.bondShares();
+        s.c = vault.balanceOf(curator);
+        s.deficit = vault.deficit();
+        s.fired = vault.fired();
+        (s.startTs,,,, s.startNav) = vault.start();
         try vault.bondValue() returns (uint256 v) {
             s.bondV = v;
         } catch {}
@@ -344,15 +459,29 @@ contract Handler {
 
         Vm.Log[] memory logs = vm.getRecordedLogs();
         uint256 reclaimTokens;
+        Ev memory e;
         for (uint256 i; i < logs.length; ++i) {
             bytes32 topic = logs[i].topics[0];
             if (topic == IHurdleVault.Settled.selector) {
                 _onSettled(logs[i].data, s);
+                e.settled = true;
+                (e.nav, e.bench, e.take, e.paid,,) =
+                    abi.decode(logs[i].data, (uint256, uint256, uint256, uint256, uint256, uint160));
+            } else if (topic == IHurdleVault.SettlerPaid.selector) {
+                address who = address(uint160(uint256(logs[i].topics[1])));
+                e.bounty += abi.decode(logs[i].data, (uint256));
+                e.bountyTo = who;
+                if (!isSeen[who]) {
+                    isSeen[who] = true;
+                    seenHolders.push(who);
+                }
             } else if (topic == IHurdleVault.BondReclaimed.selector) {
                 (uint256 tokens,) = abi.decode(logs[i].data, (uint256, uint256));
                 reclaimTokens += tokens;
             }
         }
+
+        _audit3Checks(s, kind, e);
 
         uint256 bondNow = vault.bond();
         if (kind == KIND_RECLAIM) {
@@ -365,6 +494,143 @@ contract Handler {
         } else if (bondNow > s.bond && kind != KIND_POST_BOND) {
             ghostUnexplainedBondIncrease += bondNow - s.bond;
         }
+    }
+
+    struct Ev {
+        bool settled;
+        uint256 nav;
+        uint256 bench;
+        uint256 take;
+        uint256 paid;
+        uint256 bounty;
+        address bountyTo;
+    }
+
+    /// Audit 3 per-action checks (invariants 1, 3, 6, 7, 8, 9, 10). Tolerances are rounding only.
+    function _audit3Checks(Snap memory s, uint8 kind, Ev memory e) internal {
+        _chkDeficit(s, kind, e);
+        _chkSettle(s, kind, e);
+        _chkFlow(s, kind, e);
+    }
+
+    function _chkDeficit(Snap memory s, uint8 kind, Ev memory e) internal {
+        uint256 dAfter = vault.deficit();
+
+        // ---- 1. deficit reconciliation -----------------------------------------------------------
+        uint256 paid = e.settled ? e.paid : 0;
+        uint256 recoupDrop;
+        if (e.settled && e.paid == 0 && e.nav > e.bench && e.take > 0 && !s.fired && s.t > s.x) {
+            uint256 exc = e.nav - e.bench;
+            uint256 c = vault.carryBps();
+            uint256 carryPart = FullMath.mulDiv(exc, c, 10_000);
+            uint256 r = e.take > carryPart ? FullMath.mulDiv(e.take - carryPart, 10_000, 10_000 - c) : 0;
+            uint256 dep = s.t - s.x;
+            recoupDrop = FullMath.mulDiv(r, dep, s.t);
+            if (recoupDrop > s.deficit) recoupDrop = s.deficit;
+        }
+        uint256 paydown = kind == KIND_POST_BOND ? (s.shares < s.deficit ? s.shares : s.deficit) : 0;
+        // deficit_after should equal before + paid - recoup - paydown - forgiven
+        uint256 expectedHi = s.deficit + paid;
+        uint256 minus = recoupDrop + paydown;
+        uint256 forgiven;
+        if (expectedHi >= minus + dAfter) forgiven = expectedHi - minus - dAfter;
+        else if (minus + dAfter - expectedHi > 1e6) ghostDeficitUnexplained++; // deficit above what the events allow
+        bool exits = kind == KIND_WITHDRAW || kind == KIND_ROUNDTRIP || kind == KIND_RECLAIM;
+        if (forgiven > 1e6 && !exits) ghostDeficitUnexplained++; // deficit vanished outside an exit
+        if (forgiven > s.deficit + paid) ghostDeficitUnexplained++;
+        ghostDeficitPaid += paid;
+        ghostDeficitRecouped += recoupDrop;
+        ghostDeficitPaydown += paydown;
+        ghostDeficitForgiven += forgiven;
+
+    }
+
+    function _chkSettle(Snap memory s, uint8 kind, Ev memory e) internal {
+        uint256 tAfter = vault.totalSupply();
+        uint256 cAfter = vault.balanceOf(curator);
+        bool firedNow = vault.fired();
+        bool pureSettle = kind == KIND_SETTLE;
+        // ---- 3. value conservation across a settle (no external flow) ----------------------------
+        if (pureSettle && e.settled && !firedNow && !s.fired) {
+            uint256 pre = e.nav + s.bond;
+            uint256 post = vault.nav() + vault.bond();
+            uint256 tol = pre / 1e9 + 1e3;
+            if (post + tol < pre || pre + tol < post) ghostConservationViolations++;
+        }
+
+        // ---- 6. shortfall effect -----------------------------------------------------------------
+        if (pureSettle && e.settled && e.paid > 0 && !firedNow && !s.fired && s.t > 0) {
+            uint256 bondBefore = s.bond + FullMath.mulDiv(s.b, e.nav, s.t);
+            uint256 bondAfter = vault.bondValue();
+            uint256 tol = e.nav / 1e9 + 1e3;
+            uint256 fall = bondBefore > bondAfter ? bondBefore - bondAfter : 0;
+            if (fall + tol < e.paid || e.paid + tol < fall) ghostShortfallEffectViolations++;
+            uint256 cBefore = FullMath.mulDiv(s.c, e.nav, s.t);
+            uint256 cNow = FullMath.mulDiv(cAfter, vault.nav(), tAfter);
+            if (cBefore > cNow + tol || cNow > cBefore + tol) ghostShortfallEffectViolations++;
+        }
+
+        // ---- 7. carry gate -----------------------------------------------------------------------
+        if (e.settled && e.nav >= e.bench && e.paid != 0) ghostCarryGateViolations++;
+        if (pureSettle && e.settled && e.nav >= e.bench && !s.fired && e.take > 0 && e.take < e.nav) {
+            uint256 ns = FullMath.mulDiv(e.take, s.t, e.nav - e.take);
+            if (tAfter + 1 < s.t + ns || tAfter > s.t + ns + 1) ghostCarryGateViolations++;
+            if (e.bounty * 10_000 > ns * 500) ghostCarryGateViolations++;
+        }
+
+    }
+
+    function _chkFlow(Snap memory s, uint8 kind, Ev memory e) internal {
+        uint256 dAfter = vault.deficit();
+        uint256 tAfter = vault.totalSupply();
+        uint256 cAfter = vault.balanceOf(curator);
+        uint256 bAfter = vault.bondShares();
+        bool firedNow = vault.fired();
+        // ---- 8. fired deposits are only taken while parked ---------------------------------------
+        if ((kind == KIND_DEPOSIT || kind == KIND_ROUNDTRIP) && firedNow && s.actor != address(0)) {
+            (int24 lo, int24 hi,) = vault.position();
+            int24 sp = int24(uint24(key.tickSpacing));
+            if (lo != TickMath.minUsableTick(sp) || hi != TickMath.maxUsableTick(sp)) {
+                // a deposit only counts here if it succeeded; the roundtrip kind always succeeded on deposit
+                ghostFiredDepositViolations++;
+            }
+        }
+
+        // ---- 9. withdraw split: burn + paidShares == shares; curator + bond gain == paidShares ----
+        if (kind == KIND_WITHDRAW && !e.settled && s.actor != address(0)) {
+            uint256 userAfter = vault.balanceOf(s.actor);
+            uint256 gained = cAfter + bAfter >= s.c + s.b ? (cAfter + bAfter) - (s.c + s.b) : type(uint256).max;
+            if (s.actor == curator) {
+                // curator exits: it pays nothing to itself and burns exactly `shares`
+                if (s.user - userAfter != s.shares || s.t - tAfter != s.shares) ghostWithdrawSplitViolations++;
+            } else {
+                if (s.user - userAfter != s.shares) ghostWithdrawSplitViolations++;
+                uint256 burn = s.t - tAfter;
+                if (burn + gained != s.shares) ghostWithdrawSplitViolations++;
+            }
+        }
+
+        // ---- 10. par per share and deficit per depositor share across deposit / withdraw ---------
+        bool plain = !e.settled && s.actor != address(0) && s.startTs == _startTs() && s.c == cAfter && s.b == bAfter;
+        if (plain && (kind == KIND_DEPOSIT || kind == KIND_WITHDRAW) && vault.balanceOf(s.actor) != s.user) {
+            (,,,, uint256 sn) = vault.start();
+            if (s.startNav > 0 && s.t > 0) {
+                uint256 lhs = sn * s.t;
+                uint256 rhs = s.startNav * tAfter;
+                uint256 diff = lhs > rhs ? lhs - rhs : rhs - lhs;
+                if (diff > rhs / 1e15 + s.t * 2 + tAfter * 2) ghostParPerShareViolations++;
+            }
+            if (kind == KIND_WITHDRAW && s.actor != curator && s.deficit > 0 && s.t > s.x && tAfter > s.x) {
+                uint256 lhs = dAfter * (s.t - s.x);
+                uint256 rhs = s.deficit * (tAfter - s.x);
+                uint256 diff = lhs > rhs ? lhs - rhs : rhs - lhs;
+                if (diff > rhs / 1e12 + (s.t - s.x) * 2) ghostDeficitPerShareViolations++;
+            }
+        }
+    }
+
+    function _startTs() internal view returns (uint64 ts) {
+        (ts,,,,) = vault.start();
     }
 
     /// Checks the post-settlement depositor guarantee from the Settled event, using the pre-action
@@ -383,7 +649,10 @@ contract Handler {
 
         if (bench > nav && s.t > s.x) {
             uint256 owed = FullMath.mulDiv(bench - nav, s.t - s.x, s.t);
-            if (owed > 0 && s.bondV >= owed) {
+            // "Covered" = the bond is worth the whole shortfall. Bond tokens that enter the vault are shared with
+            // the curator's free shares (their lift is re-locked as bond shares, not paid out), so a bond worth
+            // only `owed` can leave depositors short by up to x/t; the full shortfall is always enough.
+            if (owed > 0 && s.bondV >= bench - nav) {
                 ghostCoveredSettlements++;
                 uint256 tol = owed / 10_000 + 1; // 1 bp rounding tolerance
                 if (paid + tol < owed) {

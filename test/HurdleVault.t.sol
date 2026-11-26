@@ -413,7 +413,7 @@ contract HurdleVaultTest is VaultFixture {
     function test_selfCallsGuarded() public {
         vault = _newVault(1e18);
         vm.expectRevert(HurdleVault.OnlySelf.selector);
-        vault.settleForWithdraw();
+        vault.settleForWithdraw(address(0));
         vm.expectRevert(HurdleVault.OnlySelf.selector);
         vault.crystallize(ALICE, 1);
         vm.expectRevert(HurdleVault.OnlySelf.selector);

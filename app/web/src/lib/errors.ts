@@ -44,7 +44,7 @@ export const ERROR_TEXT: Record<string, string> = {
   DepositWindowClosed:
     "Deposits are only accepted in the first 5 minutes of an epoch. Wait for the next settlement; a deposit at or after the epoch end opens the window itself.",
   NotFired: "Only a fired curator can reclaim its bond.",
-  NotParked: "The fired vault is not parked full range yet. Anyone can finish the park first (Finish parking).",
+  NotParked: "The fired vault is not parked full range yet, so it takes no deposits and the bond cannot be reclaimed. Anyone can finish the park first (Finish parking).",
   DeficitOutstanding:
     "The bond paid a shortfall that has not been refilled yet. New deposits wait until the curator beats par enough to refill it or posts fresh bond (postBond pays the deficit down first), so newcomers never repay compensation that went to others.",
   BondBelowFloor: "The bond is below its floor (minBondBps of NAV). Post more bond before rebalancing.",

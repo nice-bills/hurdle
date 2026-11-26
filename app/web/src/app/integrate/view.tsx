@@ -88,7 +88,7 @@ const max1 = need1 + need1 / 100n + 1n;
 await send({ address: USDC, abi: erc20Abi, functionName: "approve", args: [VAULT, maxUint256] });
 await send({ address: WETH, abi: erc20Abi, functionName: "approve", args: [VAULT, maxUint256] });
 
-// Reverts: DepositWindowClosed, DeficitOutstanding, CapacityExceeded, Slippage, ZeroShares, PriceDeviation, InsufficientHistory.
+// Reverts: DepositWindowClosed, DeficitOutstanding, NotParked (fired vault not parked yet), CapacityExceeded, Slippage, ZeroShares, PriceDeviation, InsufficientHistory.
 await send({ address: VAULT, abi: vaultAbi, functionName: "deposit", args: [shares, max0, max1] });
 `;
 

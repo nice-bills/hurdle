@@ -74,7 +74,7 @@ contract HurdleInvariantTest is Test, Deployers {
         MockERC20(Currency.unwrap(currency1)).mint(address(this), 1e27);
         address[3] memory users = [ALICE, BOB, CAROL];
         for (uint256 i; i < 3; ++i) _fund(users[i], address(vault), 1e23, 1e23);
-        _fund(CURATOR, address(vault), 0, 1e23); // for repeated postBond calls
+        _fund(CURATOR, address(vault), 1e23, 1e23); // for repeated postBond calls and curator co-investment
 
         handler = new Handler(vault, manager, key, swapRouter, hook, CURATOR, users);
         _fund(address(handler), address(swapRouter), 5e26, 5e26); // swap inventory
@@ -143,6 +143,112 @@ contract HurdleInvariantTest is Test, Deployers {
         );
     }
 
+
+    // ---------------------------------------------------------------------
+    // audit3 invariants (research/audit3-accounting.md). Numbers follow the report's list; 2 (noise
+    // neutrality) is a fuzz test in NoiseNeutrality.t.sol because it pins NAV with vm.store.
+    // ---------------------------------------------------------------------
+
+    /// 1. Depositors repay exactly what they received:
+    ///    deficit == paid - recouped - forgiven - paydown, and no action changes the deficit by anything
+    ///    the Settled/postBond/exit events do not explain.
+    function invariant_deficitReconciles() public view {
+        assertEq(handler.ghostDeficitUnexplained(), 0, "deficit moved without a matching event");
+        uint256 out = handler.ghostDeficitRecouped() + handler.ghostDeficitForgiven() + handler.ghostDeficitPaydown();
+        uint256 paid = handler.ghostDeficitPaid();
+        assertLe(out, paid + 1e7, "deficit repaid more than the bond paid");
+        assertApproxEqAbs(vault.deficit(), paid - (out > paid ? paid : out), 1e7 + paid / 1e9, "deficit != paid - repaid");
+    }
+
+    /// 3. Value is conserved across a settle with no external flow (nav + bond tokens).
+    function invariant_valueConservedAcrossSettle() public view {
+        assertEq(handler.ghostConservationViolations(), 0, "settle created or destroyed value");
+        // and every share is worth its pro-rata slice: holders + bond + dead shares add up to NAV + bond
+        uint256 nav = vault.nav();
+        uint256 t = vault.totalSupply();
+        uint256 holders = 4 + handler.seenHoldersLength() + 3;
+        uint256 sum = vault.bondValue() - vault.bond();
+        sum += vault.balanceOf(address(0)) * nav / t + vault.balanceOf(CURATOR) * nav / t;
+        sum += vault.balanceOf(ALICE) * nav / t + vault.balanceOf(BOB) * nav / t + vault.balanceOf(CAROL) * nav / t;
+        sum += vault.balanceOf(address(handler)) * nav / t;
+        for (uint256 i; i < handler.seenHoldersLength(); ++i) {
+            address h = handler.seenHolders(i);
+            if (h == CURATOR || h == ALICE || h == BOB || h == CAROL || h == address(handler)) continue;
+            sum += vault.balanceOf(h) * nav / t;
+        }
+        assertLe(sum, nav, "holders are worth more than NAV");
+        assertGe(sum + holders, nav, "holders are worth less than NAV");
+    }
+
+    /// 4. The vault always holds at least the bond tokens it owes the curator.
+    function invariant_bondTokensBackedByBalance() public view {
+        assertGe(
+            MockERC20(Currency.unwrap(currency1)).balanceOf(address(vault)), vault.bond(), "bond tokens not in the vault"
+        );
+    }
+
+    /// 5. The dead shares are never touched.
+    function invariant_deadShares() public view {
+        assertEq(vault.balanceOf(address(0)), 1000, "dead shares moved");
+        assertGe(vault.totalSupply(), 1000, "supply below the dead shares");
+    }
+
+    /// 6. A shortfall settle lowers the bond's value by exactly what depositors received and leaves the
+    ///    curator's free shares' value unchanged.
+    function invariant_shortfallEffect() public view {
+        assertEq(handler.ghostShortfallEffectViolations(), 0, "shortfall settle moved other value");
+    }
+
+    /// 7. At or above par no shortfall is paid; minted shares equal take*t/(nav-take); the bounty is <= 5%.
+    function invariant_carryGate() public view {
+        assertEq(handler.ghostCarryGateViolations(), 0, "carry gate or mint formula violated");
+    }
+
+    /// 8. Deposits into a fired vault only happen while it is parked.
+    function invariant_firedDepositsOnlyWhenParked() public view {
+        assertEq(handler.ghostFiredDepositViolations(), 0, "deposit accepted into a fired, unparked vault");
+    }
+
+    /// 9. withdraw: burn + paidShares == shares, and curator + bond gain == paidShares.
+    function invariant_withdrawSplit() public view {
+        assertEq(handler.ghostWithdrawSplitViolations(), 0, "withdraw share split broken");
+    }
+
+    /// 10. Deposit and withdraw keep par per share (start.nav / totalSupply) and, on withdraw, the deficit per
+    ///     depositor share.
+    function invariant_parAndDeficitPerShare() public view {
+        assertEq(handler.ghostParPerShareViolations(), 0, "start.nav per share moved");
+        assertEq(handler.ghostDeficitPerShareViolations(), 0, "deficit per depositor share moved");
+    }
+
+    /// 11. Handler gaps closed: bounty recipients are summed in sumShares (invariant 1 of the original suite),
+    ///     and the new actions are reachable.
+    function test_handlerGapsClosed() public {
+        handler.curatorDeposit(1e17);
+        handler.curatorWithdraw(1e12);
+        handler.keeperSettle(0);
+        assertGt(handler.ghostKeeperSettles() + handler.ghostCuratorActions(), 0, "new actions not reached");
+        assertEq(handler.sumShares(), vault.totalSupply(), "bounty recipient missed by sumShares");
+    }
+
+    /// Coverage for 1 and 6 with real recoups: a miss, a recovery and a beat with the curator co-invested.
+    function test_coverageDeficitRecoupReconciles() public {
+        handler.curatorDeposit(1e17);
+        handler.rebalance(1200, 1, 10_000);
+        handler.swap(50e18, 0);
+        handler.warp(2000);
+        handler.keeperSettle(1);
+        assertGt(handler.ghostDeficitPaid(), 0, "no shortfall paid");
+        assertEq(handler.ghostDeficitUnexplained(), 0, "deficit unexplained after a miss");
+        for (uint256 i; i < 12 && vault.deficit() > 0 && !vault.fired(); ++i) {
+            handler.swap(50e18, 1);
+            handler.warp(2000);
+            handler.keeperSettle(i);
+        }
+        assertEq(handler.ghostDeficitUnexplained(), 0, "deficit unexplained");
+        assertEq(handler.sumShares(), vault.totalSupply());
+    }
+
     // ---------------------------------------------------------------------
     // coverage tests: the handler actually reaches the interesting paths
     // ---------------------------------------------------------------------
@@ -197,7 +303,7 @@ contract HurdleInvariantTest is Test, Deployers {
         uint256 seed = 12345;
         for (uint256 i; i < 512; ++i) {
             seed = uint256(keccak256(abi.encode(seed)));
-            uint256 action = seed % 10;
+            uint256 action = seed % 13;
             if (action == 0) handler.deposit(seed >> 8, seed >> 16);
             else if (action == 1) handler.withdraw(seed >> 8, seed >> 16);
             else if (action == 2) handler.depositThenWithdraw(seed >> 8, seed >> 16);
@@ -206,7 +312,10 @@ contract HurdleInvariantTest is Test, Deployers {
             else if (action == 6) handler.settle();
             else if (action == 7) handler.rebalance(seed >> 8, seed >> 16, seed >> 24);
             else if (action == 8) handler.postBond(seed >> 8);
-            else handler.reclaimBond();
+            else if (action == 9) handler.reclaimBond();
+            else if (action == 10) handler.curatorDeposit(seed >> 8);
+            else if (action == 11) handler.curatorWithdraw(seed >> 8);
+            else handler.keeperSettle(seed >> 8);
         }
         assertGt(handler.ghostSettlements(), 0, "no settlement observed");
         assertGt(handler.ghostCoveredSettlements(), 0, "no covered shortfall settlement exercised");

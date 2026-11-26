@@ -26,8 +26,9 @@ interface IHurdleOracle {
 /// Each settlement: par = navStart/(2 s0) * (2 s1 + dfg0*P1 + dfg1), all at the hook's TWAP price.
 /// Miss par: the bond pays depositors the shortfall (locked bond shares first, then bond tokens) and
 /// the amount is recorded as `deficit`. Beat par: the excess first refills the bond (as locked bond
-/// shares) up to `deficit`, then the curator gets `carryBps` of the rest as free shares. So noise
-/// around par nets out instead of draining the bond. Bond value below `minBondBps` of NAV (e.g. after
+/// shares) up to `deficit`, then the curator gets `carryBps` of the rest as free shares. `deficit` is
+/// owed by depositor shares only (not bond shares or the curator's own free shares, which were never
+/// paid), so noise around par nets out between curator and depositors instead of draining the bond. Bond value below `minBondBps` of NAV (e.g. after
 /// NAV grew): deposits and curator rebalances are blocked until the curator tops up. A shortfall
 /// payment that leaves the bond below half of `minBondBps`: the curator is fired and the vault is
 /// parked full range (50/50) — i.e. it becomes par. Beating par never fires the curator.
@@ -182,8 +183,7 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         if (value <= DEAD_SHARES) revert ZeroShares();
         shares = value - DEAD_SHARES;
         balanceOf[address(0)] += DEAD_SHARES;
-        if (amount0 > 0) require(token0.transferFrom(msg.sender, address(this), amount0), "T0");
-        if (amount1 > 0) require(token1.transferFrom(msg.sender, address(this), amount1), "T1");
+        _pull(amount0, amount1);
         balanceOf[receiver] += shares;
         totalSupply = DEAD_SHARES + shares;
         (uint256 fg0, uint256 fg1) = oracle.referenceFeeGrowth(poolId);
@@ -202,19 +202,24 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// same-block sandwich cannot skew the liquidity it adds. See previewDeposit for a quote.
     function deposit(uint256 shares, uint256 max0, uint256 max1) external returns (uint256 amount0, uint256 amount1) {
         if (shares == 0) revert ZeroShares();
-        _maybeSettle(); // also realizes accrued fees, so the add below carries none
+        _maybeSettle(msg.sender); // also realizes accrued fees, so the add below carries none
         if (block.timestamp > epochStart + DEPOSIT_WINDOW) revert DepositWindowClosed();
         if (start.timestamp != block.timestamp) _settle(false, address(0)); // re-baseline par to this block
         uint256 supply = totalSupply;
         if (supply == 0) revert ZeroShares();
         uint256 navBefore = navAt(_checkedTwapSqrtPrice());
+        // A fired vault takes deposits only while parked (it is then par, so no bond is needed). If the
+        // fire-time park failed it still holds the fired curator's range with no bond behind it: refuse.
+        if (fired && !_parked()) revert NotParked();
         // A fired vault skips this gate: carry/recoup never runs again, so a newcomer cannot share a recoup
-        // and only the fired curator's reclaimBond would ever clear `deficit`.
-        if (!fired && deficit * 10_000 > navBefore * DEFICIT_TOLERANCE_BPS) revert DeficitOutstanding();
+        // and only the fired curator's reclaimBond would ever clear `deficit`. The deficit is owed by
+        // depositor shares only (not bond shares or the curator's free shares), so compare it with their NAV.
+        if (!fired && deficit * 10_000 * supply > navBefore * (supply - _excluded()) * DEFICIT_TOLERANCE_BPS) {
+            revert DeficitOutstanding();
+        }
         amount0 = FullMath.mulDivRoundingUp(token0.balanceOf(address(this)), shares, supply);
         amount1 = FullMath.mulDivRoundingUp(_idle1(), shares, supply);
-        if (amount0 > 0) require(token0.transferFrom(msg.sender, address(this), amount0), "T0");
-        if (amount1 > 0) require(token1.transferFrom(msg.sender, address(this), amount1), "T1");
+        _pull(amount0, amount1);
         uint128 liq = SafeCast.toUint128(FullMath.mulDivRoundingUp(_liquidity, shares, supply));
         if (liq > 0) {
             (int256 d0, int256 d1) = _modify(_tickLower, _tickUpper, int256(uint256(liq)), msg.sender);
@@ -241,14 +246,16 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// shortcut: a mid-epoch withdrawal leaves without that partial epoch's par guarantee; fine for epochs of hours, add pro-rata settlement for long epochs.
     function withdraw(uint256 shares) external returns (uint256 amount0, uint256 amount1) {
         if (shares == 0) revert ZeroShares();
-        try this.settleForWithdraw() {}
+        try this.settleForWithdraw(msg.sender) {}
         catch {
             if (_liquidity > 0) _modify(_tickLower, _tickUpper, 0); // still realize fees: removal would hand them all over
         }
         // The withdrawer's pro-rata share of the deficit leaves with them (recouped by crystallize when
         // ahead of par, forgiven otherwise), so remaining holders' per-share charge is unchanged.
         uint256 deficitBefore = deficit;
-        uint256 owedDeficit = FullMath.mulDiv(deficitBefore, shares, totalSupply);
+        // Deficit is owed by depositor shares only; the curator's own shares carry none.
+        uint256 owedDeficit =
+            msg.sender == curator ? 0 : FullMath.mulDiv(deficitBefore, shares, totalSupply - _excluded());
         uint256 burn = shares;
         if (!fired && start.timestamp != block.timestamp) {
             try this.crystallize(msg.sender, shares) returns (uint256 paidShares) {
@@ -277,9 +284,9 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     /// Self-call target for withdraw (so a revert here cannot block exits).
-    function settleForWithdraw() external {
+    function settleForWithdraw(address settler) external {
         if (msg.sender != address(this)) revert OnlySelf();
-        _maybeSettle();
+        _maybeSettle(settler);
     }
 
     /// Self-call target for withdraw: `owner`'s `shares` pay their pro-rata share of what _reward would
@@ -287,13 +294,14 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// Returns the shares moved. So exiting just before a good settle does not dodge carry.
     function crystallize(address owner, uint256 shares) external returns (uint256 paidShares) {
         if (msg.sender != address(this)) revert OnlySelf();
+        if (owner == curator) return 0; // the curator's own carry and recoup are paid to itself
         uint160 s = _twapSqrtPrice();
         uint256 navNow = navAt(s);
         uint256 benchNow = _benchNow(s);
         if (navNow <= benchNow) return 0;
         uint256 t = totalSupply;
         uint256 excess = FullMath.mulDiv(navNow - benchNow, shares, t);
-        uint256 owedDeficit = FullMath.mulDiv(deficit, shares, t);
+        uint256 owedDeficit = FullMath.mulDiv(deficit, shares, t - _excluded());
         uint256 recoup = excess < owedDeficit ? excess : owedDeficit;
         deficit -= recoup;
         uint256 take = recoup + FullMath.mulDiv(excess - recoup, carryBps, 10_000);
@@ -308,7 +316,8 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// Self-call target for the fire-time park, so a failed park cannot revert the settlement.
     function park() external {
         if (msg.sender != address(this)) revert OnlySelf();
-        _redeploy(TickMath.minUsableTick(poolKey.tickSpacing), TickMath.maxUsableTick(poolKey.tickSpacing));
+        (int24 lo, int24 hi) = _fullRange();
+        _redeploy(lo, hi);
     }
 
     // ---------------------------------------------------------------------
@@ -346,12 +355,11 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     function _rebalance(int24 tickLower, int24 tickUpper, uint16 maxIdleBps) private {
         bool wasFired = fired;
         if (!wasFired && msg.sender != curator) revert NotCurator();
-        _maybeSettle(); // a finished epoch is settled (and the counter reset) before new risk is taken
+        _maybeSettle(msg.sender); // a finished epoch is settled (and the counter reset) before new risk is taken
         if (fired) {
             if (!wasFired) return; // this settle fired the curator and parked: the curator's range is void
-            tickLower = TickMath.minUsableTick(poolKey.tickSpacing);
-            tickUpper = TickMath.maxUsableTick(poolKey.tickSpacing);
-            if (_tickLower == tickLower && _tickUpper == tickUpper && _idleBps() * 50 <= 10_000) revert AlreadyParked();
+            if (_parked()) revert AlreadyParked();
+            (tickLower, tickUpper) = _fullRange();
         } else {
             // Below the floor the bond no longer covers MAX_REBALANCES_PER_EPOCH worst-case swaps.
             if (_belowFloor()) revert BondBelowFloor();
@@ -359,6 +367,27 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         }
         _redeploy(tickLower, tickUpper);
         if (_idleBps() > maxIdleBps) revert RebalanceIncomplete();
+    }
+
+    function _pull(uint256 amount0, uint256 amount1) private {
+        if (amount0 > 0) require(token0.transferFrom(msg.sender, address(this), amount0), "T0");
+        if (amount1 > 0) require(token1.transferFrom(msg.sender, address(this), amount1), "T1");
+    }
+
+    function _fullRange() private view returns (int24, int24) {
+        return (TickMath.minUsableTick(poolKey.tickSpacing), TickMath.maxUsableTick(poolKey.tickSpacing));
+    }
+
+    /// Parked full range with at most 2% of NAV idle (what a finished fire-time park looks like).
+    function _parked() private view returns (bool) {
+        (int24 lo, int24 hi) = _fullRange();
+        return _tickLower == lo && _tickUpper == hi && _idleBps() * 50 <= 10_000;
+    }
+
+    /// Shares that do not owe `deficit`: locked bond shares and the curator's free shares. The dead
+    /// shares keep `totalSupply - _excluded()` above zero.
+    function _excluded() private view returns (uint256) {
+        return bondShares + balanceOf[curator];
     }
 
     /// Share of NAV (bps) sitting outside the position (e.g. a swap that hit its price bound).
@@ -389,12 +418,9 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     function reclaimBond() external {
         if (msg.sender != curator) revert NotCurator();
         if (!fired) revert NotFired();
-        _maybeSettle();
+        _maybeSettle(msg.sender);
         if (block.timestamp < firedAt + epochSeconds) revert EpochNotOver();
-        if (
-            _tickLower != TickMath.minUsableTick(poolKey.tickSpacing)
-                || _tickUpper != TickMath.maxUsableTick(poolKey.tickSpacing) || _idleBps() * 50 > 10_000
-        ) revert NotParked();
+        if (!_parked()) revert NotParked();
         uint256 tokens = bond;
         uint256 sh = bondShares;
         bond = 0;
@@ -406,8 +432,10 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     }
 
     /// Settles if the epoch is over; otherwise realizes accrued fees so NAV and pro-rata payouts include them.
-    function _maybeSettle() private {
-        if (block.timestamp >= epochStart + epochSeconds) _settle(true, address(0));
+    /// An implicit epoch-end settle pays `settler` the keeper bounty like settle() does, so a 1-share
+    /// withdraw or any deposit cannot front-run the keeper and keep the whole carry for the curator.
+    function _maybeSettle(address settler) private {
+        if (block.timestamp >= epochStart + epochSeconds) _settle(true, settler);
         else if (_liquidity > 0) _modify(_tickLower, _tickUpper, 0);
     }
 
@@ -462,10 +490,20 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
         _resetStart(s1, fg0, fg1, navAfter);
     }
 
-    /// Excess first refills the bond up to `deficit` (as locked shares), then pays carry (free shares).
+    /// Excess first refills the bond up to `deficit` (as locked shares), then pays carry (free shares). The recoup
+    /// is grossed up so depositors' dilution equals the deficit it clears (they alone were paid).
     function _reward(uint256 navNow, uint256 excess, address settler) private returns (uint256 take) {
-        uint256 recoup = excess < deficit ? excess : deficit;
-        deficit -= recoup;
+        uint256 recoup;
+        uint256 d = deficit;
+        if (d > 0) {
+            // `deficit` is owed by depositor shares only. A recoup of R dilutes them by R*dep/t, so gross
+            // it up: depositors repay exactly what the bond paid them, and noise around par is neutral.
+            uint256 t = totalSupply;
+            uint256 dep = t - _excluded();
+            uint256 gross = FullMath.mulDivRoundingUp(d, t, dep);
+            recoup = excess < gross ? excess : gross;
+            deficit = recoup == gross ? 0 : d - FullMath.mulDiv(recoup, dep, t);
+        }
         uint256 carry = FullMath.mulDiv(excess - recoup, carryBps, 10_000);
         take = recoup + carry;
         if (take == 0 || take >= navNow) return take;
