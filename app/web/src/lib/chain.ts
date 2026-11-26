@@ -73,6 +73,7 @@ export function poolStateSlot(poolId: Hex = POOL_ID): Hex {
 
 /** Earlier deployment (v4): read-only, kept as the fire showcase (Reckless v4 was fired on-chain). */
 export const LEGACY = deployment.legacy;
+const LEGACY_VER = (LEGACY as { version?: string }).version ?? "v5";
 export const LEGACY_VAULTS = [LEGACY.patientVault, LEGACY.chaserVault, LEGACY.recklessVault].map((a) => a.toLowerCase());
 
 /** A pool and the hook that holds its TWAP. legacy vaults live on their own pool (old hook, old mocks, opposite token order), not the current one. */
@@ -89,9 +90,9 @@ export const KNOWN_LABELS: Record<string, { name: string; note: string }> = {
   [deployment.patientVault.toLowerCase()]: { name: "Patient", note: "±10% wide range, re-centered by the demo bot near its edges" },
   [deployment.chaserVault.toLowerCase()]: { name: "Chaser", note: "±2% range, re-centered by the demo bot" },
   [deployment.recklessVault.toLowerCase()]: { name: "Reckless", note: "±1% range, 2.5% bond, built to get fired" },
-  [LEGACY.patientVault.toLowerCase()]: { name: "Patient (v4)", note: "±10% range, read-only since v5" },
-  [LEGACY.chaserVault.toLowerCase()]: { name: "Chaser (v4)", note: "±2% range, read-only since v5" },
-  [LEGACY.recklessVault.toLowerCase()]: { name: "Reckless (v4)", note: "±1% range, fired on-chain 2026-11-22 16:39 UTC" },
+  [LEGACY.patientVault.toLowerCase()]: { name: `Patient (${LEGACY_VER})`, note: "±10% range, read-only since v6" },
+  [LEGACY.chaserVault.toLowerCase()]: { name: `Chaser (${LEGACY_VER})`, note: "±2% range, read-only since v6" },
+  [LEGACY.recklessVault.toLowerCase()]: { name: `Reckless (${LEGACY_VER})`, note: "±1% range, fired on-chain 2026-11-26 15:58 UTC" },
 };
 
 export const txUrl = (h: string) => `${EXPLORER}/tx/${h}`;
