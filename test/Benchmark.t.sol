@@ -155,8 +155,8 @@ contract BenchmarkTest is Test, Deployers {
         uint256 principal = vault.benchmark(nav0, a.sqrtPriceX96, b.sqrtPriceX96, 0, 0, 1);
         uint256 full = vault.benchmark(nav0, a.sqrtPriceX96, b.sqrtPriceX96, d0, d1, UNCAPPED) - principal;
         uint256 capped = vault.benchmark(nav0, a.sqrtPriceX96, b.sqrtPriceX96, d0, d1, 1) - principal;
-        // 30_000 bps APR over 1 second, written out: nav0 * 3 / 31_536_000.
-        assertEq(capped, nav0 * 30_000 / (10_000 * 365 days), "capped credit = cap");
+        // 8_000 bps APR over 1 second, written out: nav0 * 0.8 / 31_536_000.
+        assertEq(capped, nav0 * 8_000 / (10_000 * 365 days), "capped credit = cap");
         assertGt(capped, 0);
         assertLt(capped, full, "cap must bind");
     }

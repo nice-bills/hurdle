@@ -6,8 +6,8 @@ the full-range benchmark between settlements. Prices are spot at settlement; on-
 hook's TWAP, so a small endpoint difference is expected and reported.
 Usage: python3 data/par_check.py data/weeks/2026-10-31.csv demo/out/range-week.csv [--twap]
 --twap values each settlement at the replay's TWAP (as on-chain) instead of spot.
-Fee credit per epoch is capped like HurdleVault.benchmark: fees <= start value * 3.0 * elapsed / 365d
-(MAX_FEE_APR_BPS = 300% APR); the number of capped epochs is reported.
+Fee credit per epoch is capped like HurdleVault.benchmark: fees <= start value * 0.8 * elapsed / 365d
+(MAX_FEE_APR_BPS = 80% APR); the number of capped epochs is reported.
 """
 import csv, sys
 from decimal import Decimal as D, getcontext
@@ -17,7 +17,7 @@ swaps_csv, replay_csv = sys.argv[1], sys.argv[2]
 F = D(500) / D(1_000_000)
 Q96 = D(2) ** 96
 EPOCH = 3600
-MAX_FEE_APR = D(3)  # 300% APR
+MAX_FEE_APR = D("0.8")  # 80% APR
 YEAR = 365 * 86400
 
 rep = list(csv.DictReader(open(replay_csv)))

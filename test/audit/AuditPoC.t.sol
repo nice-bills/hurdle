@@ -275,9 +275,9 @@ contract AuditPoC is Test, Deployers {
 
     // -----------------------------------------------------------------------
     // F3 (bounded; was named F4 in the PoC): wash-swap fee growth. The benchmark's
-    // fee credit is capped at MAX_FEE_APR_BPS (300% APR) of the epoch's starting
+    // fee credit is capped at MAX_FEE_APR_BPS (80% APR) of the epoch's starting
     // NAV, so the same one-block wash in a thin pool moves at most the cap
-    // (~0.57 bp of NAV per 10-min epoch) out of the bond: the attacker, paying
+    // (~0.15 bp of NAV per 10-min epoch) out of the bond: the attacker, paying
     // the swap fees, loses. Residual: an attacker who is also the pool's only
     // other LP gets its fees back and nets up to the cap per epoch.
     // -----------------------------------------------------------------------

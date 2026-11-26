@@ -45,8 +45,11 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// bond in one epoch versus the block-open price. Residual: a price held off-market across a block
     /// boundary passes every check (that costs the attacker a block of arbitrage exposure).
     uint256 public constant MAX_REBALANCES_PER_EPOCH = 4;
-    /// Cap on the benchmark's fee credit, as an APR on the epoch's starting NAV (300%).
-    uint256 public constant MAX_FEE_APR_BPS = 30_000;
+    /// Cap on the benchmark's fee credit, as an APR on the epoch's starting NAV (80%). Calibrated to the
+    /// two real replay weeks: par's uncapped hourly fee credit peaked at 60% APR (p99 40%), so 80% is ~2x
+    /// p99 and never binds there (research/fee-cap.md). Bounds a cross-block wash trade to ~0.91 bp of NAV
+    /// per hour (~22 bp per day), however late settlement is.
+    uint256 public constant MAX_FEE_APR_BPS = 8_000;
     /// In-kind deposits are refused while `deficit` exceeds this share of NAV (1 bp): a newcomer would
     /// otherwise help refill the bond for payouts that earlier holders received.
     uint256 private constant DEFICIT_TOLERANCE_BPS = 1;
@@ -536,8 +539,9 @@ contract HurdleVault is IHurdleVault, IUnlockCallback {
     /// Value of a full-range position worth `nav0` at s0, after moving to s1 and earning dfg per unit L
     /// over `elapsed` seconds. The fee credit is capped at MAX_FEE_APR_BPS of nav0: wash swaps raise
     /// feeGrowthGlobal, which this virtual liquidity collects without paying the swap fees.
-    /// Residual: an attacker can still inflate par up to the cap (300% APR, ~0.57 bp of NAV per 10-min
-    /// epoch), and a real fee burst above the cap shows up as curator excess.
+    /// Residual: an attacker (e.g. the dominant LP, who recycles the fees it pays) can still inflate par up
+    /// to the cap (80% APR = ~0.91 bp of NAV per hour, linear in elapsed time, so a late settle gains the
+    /// attacker nothing per hour), and a real fee burst above the cap shows up as curator excess.
     function benchmark(uint256 nav0, uint160 s0, uint160 s1, uint256 dfg0X128, uint256 dfg1X128, uint256 elapsed)
         public
         pure

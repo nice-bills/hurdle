@@ -35,7 +35,9 @@ contract HurdleVaultTest is VaultFixture {
         vm.prank(CURATOR);
         vault.rebalance(TickMath.minUsableTick(SPACING), TickMath.maxUsableTick(SPACING));
         for (uint256 i; i < 40; ++i) {
-            _moveTo(i % 2 == 0 ? int24(int256(i) * 30) : -int24(int256(i) * 20));
+            // Swings sized so the pool's fee yield stays under MAX_FEE_APR_BPS (80% APR): par credits fees up
+            // to the cap, so above it a full-range vault would legitimately look like it beats par.
+            _moveTo(i % 2 == 0 ? int24(int256(i) * 7) : -int24(int256(i) * 5));
         }
         (uint256 nav, uint256 bench,,) = _settled(vault);
         uint256 diff = nav > bench ? nav - bench : bench - nav;
@@ -218,7 +220,8 @@ contract HurdleVaultTest is VaultFixture {
         assertLt(idle * 100, (_positionValue(vault, liq) + idle) * 2, "fired vault left > 2% idle");
         vm.warp(block.timestamp + 600);
         vault.settle(); // start a clean epoch from the parked state
-        for (uint256 i; i < 30; ++i) _moveTo(tick + (i % 2 == 0 ? int24(800) : int24(-500)));
+        // Swings sized so the fee yield stays under MAX_FEE_APR_BPS (see test_passiveVaultSettlesAtPar).
+        for (uint256 i; i < 30; ++i) _moveTo(tick + (i % 2 == 0 ? int24(200) : int24(-125)));
         (uint256 nav, uint256 bench,,) = _settled(vault);
         uint256 diff = nav > bench ? nav - bench : bench - nav;
         assertLe(diff * 10_000, nav * 10, "fired vault drifts from par by > 10 bp");
@@ -571,7 +574,7 @@ contract HurdleVaultTest is VaultFixture {
         uint160 s = TickMath.getSqrtPriceAtTick(0);
         uint256 huge = 1 << 127; // 0.5 token per unit L
         uint256 nav0 = 100e18;
-        uint256 cap = nav0 * 30_000 * 600 / (10_000 * 365 days);
+        uint256 cap = nav0 * 8_000 * 600 / (10_000 * 365 days);
         assertEq(vault.benchmark(nav0, s, s, huge, huge, 600), nav0 + cap);
         uint256 small = 1e20;
         assertEq(vault.benchmark(nav0, s, s, 0, small, 600), nav0 + nav0 / 2 * small / (1 << 128)); // under the cap

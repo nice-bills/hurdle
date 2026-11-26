@@ -26,7 +26,7 @@ UHI11 Hookathon, theme: Active Management and Curated Liquidity. Pitch and desig
   weight. All NAV and par valuations use the TWAP, which reverts until the pool has 10 minutes of
   history. Donations are blocked (they would inflate par). Overhead is ~40k gas on the first swap of each block in steady state (~12k TWAP write + ~28k block-open fee-growth snapshot); later swaps in the same block skip both writes
   ([research/phase3-twap.md](research/phase3-twap.md)).
-- **Par is fee-capped and wash-proof within a block.** `benchmark(..., elapsed)` credits at most 300% APR
+- **Par is fee-capped and wash-proof within a block.** `benchmark(..., elapsed)` credits at most 80% APR
   of the epoch's starting NAV in fees, scaled by the real time elapsed since the epoch started (so a late settlement widens the cap; see Limits), and the vault reads fee growth as of the block's first swap
   (`HurdleHook.referenceFeeGrowth`), so same-block wash swaps cannot move par at all.
 - **Settlement** (`HurdleVault.settle`, once per epoch):
@@ -79,7 +79,7 @@ under the floor. Values in USD; "vs par" is the gap in points of starting capita
 
 Depositors are never below par at any of the 166 hourly settlements, in either week. On-chain par
 matches an independent offchain computation within 0.001 bp at every settlement (e2e gate: 0.01 bp)
-(`data/par_check.py --twap`); the fee cap never binds. "Bond paid" is gross: misses are paid per epoch
+(`data/par_check.py --twap`); the fee cap never binds on these two weeks. "Bond paid" is gross: misses are paid per epoch
 and later excess refills the bond before any carry.
 
 ## Unichain Sepolia (1301)
@@ -179,13 +179,15 @@ cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
   never wait on settlement: if settling or the price read reverts, they pay out in kind without it.
 - NAV and par are valued at TWAP, which matters only at settlement and for crystallized carry.
 - Fee-cap residual: same-block washing has no effect, but wash swaps spread across blocks can still
-  inflate par, and drain the bond, by up to the cap: 300% APR × the real elapsed time, i.e. ≤ 3.4 bp of NAV
-  per settlement for 1-hour epochs settled on time, and proportionally more if the settlement is late
-  (a 2-hour-late settle allows up to 3x that). A one-epoch clamp was tried and dropped: a late settle then
-  handed real fees to the curator as excess. The keeper settles promptly, so the cap stays near one epoch in
-  practice, but the contract does not enforce a maximum interval (a 2% bond in ~59 consecutive washed
-  epochs by an attacker who is also the pool's only other LP and pays the swap fees it washes). A real
-  fee burst above the cap counts as curator excess. Neither real replay week reaches the cap.
+  inflate par, and drain the bond, by up to the cap: 80% APR × the real elapsed time, i.e. ≤ 0.91 bp of NAV
+  per hour (~22 bp per day). The cap is a rate, so settling late does not widen the per-hour exposure and no
+  maximum settlement interval is needed (a one-epoch clamp was tried and dropped: a late settle then handed
+  real fees to the curator as excess). Worst case, an attacker who is the dominant LP (recycling the fees it
+  pays) washing every block drains a 10% bond in ~46 days, down from ~12 days at the old 300% cap; the
+  attack test `test/FeeCapAttack.t.sol` measures exactly the cap per epoch. 80% is ~2x the p99 of par's
+  uncapped hourly fee credit on the two real weeks (p99 40%, max 60%), so it never binds there; a real hour above
+  the cap counts as curator excess (6 of 831 hourly settlements over five weeks, all in the 138%-vol Oct 24 week;
+  [research/fee-cap.md](research/fee-cap.md)).
 - TWAP lag still blocks some rebalances. Against the 30-minute TWAP alone, |spot − TWAP| > 50 ticks in
   2.6–4.6% of minutes per real week (3.4% over five weeks); the 10-minute gate cuts Chaser's refused
   re-centers from 24 to 19 (range week) and 19 to 12 (down week). Moving the gate needs the price held
