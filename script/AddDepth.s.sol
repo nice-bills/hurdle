@@ -33,7 +33,7 @@ contract AddDepth is Script {
         address me = vm.addr(pk);
         vm.startBroadcast(pk);
         c0.mint(me, 50_000_000 * 10 ** c0.decimals());
-        c1.mint(me, 20_000 * 10 ** c1.decimals());
+        c1.mint(me, 50_000_000 * 10 ** c1.decimals());
         c0.approve(address(router), type(uint256).max);
         c1.approve(address(router), type(uint256).max);
         router.modifyLiquidity(
