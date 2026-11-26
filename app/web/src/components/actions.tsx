@@ -5,18 +5,26 @@ import { useMemo, useState, type ReactNode } from "react";
 import { formatUnits, maxUint256, parseUnits, type Address } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
 import { erc20Abi, vaultAbi } from "@/shared/abis";
-import { ADDR, CHAIN_ID, MAX_REBALANCES, SETTLER_BOUNTY_BPS, TOKENS, maxUsableTick, minUsableTick } from "@/lib/chain";
+import { ADDR, BOND, CHAIN_ID, MAX_REBALANCES, SETTLER_BOUNTY_BPS, TOKENS, maxUsableTick, minUsableTick } from "@/lib/chain";
 import { fmtDuration, fmtEth, fmtToken, fmtUsd } from "@/lib/format";
-import { alignTick, tickFromUsd, usdPerEthFromTick } from "@/lib/math";
+import { alignTick, bondToUsd, tickFromUsd, usdPerEthFromTick } from "@/lib/math";
 import { TxStatus, useTx } from "@/lib/tx";
 import type { PoolState, VaultSummary } from "@/lib/types";
 import { depositStatus } from "@/lib/deposit-status";
-import { markPrice } from "@/lib/unit";
+import { fmtBond, markPrice } from "@/lib/unit";
 import { epochInfo } from "./vault-list";
 import { RangeBar } from "./range-bar";
 import { Note, btn, inputCls, useNow } from "./ui";
 
 type Tab = "deposit" | "withdraw" | "settle" | "curator";
+
+/** 1.0 share = 1.0 token1 (shares are minted 1:1 in bond-unit wei); suggested deposit: 0.1 mWETH (v4) or 100 mUSDC (v5). */
+const ONE_SHARE = 10n ** BigInt(BOND.decimals);
+const SUGGEST_SHARES = BOND.symbol === "mWETH" ? ONE_SHARE / 10n : 100n * ONE_SHARE;
+const SUGGEST_BOND = BOND.symbol === "mWETH" ? ONE_SHARE / 10n : 200n * ONE_SHARE;
+/** An (amount0, amount1) pair in pool order, each with its own decimals and symbol. */
+const pairStr = (a0: bigint, a1: bigint, sep = " + ") =>
+  `${fmtToken(a0, TOKENS.token0.decimals)} ${TOKENS.token0.symbol}${sep}${fmtToken(a1, TOKENS.token1.decimals)} ${TOKENS.token1.symbol}`;
 
 function parseAmt(s: string, dec: number): bigint | null {
   if (!s.trim()) return null;
@@ -163,7 +171,7 @@ function DepositPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState })
   const now = useNow(1000);
   const e = epochInfo(vault, now);
   const [amt, setAmt] = useState("");
-  const shares = parseAmt(amt, 18);
+  const shares = parseAmt(amt, BOND.decimals); // shares are minted 1:1 in token1 units
   const supply = BigInt(vault.totalSupply || "0");
   const nav = vault.nav ? BigInt(vault.nav) : 0n;
   const quote = useReadContracts({
@@ -182,7 +190,7 @@ function DepositPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState })
   const status = depositStatus(vault, now, markPrice(pool));
   const reasons: string[] = [];
   if (supply === 0n) reasons.push("The curator has not made the first deposit yet.");
-  if (vault.status !== "FROZEN" && !vault.fired && shares && roomShares < shares) reasons.push(`Over capacity: this vault can take about ${fmtEth(roomShares)} more shares until the curator posts more bond.`);
+  if (vault.status !== "FROZEN" && !vault.fired && shares && roomShares < shares) reasons.push(`Over capacity: this vault can take about ${fmtBond(roomShares)} more shares until the curator posts more bond.`);
   const blocking = [...reasons, ...(status?.blocked ? [status.text] : [])];
   const need0 = q ? q[0] > w.bal0 : false, need1 = q ? q[1] > w.bal1 : false;
   const approve0 = q ? w.allow0 < max0 : false, approve1 = q ? w.allow1 < max1 : false;
@@ -194,26 +202,26 @@ function DepositPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState })
         <span className="font-semibold">{e.windowOpen ? "Deposit window open" : "Deposit window closed"}</span>
         <span className="num text-ink-2">{e.windowOpen ? (e.due ? "epoch over: your deposit settles it first" : `${fmtDuration(e.windowLeft)} left`) : `opens in ${fmtDuration(e.left)}`}</span>
       </div>
-      <Field id="dep-amt" label="Shares to buy" hint={<button type="button" className="underline-offset-2 hover:underline" onClick={() => setAmt(formatUnits(roomShares > 0n && roomShares < 10n ** 18n ? roomShares : 10n ** 17n, 18))}>use {roomShares > 0n && roomShares < 10n ** 18n ? "max capacity" : "0.1"}</button>}>
-        <input id="dep-amt" inputMode="decimal" placeholder="0.10" className={inputCls} value={amt} onChange={(x) => setAmt(x.target.value.replace(/[^0-9.]/g, ""))} />
+      <Field id="dep-amt" label="Shares to buy" hint={<button type="button" className="underline-offset-2 hover:underline" onClick={() => setAmt(formatUnits(roomShares > 0n && roomShares < ONE_SHARE ? roomShares : SUGGEST_SHARES, BOND.decimals))}>use {roomShares > 0n && roomShares < ONE_SHARE ? "max capacity" : formatUnits(SUGGEST_SHARES, BOND.decimals)}</button>}>
+        <input id="dep-amt" inputMode="decimal" placeholder={formatUnits(SUGGEST_SHARES, BOND.decimals)} className={inputCls} value={amt} onChange={(x) => setAmt(x.target.value.replace(/[^0-9.]/g, ""))} />
       </Field>
       <div className="rows rounded-lg border border-line px-3">
-        <Row k="Value at NAV" v={shares ? `${fmtUsd((Number(valueWei) / 1e18) * markPrice(pool))} · ${fmtEth(valueWei)} mWETH` : "–"} />
-        <Row k="You pay (quote)" v={q ? `${fmtToken(q[0], 6)} mUSDC + ${fmtEth(q[1])} mWETH` : quote.isFetching ? "quoting…" : "–"} />
-        <Row k="Max with 1% slack" v={q ? `${fmtToken(max0, 6)} + ${fmtEth(max1)}` : "–"} />
-        <Row k="Your balances" v={`${fmtToken(w.bal0, 6)} mUSDC · ${fmtEth(w.bal1)} mWETH`} />
+        <Row k="Value at NAV" v={shares ? `${fmtUsd(bondToUsd(valueWei, markPrice(pool)))} · ${fmtBond(valueWei)} ${BOND.symbol}` : "–"} />
+        <Row k="You pay (quote)" v={q ? pairStr(q[0], q[1]) : quote.isFetching ? "quoting…" : "–"} />
+        <Row k="Max with 1% slack" v={q ? `${fmtToken(max0, TOKENS.token0.decimals)} + ${fmtToken(max1, TOKENS.token1.decimals)}` : "–"} />
+        <Row k="Your balances" v={pairStr(w.bal0, w.bal1, " · ")} />
       </div>
       {reasons.filter((r) => r !== status?.text && !/first deposit yet/.test(r)).map((r) => <Note key={r} tone="warn">{r}</Note>)}
-      {(need0 || need1) && <Note tone="info">You need more {need0 && need1 ? "mUSDC and mWETH" : need0 ? "mUSDC" : "mWETH"}: mint some below.</Note>}
+      {(need0 || need1) && <Note tone="info">You need more {need0 && need1 ? `${TOKENS.token0.symbol} and ${TOKENS.token1.symbol}` : need0 ? TOKENS.token0.symbol : TOKENS.token1.symbol}: mint some below.</Note>}
       <div className="flex flex-col gap-2">
         {approve0 && (
-          <button className={btn.ghost} disabled={tx.busy} onClick={() => tx.run("Approve mUSDC", { address: ADDR.usdc, abi: erc20Abi, functionName: "approve", args: [vault.address as Address, maxUint256] })}>
-            1 · Approve mUSDC
+          <button className={btn.ghost} disabled={tx.busy} onClick={() => tx.run(`Approve ${TOKENS.token0.symbol}`, { address: TOKENS.token0.address, abi: erc20Abi, functionName: "approve", args: [vault.address as Address, maxUint256] })}>
+            1 · Approve {TOKENS.token0.symbol}
           </button>
         )}
         {approve1 && (
-          <button className={btn.ghost} disabled={tx.busy} onClick={() => tx.run("Approve mWETH", { address: ADDR.weth, abi: erc20Abi, functionName: "approve", args: [vault.address as Address, maxUint256] })}>
-            {approve0 ? "2" : "1"} · Approve mWETH
+          <button className={btn.ghost} disabled={tx.busy} onClick={() => tx.run(`Approve ${TOKENS.token1.symbol}`, { address: TOKENS.token1.address, abi: erc20Abi, functionName: "approve", args: [vault.address as Address, maxUint256] })}>
+            {approve0 ? "2" : "1"} · Approve {TOKENS.token1.symbol}
           </button>
         )}
         <button
@@ -238,7 +246,7 @@ function WithdrawPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState }
   const w = useWalletState(vault.address as Address);
   const tx = useTx();
   const [amt, setAmt] = useState("");
-  const shares = parseAmt(amt, 18);
+  const shares = parseAmt(amt, BOND.decimals);
   const supply = BigInt(vault.totalSupply || "0");
   const nav = vault.nav ? BigInt(vault.nav) : 0n;
   const myValue = supply > 0n ? (w.shares * nav) / supply : 0n;
@@ -252,21 +260,21 @@ function WithdrawPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState }
   return (
     <div className="space-y-4">
       <div className="rows rounded-lg border border-line px-3">
-        <Row k="Your shares" v={fmtEth(w.shares)} />
+        <Row k="Your shares" v={fmtBond(w.shares)} />
         <Row k="Share of vault" v={supply > 0n ? `${(Number((w.shares * 1_000_000n) / supply) / 10_000).toFixed(2)}%` : "–"} />
-        <Row k="Value at NAV" v={`${fmtUsd((Number(myValue) / 1e18) * markPrice(pool))} · ${fmtEth(myValue)} mWETH`} />
+        <Row k="Value at NAV" v={`${fmtUsd(bondToUsd(myValue, markPrice(pool)))} · ${fmtBond(myValue)} ${BOND.symbol}`} />
       </div>
-      <Field id="wd-amt" label="Shares to redeem" hint={<button type="button" className="hover:underline" onClick={() => setAmt(formatUnits(w.shares, 18))}>max</button>}>
+      <Field id="wd-amt" label="Shares to redeem" hint={<button type="button" className="hover:underline" onClick={() => setAmt(formatUnits(w.shares, BOND.decimals))}>max</button>}>
         <input id="wd-amt" inputMode="decimal" placeholder="0.0" className={inputCls} value={amt} onChange={(x) => setAmt(x.target.value.replace(/[^0-9.]/g, ""))} />
       </Field>
       <div className="rows rounded-lg border border-line px-3">
-        <Row k="You receive (approx.)" v={q ? `${fmtToken(q[0], 6)} mUSDC + ${fmtEth(q[1])} mWETH` : "–"} />
+        <Row k="You receive (approx.)" v={q ? pairStr(q[0], q[1]) : "–"} />
       </div>
       <Note tone="info">
         Paid out in kind, never blocked. Leaving mid-epoch forgoes this epoch&apos;s par guarantee; if the vault is ahead of par,
         your shares first pay their part of the pending bond refill and carry.
       </Note>
-      {tooMuch && <Note tone="warn">You only have {fmtEth(w.shares)} shares.</Note>}
+      {tooMuch && <Note tone="warn">You only have {fmtBond(w.shares)} shares.</Note>}
       <button
         className={btn.primary + " w-full"}
         disabled={tx.busy || !shares || tooMuch}
@@ -359,9 +367,9 @@ const PRESETS = [
 export function rangeForPreset(w: number | null, tick: number, spacing: number = 10) {
   if (w == null) return { lo: minUsableTick(), hi: maxUsableTick() };
   const p = usdPerEthFromTick(tick);
-  const lo = alignTick(tickFromUsd(p * (1 + w)), spacing, "floor");
-  const hi = alignTick(tickFromUsd(p * (1 - w)), spacing, "ceil");
-  return { lo, hi };
+  // which price bound is the lower tick depends on the token order (v5: higher price = higher tick)
+  const t1 = tickFromUsd(p * (1 + w)), t2 = tickFromUsd(p * (1 - w));
+  return { lo: alignTick(Math.min(t1, t2), spacing, "floor"), hi: alignTick(Math.max(t1, t2), spacing, "ceil") };
 }
 
 export function RebalanceForm({ vault, pool, onDone }: { vault: VaultSummary; pool: PoolState; onDone?: () => void }) {
@@ -375,7 +383,8 @@ export function RebalanceForm({ vault, pool, onDone }: { vault: VaultSummary; po
     if (preset !== "custom") return rangeForPreset(PRESETS.find((p) => p.id === preset)?.w ?? null, pool.tick, spacing);
     const a = Number(pLo), b = Number(pHi);
     if (!(a > 0 && b > a)) return null;
-    return { lo: alignTick(tickFromUsd(b), spacing, "floor"), hi: alignTick(tickFromUsd(a), spacing, "ceil") };
+    const t1 = tickFromUsd(a), t2 = tickFromUsd(b);
+    return { lo: alignTick(Math.min(t1, t2), spacing, "floor"), hi: alignTick(Math.max(t1, t2), spacing, "ceil") };
   }, [preset, pLo, pHi, pool.tick]);
   const g = gate(vault, pool);
   const left = MAX_REBALANCES - vault.rebalancesThisEpoch;
@@ -405,8 +414,8 @@ export function RebalanceForm({ vault, pool, onDone }: { vault: VaultSummary; po
           </Field>
         </div>
       )}
-      <RangeBar lo={vault.lo} hi={vault.hi} tick={pool.tick} twapTick={pool.twap10Tick} preview={range} liquidity={vault.liquidity} />
-      {range && <p className="num text-[12.5px] text-ink-2">New range: ticks {range.lo} → {range.hi} (aligned to spacing {spacing}) · ${usdPerEthFromTick(range.hi).toFixed(0)} – ${usdPerEthFromTick(range.lo).toFixed(0)}</p>}
+      <RangeBar lo={vault.lo} hi={vault.hi} tick={pool.tick} twapTick={pool.twap10Tick} preview={range} liquidity={vault.liquidity} wethIs0={pool.wethIs0} />
+      {range && <p className="num text-[12.5px] text-ink-2">New range: ticks {range.lo} → {range.hi} (aligned to spacing {spacing}) · ${Math.min(usdPerEthFromTick(range.lo), usdPerEthFromTick(range.hi)).toFixed(0)} – ${Math.max(usdPerEthFromTick(range.lo), usdPerEthFromTick(range.hi)).toFixed(0)}</p>}
       <GateStatus vault={vault} pool={pool} />
       <label className="flex items-start gap-2 text-[13px]">
         <input type="checkbox" checked={guard} onChange={(e) => setGuard(e.target.checked)} className="mt-0.5 accent-[var(--bar)]" />
@@ -439,24 +448,24 @@ export function PostBondForm({ vault, onDone }: { vault: VaultSummary; onDone?: 
   const nav = vault.nav ? BigInt(vault.nav) : 0n;
   const bv = BigInt(vault.bondValue ?? vault.bond ?? "0");
   const toFloor = (nav * BigInt(vault.minBondBps)) / 10_000n;
-  const suggest = nav > 0n ? ((nav * BigInt(vault.minBondBps) * 3n) / 2n / 10_000n > bv ? (nav * BigInt(vault.minBondBps) * 3n) / 2n / 10_000n - bv : 0n) : 10n ** 17n;
+  const suggest = nav > 0n ? ((nav * BigInt(vault.minBondBps) * 3n) / 2n / 10_000n > bv ? (nav * BigInt(vault.minBondBps) * 3n) / 2n / 10_000n - bv : 0n) : SUGGEST_BOND;
   const [amt, setAmt] = useState("");
-  const v = parseAmt(amt, 18);
+  const v = parseAmt(amt, BOND.decimals);
   const needApprove = v != null && w.allow1 < v;
   return (
     <div className="space-y-3">
       <div className="rows rounded-lg border border-line px-3">
-        <Row k="Bond now" v={`${fmtEth(bv)} mWETH`} />
-        <Row k="Floor at current NAV" v={`${fmtEth(toFloor)} mWETH`} />
-        <Row k="Your mWETH" v={fmtEth(w.bal1)} />
+        <Row k="Bond now" v={`${fmtBond(bv)} ${BOND.symbol}`} />
+        <Row k="Floor at current NAV" v={`${fmtBond(toFloor)} ${BOND.symbol}`} />
+        <Row k={`Your ${BOND.symbol}`} v={fmtBond(w.bal1)} />
       </div>
-      <Field id="bond-amt" label="Bond to post (mWETH)" hint={suggest > 0n ? <button type="button" className="hover:underline" onClick={() => setAmt(formatUnits(suggest, 18))}>suggest {fmtEth(suggest)} (1.5× floor)</button> : undefined}>
-        <input id="bond-amt" inputMode="decimal" className={inputCls} placeholder="0.1" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} />
+      <Field id="bond-amt" label={`Bond to post (${BOND.symbol})`} hint={suggest > 0n ? <button type="button" className="hover:underline" onClick={() => setAmt(formatUnits(suggest, BOND.decimals))}>suggest {fmtBond(suggest)} (1.5× floor)</button> : undefined}>
+        <input id="bond-amt" inputMode="decimal" className={inputCls} placeholder={formatUnits(SUGGEST_BOND, BOND.decimals)} value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} />
       </Field>
-      {v != null && v > w.bal1 && <Note tone="warn">Not enough mWETH: mint some on the Deposit tab faucet.</Note>}
+      {v != null && v > w.bal1 && <Note tone="warn">Not enough {BOND.symbol}: mint some on the Deposit tab faucet.</Note>}
       {needApprove ? (
-        <button className={btn.ghost + " w-full"} disabled={tx.busy} onClick={async () => { await tx.run("Approve mWETH", { address: ADDR.weth, abi: erc20Abi, functionName: "approve", args: [vault.address as Address, maxUint256] }); w.refetch(); }}>
-          Approve mWETH
+        <button className={btn.ghost + " w-full"} disabled={tx.busy} onClick={async () => { await tx.run(`Approve ${BOND.symbol}`, { address: BOND.address, abi: erc20Abi, functionName: "approve", args: [vault.address as Address, maxUint256] }); w.refetch(); }}>
+          Approve {BOND.symbol}
         </button>
       ) : (
         <button className={btn.primary + " w-full"} disabled={tx.busy || !v || v > w.bal1 || vault.fired} onClick={async () => { const rc = await tx.run("Post bond", { address: vault.address as Address, abi: vaultAbi, functionName: "postBond", args: [v!] }); if (rc) { setAmt(""); onDone?.(); } w.refetch(); }}>

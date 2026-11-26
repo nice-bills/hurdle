@@ -54,3 +54,8 @@ Independent accounting audit: `research/audit3-accounting.md` (Resolution column
 
 - Demo video: not yet. `demo/video/` holds a discarded draft; the final recording comes after the UI is settled.
 - Realized-APR fee cap; independent audit.
+
+## v5 redeploy (2026-11-26)
+
+- Redeployed the audit-3 contracts (commit 14acf9f) as v5: factory `0x77d21c4464290826651583eF6cF43dC1018d9e74` (block 68852678), new hook, vaults and mocks. v4 stays live read-only.
+- Token order flipped: the new mocks sort so currency0 = mWETH, currency1 = mUSDC. The vault is order-agnostic (bond, NAV, par and shares are token1 units), so in v5 they are mUSDC with 6 decimals. App, worker and demo UI now read the order from the deployment instead of assuming mUSDC = currency0; the keeper mints and approves mocks by token identity; the curator bot is limited to Patient and Chaser (Reckless stays unmanaged by design).

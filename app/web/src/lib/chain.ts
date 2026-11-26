@@ -31,10 +31,22 @@ export const ADDR = {
   poolManager: deployment.poolManager as Address,
 };
 
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+const tokenInfo = (a: Address, usdc: string) =>
+  same(a, usdc) ? ({ address: a, symbol: "mUSDC", decimals: 6 } as const) : ({ address: a, symbol: "mWETH", decimals: 18 } as const);
+
+/** Token order comes from the deployment (v5: currency0 = mWETH, v4: currency0 = mUSDC), never assumed. */
+export const WETH_IS_0 = same(deployment.mWETH, deployment.currency0);
 export const TOKENS = {
-  token0: { address: ADDR.token0, symbol: "mUSDC", decimals: 6 },
-  token1: { address: ADDR.token1, symbol: "mWETH", decimals: 18 },
-} as const;
+  token0: tokenInfo(ADDR.token0, deployment.mUSDC),
+  token1: tokenInfo(ADDR.token1, deployment.mUSDC),
+};
+/** The bond / NAV / par unit is the vault's token1. */
+export const BOND = TOKENS.token1;
+export const BOND_IS_WETH = BOND.symbol === "mWETH";
+/** Of the two pool tokens: the one that is mUSDC / mWETH. */
+export const USDC_TOKEN = WETH_IS_0 ? TOKENS.token1 : TOKENS.token0;
+export const WETH_TOKEN = WETH_IS_0 ? TOKENS.token0 : TOKENS.token1;
 
 export const POOL_KEY = {
   currency0: ADDR.token0,
@@ -59,16 +71,17 @@ export function poolStateSlot(poolId: Hex = POOL_ID): Hex {
   return keccak256(concat([poolId, pad(toHex(6n), { size: 32 })]));
 }
 
-/** Earlier deployment (v3): read-only, kept as the fire showcase (Patient v3 was fired on-chain). */
+/** Earlier deployment (v4): read-only, kept as the fire showcase (Reckless v4 was fired on-chain). */
 export const LEGACY = deployment.legacy;
-export const LEGACY_VAULTS = [LEGACY.patientVault, LEGACY.chaserVault].map((a) => a.toLowerCase());
+export const LEGACY_VAULTS = [LEGACY.patientVault, LEGACY.chaserVault, LEGACY.recklessVault].map((a) => a.toLowerCase());
 
-/** A pool and the hook that holds its TWAP. v3 vaults live on their own pool (v3 hook, v3 mUSDC/mWETH), not the v4 one. */
-export type PoolRef = { poolId: Hex; hook: Address };
-export const V4_POOL: PoolRef = { poolId: POOL_ID, hook: ADDR.hook };
+/** A pool and the hook that holds its TWAP. legacy vaults live on their own pool (old hook, old mocks, opposite token order), not the current one. */
+export type PoolRef = { poolId: Hex; hook: Address; wethIs0: boolean };
+export const V4_POOL: PoolRef = { poolId: POOL_ID, hook: ADDR.hook, wethIs0: WETH_IS_0 };
 export const LEGACY_POOL: PoolRef = {
   poolId: poolIdOf(LEGACY.currency0 as Address, LEGACY.currency1 as Address, deployment.fee, deployment.tickSpacing, LEGACY.hook as Address),
   hook: LEGACY.hook as Address,
+  wethIs0: same(LEGACY.mWETH, LEGACY.currency0),
 };
 export const poolRefFor = (vault: string): PoolRef => (LEGACY_VAULTS.includes(vault.toLowerCase()) ? LEGACY_POOL : V4_POOL);
 
@@ -76,8 +89,9 @@ export const KNOWN_LABELS: Record<string, { name: string; note: string }> = {
   [deployment.patientVault.toLowerCase()]: { name: "Patient", note: "±10% wide range, re-centered by the demo bot near its edges" },
   [deployment.chaserVault.toLowerCase()]: { name: "Chaser", note: "±2% range, re-centered by the demo bot" },
   [deployment.recklessVault.toLowerCase()]: { name: "Reckless", note: "±1% range, 2.5% bond, built to get fired" },
-  [LEGACY.patientVault.toLowerCase()]: { name: "Patient (v3)", note: "±10% range, fired on-chain 2026-11-22" },
-  [LEGACY.chaserVault.toLowerCase()]: { name: "Chaser (v3)", note: "±2% range, read-only since v4" },
+  [LEGACY.patientVault.toLowerCase()]: { name: "Patient (v4)", note: "±10% range, read-only since v5" },
+  [LEGACY.chaserVault.toLowerCase()]: { name: "Chaser (v4)", note: "±2% range, read-only since v5" },
+  [LEGACY.recklessVault.toLowerCase()]: { name: "Reckless (v4)", note: "±1% range, fired on-chain 2026-11-22 16:39 UTC" },
 };
 
 export const txUrl = (h: string) => `${EXPLORER}/tx/${h}`;

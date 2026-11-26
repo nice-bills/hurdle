@@ -1,6 +1,6 @@
 import type { Address } from "viem";
 import { ADDR, D, KNOWN_LABELS, LEGACY, LEGACY_POOL, LEGACY_VAULTS, V4_POOL, maxUsableTick, minUsableTick, poolRefFor, type PoolRef } from "@/lib/chain";
-import { usdPerEthFromSqrt, usdPerEthFromTick } from "@/lib/math";
+import { bondToUsd, tickFromUsd, usdPerEthFromSqrt, usdPerEthFromTick } from "@/lib/math";
 import { buildSeries } from "@/lib/series";
 import type { DataSource, KeeperRun, Overview, PoolState, VaultDetail, VaultEvent, VaultSummary } from "@/lib/types";
 import { dbCursorBlock, dbEvents, dbKeeper, dbPoolTicks, dbSnapshots, dbVaults } from "./db";
@@ -66,16 +66,17 @@ async function poolState(sinceSec: number, events: VaultEvent[], ref: PoolRef = 
       .filter((e) => e.name === "Settled" && e.ts >= sinceSec)
       .sort((a, b) => a.ts - b.ts)
       .filter((e) => (seen.has(e.ts) ? false : (seen.add(e.ts), true)))
-      .map((e) => ({ ts: e.ts, tick: Math.round(Math.log(1e12 / usdPerEthFromSqrt(String(e.args.sqrtPriceX96))) / Math.log(1.0001)) }));
+      .map((e) => ({ ts: e.ts, tick: Math.round(tickFromUsd(usdPerEthFromSqrt(String(e.args.sqrtPriceX96), ref.wethIs0), ref.wethIs0)) }));
   }
   return {
     tick: p.tick,
     sqrtPriceX96: p.sqrtPriceX96.toString(),
-    price: usdPerEthFromSqrt(p.sqrtPriceX96),
+    price: usdPerEthFromSqrt(p.sqrtPriceX96, ref.wethIs0),
+    wethIs0: ref.wethIs0,
     twapTick: p.twapTick,
     twap10Tick: p.twap10Tick,
     referenceTick: p.referenceTick,
-    twapPrice: p.twapTick != null ? usdPerEthFromTick(p.twapTick) : null,
+    twapPrice: p.twapTick != null ? usdPerEthFromTick(p.twapTick, ref.wethIs0) : null,
     liquidity: p.liquidity.toString(),
     history,
   };
@@ -106,7 +107,7 @@ function summarize(
   const minBondBps = n("minBondBps", 200);
   const bondBps = nav && bondValue && BigInt(nav) > 0n ? Number((BigInt(bondValue) * 1_000_000n) / BigInt(nav)) / 100 : null;
   const frozen = !fired && bondBps != null && bondBps < minBondBps;
-  const { series, totals } = buildSeries(events, startSqrt);
+  const { series, totals } = buildSeries(events, startSqrt, poolRefFor(reg.address).wethIs0);
   const lastSettled = [...events].reverse().find((e) => e.name === "Settled") ?? null;
   const last = series.length > 1 ? series[series.length - 1] : null;
   const known = KNOWN_LABELS[reg.address.toLowerCase()];
@@ -174,7 +175,8 @@ export function getOverview(): Promise<Overview> {
     const vaults = all.filter((v) => !LEGACY_VAULTS.includes(v.address) && (v.createdBlock ?? D.factoryStartBlock) >= D.factoryStartBlock);
     const legacyVaults = all.filter((v) => LEGACY_VAULTS.includes(v.address));
     const mark = pool.twapPrice ?? pool.price; // the contract marks NAV at the hook TWAP
-    const tvlEth = vaults.reduce((a, v) => a + (v.nav ? Number(v.nav) / 1e18 : 0), 0);
+    const tvlUsd = vaults.reduce((a, v) => a + (v.nav ? bondToUsd(v.nav, mark) : 0), 0);
+    const tvlEth = tvlUsd / mark;
     return {
       source: reg.source,
       head: h.n,
@@ -186,7 +188,7 @@ export function getOverview(): Promise<Overview> {
       stats: {
         vaults: vaults.length,
         tvlEth,
-        tvlUsd: tvlEth * mark,
+        tvlUsd,
         shortfallPaidUsd: vaults.reduce((a, v) => a + v.totals.shortfallPaidUsd, 0),
         carryUsd: vaults.reduce((a, v) => a + v.totals.carryUsd, 0),
         settlements: vaults.reduce((a, v) => a + v.totals.settlements, 0),
@@ -226,12 +228,12 @@ export function getVaultDetail(address: string): Promise<VaultDetail | null> {
     const [[live], pool, snaps, keeper] = await Promise.all([
       readVaultsRpc([a as Address]),
       poolState(h.ts - 6 * 3600, reg.events, ref),
-      dbSnapshots(a),
+      dbSnapshots(a, ref.wethIs0 ? 6 : 18),
       dbKeeper(a, 8),
     ]);
     const startSqrt = await firstDepositSqrt(events, ref);
     const vault = summarize(entry, live.data as Record<string, unknown>, events, startSqrt);
-    const { series } = buildSeries(events, startSqrt);
+    const { series } = buildSeries(events, startSqrt, ref.wethIs0);
     return {
       source: reg.source,
       head: h.n,

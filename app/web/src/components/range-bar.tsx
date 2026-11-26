@@ -5,15 +5,16 @@ import { fmtNum } from "@/lib/format";
 import { usdPerEthFromTick } from "@/lib/math";
 
 /**
- * Position range against the current price, drawn on a USD/ETH axis (ticks invert: higher tick = cheaper ETH).
+ * Position range against the current price, drawn on a USD/ETH axis (token order decides the direction: v5 higher tick = dearer ETH, v4 the opposite).
  * `preview` draws a proposed range (curator re-range) over the current one.
  */
-export function RangeBar({ lo, hi, tick, twapTick, preview, liquidity }: { lo: number; hi: number; tick: number; twapTick: number | null; preview?: { lo: number; hi: number } | null; liquidity?: string }) {
+export function RangeBar({ lo, hi, tick, twapTick, preview, liquidity, wethIs0 }: { wethIs0?: boolean; lo: number; hi: number; tick: number; twapTick: number | null; preview?: { lo: number; hi: number } | null; liquidity?: string }) {
   const full = lo <= minUsableTick() && hi >= maxUsableTick();
   const empty = (liquidity === "0" || (lo === 0 && hi === 0)) && !full;
-  const spot = usdPerEthFromTick(tick);
-  const pLo = usdPerEthFromTick(hi), pHi = usdPerEthFromTick(lo); // price bounds
-  const vLo = preview ? usdPerEthFromTick(preview.hi) : null, vHi = preview ? usdPerEthFromTick(preview.lo) : null;
+  const px = (t: number) => usdPerEthFromTick(t, wethIs0);
+  const spot = px(tick);
+  const pLo = Math.min(px(lo), px(hi)), pHi = Math.max(px(lo), px(hi)); // price bounds
+  const vLo = preview ? Math.min(px(preview.lo), px(preview.hi)) : null, vHi = preview ? Math.max(px(preview.lo), px(preview.hi)) : null;
   // axis: spot ± max(range width, 15%), capped for full range
   const finite = (x: number) => Number.isFinite(x) && x > 0 && x < spot * 50;
   const cands = [spot * 0.85, spot * 1.15, ...(full || empty ? [] : [pLo, pHi]), ...(vLo && finite(vLo) ? [vLo] : []), ...(vHi && finite(vHi) ? [vHi] : [])].filter(finite);
@@ -23,7 +24,7 @@ export function RangeBar({ lo, hi, tick, twapTick, preview, liquidity }: { lo: n
   const X = (p: number) => `${Math.min(100, Math.max(0, ((p - a) / (b - a)) * 100))}%`;
   const W = (p1: number, p2: number) => `${Math.max(0.5, ((Math.min(b, p2) - Math.max(a, p1)) / (b - a)) * 100)}%`;
   const inRange = full || (tick >= lo && tick < hi);
-  const twap = twapTick != null ? usdPerEthFromTick(twapTick) : null;
+  const twap = twapTick != null ? px(twapTick) : null;
 
   return (
     <div>

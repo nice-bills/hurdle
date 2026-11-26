@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { D, EXPLORER, POOL_ID } from "@/lib/chain";
+import { BOND, D, EXPLORER, POOL_ID, TOKENS, WETH_IS_0 } from "@/lib/chain";
 import { ERROR_TEXT } from "@/lib/errors";
 import { Address as Addr } from "@/components/ui";
 import { Code, CopyButton } from "@/components/code";
@@ -13,8 +13,8 @@ const ADDRS: { name: string; value: string; note: string }[] = [
   { name: "Patient vault", value: D.patientVault, note: "±10% range, re-centered by the demo bot near its edges" },
   { name: "Chaser vault", value: D.chaserVault, note: "±2% range, re-centered by the demo bot" },
   { name: "Reckless vault", value: D.recklessVault, note: "±1% range, 2.5% bond, built to get fired" },
-  { name: "mUSDC (currency0)", value: D.mUSDC, note: "6 decimals, public mint()" },
-  { name: "mWETH (currency1)", value: D.mWETH, note: "18 decimals, the bond token, public mint()" },
+  { name: `mUSDC (currency${WETH_IS_0 ? 1 : 0})`, value: D.mUSDC, note: `6 decimals, public mint()${WETH_IS_0 ? ", the bond / NAV token (token1)" : ""}` },
+  { name: `mWETH (currency${WETH_IS_0 ? 0 : 1})`, value: D.mWETH, note: `18 decimals, public mint()${WETH_IS_0 ? "" : ", the bond / NAV token (token1)"}` },
   { name: "PoolManager", value: D.poolManager, note: "Uniswap v4 singleton" },
   { name: "PoolSwapTest", value: D.swapRouter, note: "swap router used by /swap and the keeper" },
 ];
@@ -44,8 +44,8 @@ export const unichainSepolia = defineChain({
 });
 
 export const VAULT = "${D.patientVault}";
-export const USDC = "${D.mUSDC}";   // currency0, 6 decimals
-export const WETH = "${D.mWETH}";   // currency1, 18 decimals, also the bond token
+export const USDC = "${D.mUSDC}";   // currency${WETH_IS_0 ? 1 : 0}, 6 decimals
+export const WETH = "${D.mWETH}";   // currency${WETH_IS_0 ? 0 : 1}, 18 decimals
 
 export const publicClient = createPublicClient({ chain: unichainSepolia, transport: http() });
 export const account = privateKeyToAccount(process.env.PRIVATE_KEY as \`0x\${string}\`);
@@ -60,10 +60,10 @@ export async function send(req: Parameters<typeof publicClient.simulateContract>
 `;
 
 const READ = `
-// Everything is a view call. Amounts are raw integers: shares and mWETH have 18 decimals, mUSDC has 6.
+// Everything is a view call. Amounts are raw integers. Token order comes from the deployment (currency0 = ${WETH_IS_0 ? "mWETH" : "mUSDC"}); NAV, bond and shares are all in token1 units (${BOND.symbol}, ${BOND.decimals} decimals).
 const [nav, bondValue, deficit, fired, supply] = await Promise.all([
-  publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: "nav" }),        // mWETH wei
-  publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: "bondValue" }),  // bond in mWETH wei
+  publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: "nav" }),        // ${BOND.symbol} units
+  publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: "bondValue" }),  // bond in ${BOND.symbol} units
   publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: "deficit" }),
   publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: "fired" }),
   publicClient.readContract({ address: VAULT, abi: vaultAbi, functionName: "totalSupply" }),
@@ -74,9 +74,9 @@ const [lo, hi, liquidity] = await publicClient.readContract({ address: VAULT, ab
 `;
 
 const DEPOSIT = `
-// Deposits are in kind (mUSDC + mWETH), priced pro rata to what the vault holds.
+// Deposits are in kind (amount0 = ${TOKENS.token0.symbol}, amount1 = ${TOKENS.token1.symbol}), priced pro rata to what the vault holds.
 // Window: the first 5 minutes of an epoch (DEPOSIT_WINDOW = 300 s). A deposit at or after the epoch end settles it first.
-const shares = parseUnits("0.1", 18);
+const shares = parseUnits("${BOND.symbol === "mWETH" ? "0.1" : "100"}", ${BOND.decimals}); // shares are minted 1:1 in token1 units
 
 const [need0, need1] = await publicClient.readContract({
   address: VAULT, abi: vaultAbi, functionName: "previewDeposit", args: [shares],
@@ -130,7 +130,7 @@ const rc = await send({ address: "${D.factory}", abi: factoryAbi, functionName: 
 // or decodeEventLog(...).args.vault.
 
 // Then, as the curator:
-//   1. postBond(amount1)                     mWETH, approve first. The bond is what pays a miss.
+//   1. postBond(amount1)                     ${BOND.symbol} (token1), approve first. The bond is what pays a miss.
 //   2. firstDeposit(amount0, amount1, you)   seeds the vault. The curator is the only one who can.
 //   3. rebalance(tickLower, tickUpper)       choose the range. Ticks must be multiples of ${D.tickSpacing}.
 `;
@@ -198,7 +198,7 @@ for (let from = ${D.factoryStartBlock}n; from <= head; from += 1000n) {
 const TABS = [
   { id: "setup", label: "Setup", code: SETUP, title: "client.ts", blurb: "A typed viem client, plus one helper that simulates before sending so every custom error is decoded." },
   { id: "read", label: "Read a vault", code: READ, title: "read.ts", blurb: "Every number on the vault page is a plain view call." },
-  { id: "deposit", label: "Deposit", code: DEPOSIT, title: "deposit.ts", blurb: "previewDeposit quotes the exact mUSDC and mWETH; approve once; deposit with 1% slack." },
+  { id: "deposit", label: "Deposit", code: DEPOSIT, title: "deposit.ts", blurb: "previewDeposit quotes the exact amount0 and amount1 (pool order); approve once; deposit with 1% slack." },
   { id: "withdraw", label: "Withdraw", code: WITHDRAW, title: "withdraw.ts", blurb: "Pro-rata in kind. Never blocked." },
   { id: "settle", label: "Settle", code: SETTLE, title: "settle.ts", blurb: "Permissionless. The settler earns 5% of any carry." },
   { id: "create", label: "Create a vault", code: CREATE, title: "create.ts", blurb: "One factory call makes you a curator." },

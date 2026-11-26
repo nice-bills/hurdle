@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useVaultDetail } from "@/lib/hooks";
 import { txUrl } from "@/lib/chain";
-import { ago, fmtDuration, fmtEth, fmtSignedBp, fmtSignedPct, fmtUsd, short, utc } from "@/lib/format";
-import { UnitToggle, markPrice, money, moneyAlt, unitName, useUnit, type Unit } from "@/lib/unit";
+import { ago, fmtDuration, fmtEth, fmtToken, fmtSignedBp, fmtSignedPct, fmtUsd, short, utc } from "@/lib/format";
+import { UnitToggle, fmtBond, markPrice, money, moneyAlt, unitName, useUnit, type Unit } from "@/lib/unit";
 import { KeeperRuns } from "@/components/keeper-runs";
 import { usdPerEthFromSqrt } from "@/lib/math";
 import type { VaultDetail, VaultEvent } from "@/lib/types";
@@ -38,7 +38,8 @@ function Loaded({ d }: { d: VaultDetail }) {
   const e = epochInfo(v, now);
   const { unit } = useUnit();
   const price = markPrice(d.pool);
-  const fm = (wei: bigint | string | null | undefined) => money(wei, price, unit);
+  const bondIsWeth = !d.pool.wethIs0; // vault NAV / bond / shares unit = token1 of ITS pool
+  const fm = (wei: bigint | string | null | undefined) => money(wei, price, unit, 4, bondIsWeth);
   const cum = v.cumulative;
   // "vs par" = gap between the index lines in points of starting capital (the README / replay convention), in the chosen unit
   const depVsPar = cum ? (unit === "usd" ? cum.depositorUsd - cum.parUsd : cum.depositor - cum.par) : null;
@@ -77,7 +78,7 @@ function Loaded({ d }: { d: VaultDetail }) {
 
       {/* scoreboard */}
       <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line lg:grid-cols-4">
-        <Cell k={`NAV (${unitName(unit)})`} v={fm(v.nav)} sub={v.nav ? `${moneyAlt(v.nav, price, unit)} · ETH $${price.toFixed(0)} TWAP` : ""} />
+        <Cell k={`NAV (${unitName(unit, bondIsWeth)})`} v={fm(v.nav)} sub={v.nav ? `${moneyAlt(v.nav, price, unit, bondIsWeth)} · ETH $${price.toFixed(0)} TWAP` : ""} />
         <Cell
           k={`Depositors vs par (${unitName(unit)})`}
           v={depVsPar != null ? <SignedValue v={depVsPar}>{fmtSignedPct(depVsPar, 3)}</SignedValue> : "–"}
@@ -98,14 +99,14 @@ function Loaded({ d }: { d: VaultDetail }) {
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-6">
           <Panel title="NAV vs par, per settlement" aside={<Legend items={[{ label: "Par", kind: "par" }, { label: "Depositors", kind: "solid", color: "var(--ink)" }, { label: "Strategy NAV", kind: "dash", color: "var(--ink-2)" }]} />}>
-            <SeriesChart d={d} unit={unit} />
+            <SeriesChart d={d} unit={unit} bondIsWeth={bondIsWeth} />
           </Panel>
 
           <div className="grid gap-6 md:grid-cols-2">
             <Panel title="Bond">
               <BondMeter bondBps={v.bondBps} minBondBps={v.minBondBps} />
               <div className="rows mt-4">
-                <KV k="Posted tokens (mWETH)" v={fm(v.bond)} />
+                <KV k={`Posted tokens (${bondIsWeth ? "mWETH" : "mUSDC"})`} v={fm(v.bond)} />
                 <KV k="Bond value (incl. locked shares)" v={fm(v.bondValue)} />
                 <KV k="Deficit (paid, not refilled)" v={fm(v.deficit)} />
                 <KV k="Capacity (bond ÷ floor)" v={v.bondValue && v.minBondBps ? fm((BigInt(v.bondValue) * 10_000n) / BigInt(v.minBondBps)) : "–"} />
@@ -118,17 +119,17 @@ function Loaded({ d }: { d: VaultDetail }) {
                 <KV k="Max tick deviation" v={`${v.maxTickDeviation} ticks`} />
                 <KV k="Epoch" v={fmtDuration(v.epochSeconds)} />
                 <KV k="Rebalances this epoch" v={`${v.rebalancesThisEpoch} / 4`} />
-                <KV k="Shortfall paid · carry" v={unit === "usd" ? `${fmtUsd(v.totals.shortfallPaidUsd)} · ${fmtUsd(v.totals.carryUsd)}` : `${fmtEth(v.totals.shortfallPaid)} · ${fmtEth(v.totals.carry)} mWETH`} />
+                <KV k="Shortfall paid · carry" v={unit === "usd" ? `${fmtUsd(v.totals.shortfallPaidUsd)} · ${fmtUsd(v.totals.carryUsd)}` : `${fmtBond(v.totals.shortfallPaid, bondIsWeth)} · ${fmtBond(v.totals.carry, bondIsWeth)} ${bondIsWeth ? "mWETH" : "mUSDC"}`} />
               </div>
             </Panel>
           </div>
 
           <Panel title="Position" aside={<span className="num text-[12.5px] text-ink-2">spot tick {d.pool.tick} · TWAP {d.pool.twapTick ?? "n/a"}</span>}>
-            <RangeBar lo={v.lo} hi={v.hi} tick={d.pool.tick} twapTick={d.pool.twapTick} liquidity={v.liquidity} />
+            <RangeBar lo={v.lo} hi={v.hi} tick={d.pool.tick} twapTick={d.pool.twapTick} liquidity={v.liquidity} wethIs0={d.pool.wethIs0} />
           </Panel>
 
           <Panel title="Activity" aside={<span className="text-[12.5px] text-ink-2">{d.events.length} events</span>}>
-            <EventFeed events={d.events} unit={unit} price={price} />
+            <EventFeed events={d.events} unit={unit} price={price} wethIs0={d.pool.wethIs0} />
           </Panel>
 
           {d.keeper.length > 0 && (
@@ -142,8 +143,8 @@ function Loaded({ d }: { d: VaultDetail }) {
           <ActionPanel vault={v} pool={d.pool} />
           <p className="mt-3 px-1 text-[12px] leading-relaxed text-ink-2">
             {unit === "usd"
-              ? "Values are in USD: mUSDC counts $1, mWETH is priced at the hook's TWAP (the price the contract marks NAV at). Charts value each settlement at its own price. Switch to mWETH to see the contract's own unit."
-              : "Values are in mWETH (the pool's token1) at the hook's TWAP, the contract's own unit. When ETH falls, par in mWETH rises: switch to USD for the depositor's real outcome."}
+              ? `Values are in USD: mUSDC counts $1, mWETH is priced at the hook's TWAP (the price the contract marks NAV at). Charts value each settlement at its own price. Switch to ${unitName("eth", bondIsWeth)} to see the contract's own unit.`
+              : `Values are in ${unitName("eth", bondIsWeth)} (the pool's token1), the contract's own unit.${bondIsWeth ? " When ETH falls, par in mWETH rises: switch to USD for the depositor's real outcome." : ""}`}
             {" "}Testnet mock tokens only.
           </p>
         </aside>
@@ -171,7 +172,7 @@ function KV({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
-function SeriesChart({ d, unit }: { d: VaultDetail; unit: Unit }) {
+function SeriesChart({ d, unit, bondIsWeth }: { d: VaultDetail; unit: Unit; bondIsWeth: boolean }) {
   const s = d.series;
   const now = useNow(1000);
   const e = epochInfo(d.vault, now);
@@ -191,7 +192,7 @@ function SeriesChart({ d, unit }: { d: VaultDetail; unit: Unit }) {
   const usd = unit === "usd";
   const pick = (p: (typeof s)[number]) => (usd ? { par: p.parUsd, strategy: p.strategyUsd, depositor: p.depositorUsd } : { par: p.par, strategy: p.strategy, depositor: p.depositor });
   const idx = s.map(pick);
-  const u = unitName(unit);
+  const u = unitName(unit, bondIsWeth);
   const when = (ts: number) => new Date(ts * 1000).toISOString().slice(11, 16);
   return (
     <div>
@@ -246,7 +247,7 @@ function SeriesChart({ d, unit }: { d: VaultDetail; unit: Unit }) {
         )}
       />
       <p className="mt-2 text-[12px] text-ink-2">
-        {usd ? "USD: each settlement is valued at its own pool price (mUSDC = $1), so a falling ETH is a loss for par and depositors alike." : "mWETH: the contract's unit; par here rises when ETH falls."} Derived from Settled events: each epoch&apos;s NAV ÷ par is exact; levels exclude par&apos;s fee credit (a fraction of a bp per epoch), equally for every line.
+        {usd ? "USD: each settlement is valued at its own pool price (mUSDC = $1), so a falling ETH is a loss for par and depositors alike." : `${bondIsWeth ? "mWETH" : "mUSDC"}: the contract's unit (token1)${bondIsWeth ? "; par here rises when ETH falls" : ""}.`} Derived from Settled events: each epoch&apos;s NAV ÷ par is exact; levels exclude par&apos;s fee credit (a fraction of a bp per epoch), equally for every line.
       </p>
     </div>
   );
@@ -258,17 +259,24 @@ const EV_LABEL: Record<string, string> = {
 };
 
 /** USD per ETH for an event: its own Settled price, else the Settled in the same tx, else the nearest settlement, else `fallback`. */
-function eventPrice(e: VaultEvent, all: VaultEvent[], fallback: number): number {
-  if (e.name === "Settled") return usdPerEthFromSqrt(String(e.args.sqrtPriceX96));
+function eventPrice(e: VaultEvent, all: VaultEvent[], fallback: number, wethIs0: boolean): number {
+  if (e.name === "Settled") return usdPerEthFromSqrt(String(e.args.sqrtPriceX96), wethIs0);
   const settled = all.filter((x) => x.name === "Settled");
   const same = settled.find((x) => x.tx === e.tx);
   const near = same ?? settled.reduce<VaultEvent | null>((b, x) => (!b || Math.abs(x.block - e.block) < Math.abs(b.block - e.block) ? x : b), null);
-  return near ? usdPerEthFromSqrt(String(near.args.sqrtPriceX96)) : fallback;
+  return near ? usdPerEthFromSqrt(String(near.args.sqrtPriceX96), wethIs0) : fallback;
 }
 
-function describe(e: VaultEvent, unit: Unit, price: number): React.ReactNode {
+function describe(e: VaultEvent, unit: Unit, price: number, wethIs0: boolean): React.ReactNode {
   const a = e.args;
-  const m = (wei: unknown) => money(String(wei), price, unit);
+  const bondIsWeth = !wethIs0;
+  const m = (wei: unknown) => money(String(wei), price, unit, 4, bondIsWeth);
+  const sh = (x: unknown) => fmtBond(x as string, bondIsWeth); // shares are minted 1:1 in token1 units
+  // amount0 / amount1 are in pool order: tell which token each is
+  const pair = (a0: unknown, a1: unknown) => {
+    const usdc = fmtToken(String(wethIs0 ? a1 : a0), 6), weth = fmtEth(String(wethIs0 ? a0 : a1));
+    return `${usdc} mUSDC + ${weth} mWETH`;
+  };
   switch (e.name) {
     case "Settled": {
       const nav = BigInt(String(a.nav)), bench = BigInt(String(a.bench));
@@ -278,23 +286,23 @@ function describe(e: VaultEvent, unit: Unit, price: number): React.ReactNode {
         <>
           NAV {m(a.nav)} vs par {m(a.bench)} · <SignedValue v={vs}>{fmtSignedBp(vs)}</SignedValue>
           {beat ? (BigInt(String(a.take)) > 0n ? ` · curator take ${m(a.take)}` : "") : ` · bond paid ${m(a.shortfallPaid)}`}
-          <span className="text-ink-2"> · ETH ${usdPerEthFromSqrt(String(a.sqrtPriceX96)).toFixed(0)}</span>
+          <span className="text-ink-2"> · ETH ${usdPerEthFromSqrt(String(a.sqrtPriceX96), wethIs0).toFixed(0)}</span>
         </>
       );
     }
     case "Fired": return <>bond {m(a.bond)} left at NAV {m(a.nav)}: parked passive</>;
-    case "Deposited": return <>{short(String(a.owner))} · {fmtEth(a.shares as string)} shares for {(Number(a.amount0) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 })} mUSDC + {fmtEth(a.amount1 as string)} mWETH</>;
-    case "Withdrawn": return <>{short(String(a.owner))} · {fmtEth(a.shares as string)} shares → {(Number(a.amount0) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 })} mUSDC + {fmtEth(a.amount1 as string)} mWETH</>;
+    case "Deposited": return <>{short(String(a.owner))} · {sh(a.shares)} shares for {pair(a.amount0, a.amount1)}</>;
+    case "Withdrawn": return <>{short(String(a.owner))} · {sh(a.shares)} shares → {pair(a.amount0, a.amount1)}</>;
     case "Rebalanced": return <>ticks {String(a.tickLower)} → {String(a.tickUpper)}</>;
     case "BondPosted": return <>+{m(a.amount)} · bond {m(a.bond)}</>;
-    case "SettlerPaid": return <>{short(String(a.settler))} earned {fmtEth(a.shares as string)} shares</>;
-    case "BondReclaimed": return <>{m(a.bondTokens)} + {fmtEth(a.bondShares as string)} shares</>;
+    case "SettlerPaid": return <>{short(String(a.settler))} earned {sh(a.shares)} shares</>;
+    case "BondReclaimed": return <>{m(a.bondTokens)} + {sh(a.bondShares)} shares</>;
     case "VaultCreated": return <>by {short(String(a.curator))}</>;
     default: return null;
   }
 }
 
-function EventFeed({ events, unit, price }: { events: VaultEvent[]; unit: Unit; price: number }) {
+function EventFeed({ events, unit, price, wethIs0 }: { events: VaultEvent[]; unit: Unit; price: number; wethIs0: boolean }) {
   if (!events.length) return <p className="text-[14px] text-ink-2">No events yet.</p>;
   return (
     <ul className="rows -my-1 max-h-[460px] overflow-y-auto pr-1">
@@ -310,7 +318,7 @@ function EventFeed({ events, unit, price }: { events: VaultEvent[]; unit: Unit; 
                   {ago(e.ts)} · #{e.block.toLocaleString("en-US")} <IconExternal size={11} />
                 </a>
               </div>
-              <div className="num mt-0.5 break-words text-ink-2">{describe(e, unit, eventPrice(e, events, price))}</div>
+              <div className="num mt-0.5 break-words text-ink-2">{describe(e, unit, eventPrice(e, events, price, wethIs0), wethIs0)}</div>
             </div>
           </li>
         );

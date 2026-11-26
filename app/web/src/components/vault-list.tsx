@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { DEPOSIT_WINDOW } from "@/lib/chain";
 import { fmtDuration, fmtSignedBp, short } from "@/lib/format";
-import { money, moneyAlt, useUnit } from "@/lib/unit";
+import { BOND_IS_WETH } from "@/lib/chain";
+import { money, moneyAlt, unitName, useUnit } from "@/lib/unit";
 import type { VaultSummary } from "@/lib/types";
 import { BondMeter, SignedValue, StatusPill, useNow } from "./ui";
 
@@ -19,7 +20,7 @@ export function vaultName(v: Pick<VaultSummary, "label" | "address">) {
 }
 
 /** `price` = USD per ETH at the hook TWAP (what the contract marks NAV at). */
-export function VaultList({ vaults, price, compact = false }: { vaults: VaultSummary[]; price: number; compact?: boolean }) {
+export function VaultList({ vaults, price, compact = false, bondIsWeth = BOND_IS_WETH }: { vaults: VaultSummary[]; price: number; compact?: boolean; bondIsWeth?: boolean }) {
   const now = useNow(1000);
   const { unit } = useUnit();
   return (
@@ -27,7 +28,7 @@ export function VaultList({ vaults, price, compact = false }: { vaults: VaultSum
       <div className="hidden grid-cols-[minmax(0,1.5fr)_0.8fr_1fr_1.2fr_0.9fr_1fr] gap-4 border-b border-line bg-bg-2 px-5 py-2.5 text-[12px] font-medium text-ink-2 lg:grid">
         <span>Vault</span>
         <span>Status</span>
-        <span className="text-right">NAV ({unit === "usd" ? "USD" : "mWETH"})</span>
+        <span className="text-right">NAV ({unitName(unit, bondIsWeth)})</span>
         <span>Bond / NAV</span>
         <span className="text-right">Last epoch vs par</span>
         <span className="text-right">Epoch</span>
@@ -57,8 +58,8 @@ export function VaultList({ vaults, price, compact = false }: { vaults: VaultSum
                 <div className="hidden lg:block"><StatusPill status={v.status} /></div>
                 <div className="lg:text-right">
                   <div className="text-[11.5px] text-ink-2 lg:hidden">NAV</div>
-                  <div className="num font-medium">{money(v.nav, price, unit)}</div>
-                  <div className="num text-[12.5px] text-ink-2">{v.nav ? moneyAlt(v.nav, price, unit) : ""}</div>
+                  <div className="num font-medium">{money(v.nav, price, unit, 4, bondIsWeth)}</div>
+                  <div className="num text-[12.5px] text-ink-2">{v.nav ? moneyAlt(v.nav, price, unit, bondIsWeth) : ""}</div>
                 </div>
                 <div>
                   <div className="text-[11.5px] text-ink-2 lg:hidden">Bond / NAV</div>

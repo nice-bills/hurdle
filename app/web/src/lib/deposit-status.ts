@@ -1,5 +1,7 @@
-import { DEPOSIT_WINDOW } from "./chain";
-import { fmtDuration, fmtEth, fmtUsd } from "./format";
+import { BOND, DEPOSIT_WINDOW } from "./chain";
+import { bondToUsd } from "./math";
+import { fmtBond } from "./unit";
+import { fmtDuration, fmtUsd } from "./format";
 import type { VaultSummary } from "./types";
 
 export type DepositStatus = {
@@ -48,7 +50,7 @@ export function depositStatus(v: VaultSummary, now: number, price: number): Depo
       return {
         blocked: true,
         tone: "warn",
-        text: `Passive vault, but deposits are closed (DeficitOutstanding): ${fmtEth(d)} mWETH (${fmtUsd((Number(d) / 1e18) * price)}) of bond payout is still booked against the fired curator. Deposits reopen once the curator calls reclaimBond.`,
+        text: `Passive vault, but deposits are closed (DeficitOutstanding): ${fmtBond(d)} ${BOND.symbol} (${fmtUsd(bondToUsd(d, price))}) of bond payout is still booked against the fired curator. Deposits reopen once the curator calls reclaimBond.`,
       };
     }
     const noBond = BigInt(v.bondValue ?? v.bond ?? "0") === 0n;
@@ -64,7 +66,7 @@ export function depositStatus(v: VaultSummary, now: number, price: number): Depo
     out.push(`Frozen below the bond floor (${((v.bondBps ?? 0) / 100).toFixed(2)}% of NAV vs ${v.minBondBps / 100}%): the curator must post bond first.`);
   if (deficitOutstanding(v)) {
     const d = BigInt(v.deficit);
-    out.push(`DeficitOutstanding: the curator must repay ${fmtEth(d)} mWETH (${fmtUsd((Number(d) / 1e18) * price)}) of bond payout before new deposits.`);
+    out.push(`DeficitOutstanding: the curator must repay ${fmtBond(d)} ${BOND.symbol} (${fmtUsd(bondToUsd(d, price))}) of bond payout before new deposits.`);
   }
   return out.length ? { blocked: true, tone: "warn", text: out.join(" ") } : null;
 }

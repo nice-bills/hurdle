@@ -71,7 +71,7 @@ export async function dbCursorBlock() {
   return r && r[0]?.block != null ? Number(r[0].block) : null;
 }
 
-export async function dbSnapshots(vault: string, limit = 720) {
+export async function dbSnapshots(vault: string, bondDecimals = 18, limit = 720) {
   const r = await q<{ ts: Date; nav: string | null; bond_value: string | null }>(
     "SELECT ts, nav, bond_value FROM snapshots WHERE lower(vault) = lower($1) ORDER BY ts DESC LIMIT $2",
     [vault, limit],
@@ -80,8 +80,8 @@ export async function dbSnapshots(vault: string, limit = 720) {
   return r
     .reverse()
     .map((x) => {
-      const nav = x.nav ? Number(x.nav) / 1e18 : 0;
-      const bv = x.bond_value ? Number(x.bond_value) / 1e18 : null;
+      const nav = x.nav ? Number(x.nav) / 10 ** bondDecimals : 0;
+      const bv = x.bond_value ? Number(x.bond_value) / 10 ** bondDecimals : null;
       return { ts: Math.floor(new Date(x.ts).getTime() / 1000), nav, bondBps: bv != null && nav > 0 ? (bv / nav) * 10_000 : null };
     });
 }

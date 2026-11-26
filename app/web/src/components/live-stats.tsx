@@ -13,7 +13,7 @@ export function LiveScoreboard() {
   const s = data?.stats;
   const cells = [
     { k: "Vaults", v: s ? fmtNum(s.vaults) : null },
-    { k: "TVL", v: s ? fmtUsd(s.tvlUsd) : null, sub: s ? `${fmtNum(s.tvlEth, 3)} mWETH` : "" },
+    { k: "TVL", v: s ? fmtUsd(s.tvlUsd) : null, sub: s ? `≈ ${fmtNum(s.tvlEth, 3)} ETH` : "" },
     { k: "Shortfall paid to depositors", v: s ? fmtUsd(s.shortfallPaidUsd) : null },
     { k: "Carry earned by curators", v: s ? fmtUsd(s.carryUsd) : null },
     { k: "ETH price (pool spot)", v: data ? `$${fmtNum(data.pool.price, 0)}` : null, sub: data?.pool.twapPrice ? `TWAP $${fmtNum(data.pool.twapPrice, 0)} (NAV is marked here)` : "" },

@@ -83,6 +83,7 @@ export interface PoolState {
   tick: number;
   sqrtPriceX96: string;
   price: number; // USDC per ETH at spot
+  wethIs0: boolean; // token order of this pool (v5: true). The bond / NAV unit is token1.
   twapTick: number | null; // 30-min (shortened to history)
   twap10Tick: number | null;
   referenceTick: number | null;
@@ -97,9 +98,9 @@ export interface Overview {
   headTs: number;
   pool: PoolState;
   vaults: VaultSummary[];
-  /** Earlier deployment (v3), read-only: kept so the on-chain fire stays visible. */
+  /** Earlier deployment (v4), read-only: kept so the on-chain fire stays visible. */
   legacyVaults: VaultSummary[];
-  legacyPool: PoolState; // the v3 pool the legacy vaults are valued on
+  legacyPool: PoolState; // the v4 pool the legacy vaults are valued on (opposite token order)
   stats: {
     vaults: number;
     tvlUsd: number;

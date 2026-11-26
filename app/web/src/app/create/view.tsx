@@ -7,10 +7,10 @@ import { useMemo, useState, type ReactNode } from "react";
 import { decodeEventLog, isAddress, maxUint256, parseUnits, type Address } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
 import { erc20Abi, factoryAbi, vaultAbi } from "@/shared/abis";
-import { ADDR, CHAIN_ID, POOL_KEY } from "@/lib/chain";
+import { ADDR, BOND, CHAIN_ID, POOL_KEY, WETH_IS_0 } from "@/lib/chain";
 import { useVaultDetail } from "@/lib/hooks";
-import { fmtEth, fmtNum, fmtToken, short } from "@/lib/format";
-import { usdPerEthFromTick } from "@/lib/math";
+import { fmtEth, fmtNum, fmtToken, fmtUsd, short } from "@/lib/format";
+import { bondToUsd, usdPerEthFromTick } from "@/lib/math";
 import { TxStatus, useTx } from "@/lib/tx";
 import type { PoolState, VaultSummary } from "@/lib/types";
 import { PostBondForm, RebalanceForm } from "@/components/actions";
@@ -121,7 +121,7 @@ function Steps({ vault }: { vault: string | null }) {
           <ul className="space-y-2">
             <li>Each epoch the vault settles against par. A miss is paid from your bond.</li>
             <li>A miss that leaves the bond under half the floor fires you; the vault parks passive. You reclaim what is left one epoch later.</li>
-            <li>Capacity is bond ÷ floor: a 0.1 mWETH bond at 2% caps the vault at 5 mWETH of NAV.</li>
+            <li>Capacity is bond ÷ floor: a bond worth $200 at 2% caps the vault at $10,000 of NAV.</li>
           </ul>
         </div>
       </aside>
@@ -188,8 +188,8 @@ function BondStep({ v }: { v: VaultSummary }) {
   return (
     <div className="space-y-3 rounded-xl border border-line bg-surface p-4 sm:p-5">
       <p className="text-[13.5px] text-ink-2">
-        The bond is posted in mWETH and is what pays depositors when you miss par. It also sets your capacity: plan the first deposit at most bond ÷ {v.minBondBps / 100}%.
-        Need mWETH? Mint it on any vault&apos;s Deposit tab or on the swap page.
+        The bond is posted in {BOND.symbol} (the pool's token1) and is what pays depositors when you miss par. It also sets your capacity: plan the first deposit at most bond ÷ {v.minBondBps / 100}%.
+        Need {BOND.symbol}? Mint it on any vault&apos;s Deposit tab or on the swap page.
       </p>
       <PostBondForm vault={v} />
     </div>
@@ -203,7 +203,9 @@ function FirstDeposit({ v, pool }: { v: VaultSummary; pool: PoolState }) {
   const [a1s, setA1] = useState("1");
   const [recv, setRecv] = useState("");
   const toAmt = (s: string, dec: number) => { try { return s ? parseUnits(s as `${number}`, dec) : 0n; } catch { return 0n; } };
+  // the form is labelled by token (mUSDC / mWETH); firstDeposit takes them in pool order (v5: WETH first)
   const a0 = toAmt(a0s, 6), a1 = toAmt(a1s, 18);
+  const ordered = (u: bigint, w: bigint): [bigint, bigint] => (WETH_IS_0 ? [w, u] : [u, w]);
   const receiver = (recv && isAddress(recv) ? recv : address) as Address | undefined;
   const me = address ?? ADDR.factory;
   const r = useReadContracts({
@@ -218,11 +220,10 @@ function FirstDeposit({ v, pool }: { v: VaultSummary; pool: PoolState }) {
   });
   const g = (i: number) => (r.data?.[i]?.status === "success" ? (r.data[i].result as bigint) : 0n);
   const [b0, b1, al0, al1] = [g(0), g(1), g(2), g(3)];
-  const price = pool.twapTick != null ? usdPerEthFromTick(pool.twapTick) : pool.price;
-  const valueEth = Number(a0) / 1e6 / price + Number(a1) / 1e18;
-  const bondEth = Number(v.bondValue ?? v.bond) / 1e18;
-  const capEth = bondEth / (v.minBondBps / 1e4);
-  const over = valueEth > capEth;
+  const price = pool.twapTick != null ? usdPerEthFromTick(pool.twapTick, pool.wethIs0) : pool.price;
+  const valueUsd = Number(a0) / 1e6 + (Number(a1) / 1e18) * price;
+  const capUsd = bondToUsd(v.bondValue ?? v.bond, price) / (v.minBondBps / 1e4);
+  const over = valueUsd > capUsd;
   const self = receiver && receiver.toLowerCase() === v.curator.toLowerCase();
   const needs = useMemo(() => [a0 > al0 && "usdc", a1 > al1 && "weth"].filter(Boolean) as string[], [a0, a1, al0, al1]);
   return (
@@ -246,8 +247,8 @@ function FirstDeposit({ v, pool }: { v: VaultSummary; pool: PoolState }) {
         <p className="mt-1 text-[12.5px] text-ink-2">Default: you. A separate depositor address is covered by your bond; your own shares are not.</p>
       </div>
       <div className="rows rounded-lg border border-line px-3 text-[13.5px]">
-        <div className="flex justify-between py-1.5"><span className="text-ink-2">Value at TWAP (${fmtNum(price, 0)})</span><span className="num font-medium">{fmtNum(valueEth, 4)} mWETH</span></div>
-        <div className="flex justify-between py-1.5"><span className="text-ink-2">Capacity from bond</span><span className={`num font-medium ${over ? "text-bad" : ""}`}>{fmtNum(capEth, 4)} mWETH</span></div>
+        <div className="flex justify-between py-1.5"><span className="text-ink-2">Value at TWAP (${fmtNum(price, 0)})</span><span className="num font-medium">{fmtUsd(valueUsd)}</span></div>
+        <div className="flex justify-between py-1.5"><span className="text-ink-2">Capacity from bond</span><span className={`num font-medium ${over ? "text-bad" : ""}`}>{fmtUsd(capUsd)}</span></div>
       </div>
       {over && <Note tone="warn">Over capacity: this would revert CapacityExceeded. Lower the amounts or post more bond.</Note>}
       {self && <Note tone="info">Shares to the curator are not covered by the bond: on a miss they take their part of the loss.</Note>}
@@ -263,7 +264,7 @@ function FirstDeposit({ v, pool }: { v: VaultSummary; pool: PoolState }) {
         <button
           className={btn.primary}
           disabled={tx.busy || !receiver || over || needs.length > 0 || a0 > b0 || a1 > b1 || a0 + a1 === 0n}
-          onClick={() => tx.run("First deposit", { address: v.address as Address, abi: vaultAbi, functionName: "firstDeposit", args: [a0, a1, receiver!] })}
+          onClick={() => tx.run("First deposit", { address: v.address as Address, abi: vaultAbi, functionName: "firstDeposit", args: [...ordered(a0, a1), receiver!] })}
         >
           Deposit and start the vault
         </button>

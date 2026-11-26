@@ -5,10 +5,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { maxUint256, parseUnits } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
 import { erc20Abi, swapRouterAbi } from "@/shared/abis";
-import { ADDR, CHAIN_ID, MAX_SQRT_PRICE, MIN_SQRT_PRICE, POOL_KEY, TOKENS } from "@/lib/chain";
+import { ADDR, CHAIN_ID, MAX_SQRT_PRICE, MIN_SQRT_PRICE, POOL_KEY, USDC_TOKEN, WETH_IS_0, WETH_TOKEN } from "@/lib/chain";
 import { usePool } from "@/lib/hooks";
 import { fmtNum, fmtToken } from "@/lib/format";
-import { usdPerEthFromTick } from "@/lib/math";
+import { usdPerEthFromSqrt, usdPerEthFromTick } from "@/lib/math";
 import { TxStatus, useTx } from "@/lib/tx";
 import { ParChart } from "@/components/par-chart";
 import { Note, Panel, Skeleton, SourceBadge, btn, inputCls } from "@/components/ui";
@@ -133,8 +133,9 @@ function SwapForm({ pool }: { pool: ReturnType<typeof usePool>["data"] | null })
   const tx = useTx();
   const [sellUsdc, setSellUsdc] = useState(true);
   const [amt, setAmt] = useState("");
-  const tin = sellUsdc ? TOKENS.token0 : TOKENS.token1;
-  const tout = sellUsdc ? TOKENS.token1 : TOKENS.token0;
+  const tin = sellUsdc ? USDC_TOKEN : WETH_TOKEN;
+  const tout = sellUsdc ? WETH_TOKEN : USDC_TOKEN;
+  const zeroForOne = sellUsdc !== WETH_IS_0; // selling token0 pushes sqrtPrice down (v5: token0 = mWETH)
   let amount: bigint | null = null;
   try {
     amount = amt ? parseUnits(amt as `${number}`, tin.decimals) : null;
@@ -161,13 +162,11 @@ function SwapForm({ pool }: { pool: ReturnType<typeof usePool>["data"] | null })
     const s = Number(BigInt(pool.sqrtPriceX96)) / 2 ** 96;
     const x = Number(amount) * (1 - 0.0005);
     let s2: number, out: number;
-    if (sellUsdc) { s2 = 1 / (1 / s + x / L); out = L * (s - s2); }
+    if (zeroForOne) { s2 = 1 / (1 / s + x / L); out = L * (s - s2); }
     else { s2 = s + x / L; out = L * (1 / s - 1 / s2); }
-    const after = 1e12 / (s2 * s2);
+    const after = usdPerEthFromSqrt(s2 * 2 ** 96);
     return { out, after, impact: after / pool.price - 1 };
-  }, [pool, amount, sellUsdc]);
-
-  const zeroForOne = sellUsdc;
+  }, [pool, amount, zeroForOne]);
   return (
     <div className="space-y-4 rounded-xl border border-line bg-surface p-4 sm:p-5">
       <div className="space-y-1.5">

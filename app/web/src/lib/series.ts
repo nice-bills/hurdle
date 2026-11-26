@@ -16,12 +16,16 @@ const big = (v: unknown) => {
  * sqrtPrice for a full-range position); that drops par's fee credit, which is the same factor on every line,
  * so the gaps between lines stay exact while both levels miss a fraction of a bp per epoch.
  *
- * Two bases are built side by side. token1 (mWETH): the contract's own unit. USD: every NAV / par / payout is valued
- * at the Settled event's sqrtPriceX96 (mUSDC = $1, mWETH = 1e12 / price²), the start of a segment at the previous
+ * Two bases are built side by side. token1: the contract's own unit (v5 mUSDC, v4 mWETH). USD: every NAV / par / payout is valued
+ * at the Settled event's sqrtPriceX96 (mUSDC = $1, mWETH priced from the pool, order-aware), the start of a segment at the previous
  * settlement price, so a falling ETH shows up as the loss it is. `startSqrt` is the pool price when the first deposit
  * landed (read from chain history); without it the first segment starts at its own settlement price.
  */
-export function buildSeries(events: VaultEvent[], startSqrt?: bigint | null): { series: SeriesPoint[]; totals: VaultTotals } {
+export function buildSeries(events: VaultEvent[], startSqrt: bigint | null | undefined, wethIs0: boolean): { series: SeriesPoint[]; totals: VaultTotals } {
+  // bond / NAV unit = token1: mWETH when USDC is token0 (v4), mUSDC when WETH is token0 (v5)
+  const bondIsWeth = !wethIs0;
+  const dec = bondIsWeth ? 1e18 : 1e6;
+  const usdOf = (s: bigint) => (bondIsWeth ? usdPerEthFromSqrt(s, wethIs0) : 1); // USD per bond-unit token
   const ev = [...events].sort((a, b) => a.block - b.block || a.logIndex - b.logIndex);
   const depositTx = new Set(ev.filter((e) => e.name === "Deposited").map((e) => e.tx));
   const series: SeriesPoint[] = [];
@@ -41,7 +45,7 @@ export function buildSeries(events: VaultEvent[], startSqrt?: bigint | null): { 
     if (bench === 0n || s === 0n) continue;
     const benchF = Number(bench);
     const s0 = prevS ?? (firstDep && startSqrt && startSqrt > 0n ? startSqrt : s); // price at the segment start
-    const usd1 = usdPerEthFromSqrt(s), usd0 = usdPerEthFromSqrt(s0);
+    const usd1 = usdOf(s), usd0 = usdOf(s0);
     let startNav: number;
     if (prevS !== null) startNav = benchF * (Number(prevS) / Number(s));
     else if (firstDep) startNav = Number(valueInToken1(big(firstDep.args.amount0), big(firstDep.args.amount1), s0));
@@ -53,7 +57,7 @@ export function buildSeries(events: VaultEvent[], startSqrt?: bigint | null): { 
       series.push({
         ts: firstDep?.ts ?? e.ts, block: firstDep?.block ?? e.block, strategy: 1, par: 1, depositor: 1, vsPar: 0,
         strategyUsd: 1, parUsd: 1, depositorUsd: 1,
-        price: usdPerEthFromSqrt(s0), kind: "epoch", miss: false,
+        price: usdPerEthFromSqrt(s0, wethIs0), kind: "epoch", miss: false,
       });
     }
     const navF = Number(nav);
@@ -65,13 +69,13 @@ export function buildSeries(events: VaultEvent[], startSqrt?: bigint | null): { 
     depositorU *= ((navF - Number(take) + Number(paid)) * usd1) / startUsd;
     const miss = nav < bench;
     const kind = depositTx.has(e.tx) ? "rebase" : "epoch";
-    series.push({ ts: e.ts, block: e.block, strategy, par, depositor, strategyUsd: strategyU, parUsd: parU, depositorUsd: depositorU, vsPar: navF / benchF - 1, price: usdPerEthFromSqrt(s), kind, miss });
+    series.push({ ts: e.ts, block: e.block, strategy, par, depositor, strategyUsd: strategyU, parUsd: parU, depositorUsd: depositorU, vsPar: navF / benchF - 1, price: usdPerEthFromSqrt(s, wethIs0), kind, miss });
 
     totals.settlements += kind === "epoch" ? 1 : 0;
     totals.shortfallPaid += paid;
     totals.take += take;
-    totals.shortfallPaidUsd += (Number(paid) / 1e18) * usd1;
-    totals.takeUsd += (Number(take) / 1e18) * usd1;
+    totals.shortfallPaidUsd += (Number(paid) / dec) * usd1;
+    totals.takeUsd += (Number(take) / dec) * usd1;
     if (miss) {
       if (paid > 0n) totals.misses += 1;
       deficit += paid;
@@ -82,7 +86,7 @@ export function buildSeries(events: VaultEvent[], startSqrt?: bigint | null): { 
       deficit -= recoup;
       const carried = take > recoup ? take - recoup : 0n;
       totals.carry += carried;
-      totals.carryUsd += (Number(carried) / 1e18) * usd1;
+      totals.carryUsd += (Number(carried) / dec) * usd1;
     }
     prevS = s;
   }

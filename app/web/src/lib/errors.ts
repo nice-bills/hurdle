@@ -100,8 +100,8 @@ export function decodeError(e: unknown): DecodedError {
 
 function humanRequire(r: string) {
   const map: Record<string, string> = {
-    T0: "mUSDC transfer failed: check balance and approval.",
-    T1: "mWETH transfer failed: check balance and approval.",
+    T0: "Token0 transfer failed: check balance and approval.",
+    T1: "Token1 transfer failed: check balance and approval.",
     DEV: "maxTickDeviation must be > 0 and 4 × maxTickDeviation ≤ minBondBps.",
     CARRY: "Carry can be at most 50%.",
     BOND: "minBondBps must be between 100 (1%) and 5000 (50%).",

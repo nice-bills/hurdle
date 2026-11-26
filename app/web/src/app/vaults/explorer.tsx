@@ -71,13 +71,13 @@ export function VaultsExplorer() {
       </div>
 
       {data && data.legacyVaults.length > 0 && (
-        <section className="mt-10" aria-label="Earlier deployment (v3)">
-          <h2 className="text-[18px] font-semibold tracking-[-0.02em]">Earlier deployment (v3) — Patient was fired on-chain</h2>
+        <section className="mt-10" aria-label="Earlier deployment (v4)">
+          <h2 className="text-[18px] font-semibold tracking-[-0.02em]">Earlier deployment (v4) — Reckless was fired on-chain</h2>
           <p className="mb-3 mt-1 max-w-[70ch] text-[13.5px] text-ink-2">
-            The previous deployment, kept read-only as the fire showcase: Patient v3 breached its bond and was fired on 2026-11-22.
-            These vaults are priced on their own (v3) pool.
+            The previous deployment, kept read-only as the fire showcase: Reckless v4 breached its bond and was fired on 2026-11-22 16:39 UTC.
+            These vaults are priced on their own (v4) pool.
           </p>
-          <VaultList vaults={data.legacyVaults} price={markPrice(data.legacyPool)} />
+          <VaultList vaults={data.legacyVaults} price={markPrice(data.legacyPool)} bondIsWeth={!data.legacyPool.wethIs0} />
         </section>
       )}
 

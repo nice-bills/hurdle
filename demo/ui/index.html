@@ -575,7 +575,7 @@ function drawLive(names) {
     } else if (fired && !(fired instanceof Error)) status = '<span class="chip ok">ACTIVE</span>';
     let startRows = `<span>start()</span><span><span class="na">n/a</span></span>`;
     if (st && !(st instanceof Error) && st.length >= 5) {
-      const px = Number(st[1]) / 2 ** 96, price = px * px * 1e12;                 // token1/token0, 18 vs 6 decimals (mWETH / mUSDC)
+      const px = Number(st[1]) / 2 ** 96, price = px * px * 10 ** ((dec === 6 ? 18 : 6) - dec); // token1 per token0 in human units; token0 has the other mock's decimals (v5: token1 = mUSDC, v4: mWETH)
       startRows = `<span>start.timestamp</span><span>${Number(st[0])} · ${ago(Number(st[0]))}</span>` +
         `<span>start.sqrtPriceX96</span><span>${st[1].toString()}<br><small class="na">≈ ${price.toFixed(2)} ${sym}/token0</small></span>` +
         `<span>start.feeGrowth0 / 1</span><span>${st[2].toString().replace(/(\d{6})\d+$/, '$1…')} / ${st[3].toString().replace(/(\d{6})\d+$/, '$1…')}</span>` +

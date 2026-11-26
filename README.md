@@ -95,26 +95,29 @@ and later excess refills the bond before any carry.
 
 ## Unichain Sepolia (1301)
 
-**Live (v4, deployed 2026-11-22):**
+**Live (v5, deployed 2026-11-26, block 68852678):**
 
 | Contract | Address |
 |---|---|
-| HurdleHook | [`0x9375e143A60547FAFaa22b53e5777A33667550A0`](https://sepolia.uniscan.xyz/address/0x9375e143A60547FAFaa22b53e5777A33667550A0) |
-| HurdleVaultFactory | [`0x17a372d93D5c11dfadfe453325315b9Dcfc98FdE`](https://sepolia.uniscan.xyz/address/0x17a372d93D5c11dfadfe453325315b9Dcfc98FdE) |
-| Patient vault (±10%) | [`0x5126c9Ebf2cF62e9f121F55886c57075a190b22d`](https://sepolia.uniscan.xyz/address/0x5126c9Ebf2cF62e9f121F55886c57075a190b22d) |
-| Chaser vault (±2%) | [`0x1f4Db529B5a7a766D859E9EC25Dba3C01BeF0985`](https://sepolia.uniscan.xyz/address/0x1f4Db529B5a7a766D859E9EC25Dba3C01BeF0985) |
-| Reckless vault (±1%, 2.5% bond, built to get fired) | [`0x711fAb3A68aEAFbFE6Df493e676070D550ac5EEC`](https://sepolia.uniscan.xyz/address/0x711fAb3A68aEAFbFE6Df493e676070D550ac5EEC) |
-| mUSDC (currency0) | `0x19e9DC387bbFf0c035d12dEFceEFF1fc0D859C49` |
-| mWETH (currency1, bond token) | `0x4F4C59E9089C43785ecc2B8780F61Ca349946bb4` |
-| Liquidity / swap routers | `0x1F1d9578aA20fc12de73a0d067ade939BBE2dd2B` / `0x8Fa7DC4E77681027c403003d59C0d1470Fe1d76d` |
+| HurdleHook | [`0x3FB6cbbAA8c703830c126F59416DBe249d5D50A0`](https://sepolia.uniscan.xyz/address/0x3FB6cbbAA8c703830c126F59416DBe249d5D50A0) |
+| HurdleVaultFactory | [`0x77d21c4464290826651583eF6cF43dC1018d9e74`](https://sepolia.uniscan.xyz/address/0x77d21c4464290826651583eF6cF43dC1018d9e74) |
+| Patient vault (±10%) | [`0xE4192E10c36d46bfBE8aCD7dDe5e1e0978410c50`](https://sepolia.uniscan.xyz/address/0xE4192E10c36d46bfBE8aCD7dDe5e1e0978410c50) |
+| Chaser vault (±2%) | [`0xd4D69331910E6753B26984d6a082bb16Aa972398`](https://sepolia.uniscan.xyz/address/0xd4D69331910E6753B26984d6a082bb16Aa972398) |
+| Reckless vault (±1%, 2.5% bond, built to get fired) | [`0x594560B41d30DC10D82a2633757036b840C07075`](https://sepolia.uniscan.xyz/address/0x594560B41d30DC10D82a2633757036b840C07075) |
+| mWETH (currency0) | `0x0Df1c576d01f4AD434B13b28B5d7F7e78e129AD0` |
+| mUSDC (currency1, bond / NAV token) | `0xabE4E10B0B42d0A9f8c2D8f55Be6848a42abf97a` |
+| Liquidity / swap routers | `0xA97298DDf3676B6fd3002E5404c8345f36b4c479` / `0xa33a2d3271ff358d5F62999D3148B00940F7fC54` |
 | Depositor (holds the vault shares; not the curator, so the bond covers it) | `0xE1cCCD969F34E0f7d435CeA96C63c4d78E95aD03` |
 
-Three vaults, created through the factory (`isVault` true); factory deployed at block 68509070. Full output: `script/out/deploy-1301.json`.
-The app, worker and keeper (the Render worker, plus `script/Keeper.s.sol` for scripted moves, which handles all three vaults) run against v4.
+Three vaults, created through the factory (`isVault` true); factory deployed at block 68852678. Full output: `script/out/deploy-1301.json`.
+**Token order changed in v5:** the new mocks sort the other way, so currency0 is mWETH and currency1 is mUSDC (`wethIs0 = true`). The bond, NAV, par and vault shares are all in token1, so in v5 they are mUSDC (6 decimals); in v4 they were mWETH. The app, worker and keeper read the order from the deployment (no hard-coded order).
+The app, worker and keeper (the Render worker, plus `script/Keeper.s.sol` for scripted moves) run against v5. The curator bot only re-centres Patient and Chaser: Reckless is deliberately unmanaged so it gets fired.
 
-**Live v4 note.** The live v4 vaults were deployed before the "fired vaults skip the deficit gate" fix, so the fired Reckless deficit was cleared by the curator's `reclaimBond` (done 2026-11-23, after the park completed). Pool depth was added with `script/AddDepth.s.sol` so the park could finish: before that, each park step converted only ~5% on the thin pool. A fresh deployment needs neither step.
+**Earlier deployment (v4, 2026-11-22): Reckless was fired on-chain.** Kept read-only in the app ("Earlier deployment" section); full output: `script/out/deploy-1301-v4.json`. Factory `0x17a372d93D5c11dfadfe453325315b9Dcfc98FdE` (start block 68509070), hook `0x9375e143A60547FAFaa22b53e5777A33667550A0`, Patient `0x5126c9Ebf2cF62e9f121F55886c57075a190b22d`, Chaser `0x1f4Db529B5a7a766D859E9EC25Dba3C01BeF0985`, Reckless `0x711fAb3A68aEAFbFE6Df493e676070D550ac5EEC`, mUSDC (currency0) `0x19e9DC387bbFf0c035d12dEFceEFF1fc0D859C49`, mWETH (currency1, bond token) `0x4F4C59E9089C43785ecc2B8780F61Ca349946bb4`.
 
-**What happened on-chain (v4).** At 2026-11-22 15:46 UTC a scripted trade moved the price up 544 ticks (~5.6%),
+The v4 vaults were deployed before the "fired vaults skip the deficit gate" fix, so the fired Reckless deficit was cleared by the curator's `reclaimBond` (done 2026-11-23, after the park completed). Pool depth was added with `script/AddDepth.s.sol` so the park could finish: before that, each park step converted only ~5% on the thin pool. A fresh deployment needs neither step.
+
+What happened on-chain (v4). At 2026-11-22 15:46 UTC a scripted trade moved the price up 544 ticks (~5.6%),
 out of Reckless's ±1% range (rehearsed on a fork first). At the 16:39 UTC settlement (block 68513152):
 - Reckless missed par by 0.0487 mWETH (2.4% of NAV); its bond paid it, fell below ½ of the 2% floor, and the
   curator was fired in the same transaction (`Settled`, `Fired`, `Rebalanced` to full range). One hour later
@@ -123,7 +126,7 @@ out of Reckless's ±1% range (rehearsed on a fork first). At the 16:39 UTC settl
   2026-11-23 the curator posted that amount back (`postBond` pays the deficit down first), which reopened
   deposits on both.
 
-**Earlier deployment (v3, 2026-11-21): the fire showcase.** Kept read-only in the app ("Earlier deployment" section); full output: `script/out/deploy-1301-v3.json`.
+**Earlier still (v3, 2026-11-21): Patient v3 was fired on-chain.** History only (no longer shown in the app); full output: `script/out/deploy-1301-v3.json`.
 
 | Contract | Address |
 |---|---|

@@ -1,7 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { fmtEth, fmtUsd } from "./format";
+import { BOND_IS_WETH } from "./chain";
+import { fmtEth, fmtToken, fmtUsd } from "./format";
+import { bondToUsd } from "./math";
 import type { PoolState } from "./types";
 
 export type Unit = "usd" | "eth";
@@ -37,15 +39,24 @@ export const useUnit = () => useContext(Ctx);
 /** ETH price the contract marks NAV at: the hook TWAP (spot only if the TWAP is not available). */
 export const markPrice = (pool: Pick<PoolState, "price" | "twapPrice">) => pool.twapPrice ?? pool.price;
 
-/** Format an mWETH-wei amount in the chosen unit at `price` (USD per ETH). */
-export function money(wei: bigint | string | null | undefined, price: number, unit: Unit, sig = 4): string {
+/**
+ * Format a bond-unit (token1) amount in the chosen unit at `price` (USD per ETH). token1 is mUSDC (6 dec) in v5 and
+ * mWETH (18 dec) in v4: pass `bondIsWeth` for a pool with the other order (default: the current deployment).
+ * "eth" shows the amount in its own token (the contract's unit).
+ */
+export function money(wei: bigint | string | null | undefined, price: number, unit: Unit, sig = 4, bondIsWeth = BOND_IS_WETH): string {
   if (wei == null) return "–";
-  return unit === "usd" ? fmtUsd((Number(BigInt(wei)) / 1e18) * price) : `${fmtEth(wei, sig)} mWETH`;
+  if (unit === "usd") return fmtUsd(bondToUsd(wei, price, bondIsWeth));
+  return bondIsWeth ? `${fmtEth(wei, sig)} mWETH` : `${fmtToken(wei, 6, sig)} mUSDC`;
 }
 /** The same amount in the other unit, for secondary lines. */
-export const moneyAlt = (wei: bigint | string | null | undefined, price: number, unit: Unit) => money(wei, price, unit === "usd" ? "eth" : "usd");
+export const moneyAlt = (wei: bigint | string | null | undefined, price: number, unit: Unit, bondIsWeth = BOND_IS_WETH) =>
+  money(wei, price, unit === "usd" ? "eth" : "usd", 4, bondIsWeth);
 
-export const unitName = (u: Unit) => (u === "usd" ? "USD" : "mWETH");
+/** A bond-unit (token1) amount in its own token, no symbol. Vault shares are minted 1:1 in these units too. */
+export const fmtBond = (raw: bigint | string | null | undefined, bondIsWeth = BOND_IS_WETH, sig = 4) => fmtToken(raw, bondIsWeth ? 18 : 6, sig);
+
+export const unitName = (u: Unit, bondIsWeth = BOND_IS_WETH) => (u === "usd" ? "USD" : bondIsWeth ? "mWETH" : "mUSDC");
 
 export function UnitToggle({ className = "" }: { className?: string }) {
   const { unit, setUnit } = useUnit();
