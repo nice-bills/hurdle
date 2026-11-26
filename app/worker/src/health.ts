@@ -15,6 +15,8 @@ export function startHealth() {
         // warn < 0.002 ETH (LOW_BALANCE_WEI): a wallet that runs dry stops the keeper or the curator bot silently
         warnings: [
           ...(lowFlag(state.keeperBalanceWei) ? [`keeper wallet low: ${formatEther(state.keeperBalanceWei!)} ETH (< ${formatEther(env.lowBalanceWei)})`] : []),
+          ...[...state.curatorWarnings.values()].map((w) => `curator: ${w}`),
+          ...[...state.outOfRangeSince].filter(([, since]) => Date.now() - since > env.outOfRangeWarnMs).map(([v, since]) => `vault ${v} out of range for ${Math.round((Date.now() - since) / 60000)} min (> ${Math.round(env.outOfRangeWarnMs / 60000)} min)`),
           ...(lowFlag(state.curatorBalanceWei) ? [`curator wallet low: ${formatEther(state.curatorBalanceWei!)} ETH (< ${formatEther(env.lowBalanceWei)})`] : []),
         ],
         uptimeSeconds: Math.floor((Date.now() - state.startedAt) / 1000),

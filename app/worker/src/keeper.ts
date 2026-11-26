@@ -3,6 +3,7 @@ import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { chain, lc, readSlot0, computePoolId, type Client } from "./chain.js";
 import { deployment, env, erc20Abi, hookAbi, swapTestAbi, vaultAbi } from "./config.js";
 import type { Db } from "./db.js";
+import { bus } from "./bus.js";
 import { state } from "./state.js";
 import { getSqrtPriceAtTick, maxUsableTick, minUsableTick } from "./tickmath.js";
 import { errMsg, log, sleep, withRetry } from "./util.js";
@@ -69,6 +70,7 @@ export function makeSender(
   wallet: SendWallet,
   expected: Set<string>,
   onRecord?: (action: string, vault: string | null, tx: string | null, ok: boolean, note: string | null) => void,
+  onSkip?: (action: string, vault: string | null, reason: string) => void,
 ) {
   async function record(action: string, vault: string | null, tx: string | null, ok: boolean, note: string | null) {
     onRecord?.(action, vault, tx, ok, note);
@@ -87,10 +89,12 @@ export function makeSender(
   /** The call would revert for an expected reason: nothing to do. Logged always, stored at most once per hour per vault/action. */
   async function recordSkipped(action: string, vault: string | null, reason: string) {
     log("keeper", `${action}${vault ? " " + vault : ""} skipped (${reason})`);
+    onSkip?.(action, vault, reason);
     try {
+      // Throttle only an identical repeat: a changed reason is stored at once (so a new failure is never hidden by an older skip row).
       const recent = await db.query(
-        "SELECT 1 FROM keeper_runs WHERE skipped AND action=$1 AND vault IS NOT DISTINCT FROM $2 AND ts > now() - ($3 * interval '1 millisecond') LIMIT 1",
-        [action, vault ? lc(vault) : null, SKIP_EVERY_MS],
+        "SELECT 1 FROM keeper_runs WHERE skipped AND action=$1 AND vault IS NOT DISTINCT FROM $2 AND note=$4 AND ts > now() - ($3 * interval '1 millisecond') LIMIT 1",
+        [action, vault ? lc(vault) : null, SKIP_EVERY_MS, reason],
       );
       if (recent.rows.length) return;
     } catch (e) {
@@ -311,7 +315,8 @@ export function makeKeeper(db: Db, client: Client) {
         const due = now >= epochStart + BigInt(epochSeconds);
         log("keeper", `vault ${addr}: ${due ? "epoch over, settling" : `epoch ends in ${Number(epochStart) + Number(epochSeconds) - Number(now)}s`}${fired ? ", FIRED" : ""}`);
         if (due) {
-          await send("settle", addr, { address: v, abi: vaultAbi, functionName: "settle" });
+          // Tell the curator loop right away: a shortfall must be repaid inside the 300 s deposit window.
+          if (await send("settle", addr, { address: v, abi: vaultAbi, functionName: "settle" })) bus.emit("settled", addr);
         }
         if (fired) {
           // Full-range ticks are not enough: the contract counts a vault parked only once <= 2% of NAV is idle,

@@ -3,6 +3,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { chain, lc, readSlot0, computePoolId, type Client } from "./chain.js";
 import { deployment, env, erc20Abi, vaultAbi } from "./config.js";
 import type { Db } from "./db.js";
+import { bus } from "./bus.js";
 import { makeSender } from "./keeper.js";
 import { state } from "./state.js";
 import { maxUsableTick, minUsableTick } from "./tickmath.js";
@@ -10,7 +11,10 @@ import { errMsg, log, sleep, withRetry } from "./util.js";
 
 const MAX_UINT = (1n << 256n) - 1n;
 const IDLE_REDEPLOY_BPS = 200; // redeploy when idle funds exceed 2% of NAV (the same bound passed as maxIdleBps)
-const MAX_ROUTINE_REBALANCES = 3; // keep one of the 4 per-epoch slots for an out-of-range re-centre
+const MAX_ROUTINE_REBALANCES = 3; // idle redeploys keep the last per-epoch slot for an out-of-range re-centre
+const FALLBACK_MAX_REBALANCES = 4; // HurdleVault.MAX_REBALANCES_PER_EPOCH, used only if the constant cannot be read
+const RECENTRE_MAX_IDLE_BPS = 10_000; // step 1 of a re-centre accepts any idle amount; step 2 (idle redeploy) enforces 200
+const SKIP_WARN_AFTER = 2; // consecutive identical skips before the warning shows (RebalanceIncomplete warns at once)
 
 /** Reverts the curator bot expects in normal operation: recorded as skipped, not failed. */
 export const CURATOR_EXPECTED = new Set(["PriceDeviation", "TooManyRebalances", "BondBelowFloor", "RebalanceIncomplete"]);
@@ -45,7 +49,41 @@ export function makeCurator(db: Db, client: Client) {
   const wallet = createWalletClient({ account, chain, transport: http(env.rpcUrl, { retryCount: 2, retryDelay: 800, timeout: 30_000 }) });
   state.curatorAddress = account.address;
   const poolId = computePoolId();
-  const { record, send } = makeSender(db, client, account, wallet, CURATOR_EXPECTED);
+  const { record, send } = makeSender(
+    db,
+    client,
+    account,
+    wallet,
+    CURATOR_EXPECTED,
+    (action, vault, _tx, ok, note) => {
+      // a success or a hard failure of an action replaces its skip streak
+      if (vault) for (const k of [...streaks.keys()]) if (k.startsWith(`${lc(vault)}:${action}:`)) streaks.delete(k);
+      if (!vault) return;
+      if (ok) state.curatorWarnings.delete(`${lc(vault)}:${action}`);
+      else if (action.startsWith("curator_")) state.curatorWarnings.set(`${lc(vault)}:${action}`, `${action} failed: ${note ?? "unknown"}`);
+    },
+    (action, vault, reason) => {
+      if (!vault) return;
+      const key = `${lc(vault)}:${action}:${reason}`;
+      const n = (streaks.get(key) ?? 0) + 1;
+      streaks.set(key, n);
+      if (reason === "RebalanceIncomplete" || n >= SKIP_WARN_AFTER) state.curatorWarnings.set(`${lc(vault)}:${action}`, `${action} skipped ${n}x in a row (${reason})`);
+    },
+  );
+  const streaks = new Map<string, number>();
+  /** Vaults whose re-centre step 1 landed and still wait for the idle redeploy (step 2), tried on the fast ticks. */
+  const pendingRedeploy = new Set<string>();
+  let maxRebalances: number | null = null;
+  const getMaxRebalances = async () => {
+    if (maxRebalances === null) {
+      try {
+        maxRebalances = Number(await read<bigint>(lc(deployment.patientVault) as Hex, vaultAbi, "MAX_REBALANCES_PER_EPOCH"));
+      } catch {
+        return FALLBACK_MAX_REBALANCES;
+      }
+    }
+    return maxRebalances;
+  };
   const spacing = deployment.tickSpacing;
 
   const read = <T,>(address: Hex, abi: unknown, functionName: string, args: unknown[] = []) =>
@@ -85,13 +123,15 @@ export function makeCurator(db: Db, client: Client) {
     return Number(((value0 + idle1) * 10_000n) / nav);
   }
 
-  async function tick() {
-    state.curatorBalanceWei = await withRetry(() => client.getBalance({ address: account.address }), "balance", 4).catch(() => state.curatorBalanceWei);
+  /** One pass over the managed vaults. `full` = the 10-min pass (may re-centre); otherwise the cheap 60 s pass (deficit repay + pending step 2). */
+  async function tickOnce(full: boolean) {
+    if (full) state.curatorBalanceWei = await withRetry(() => client.getBalance({ address: account.address }), "balance", 4).catch(() => state.curatorBalanceWei);
     const slot = await withRetry(() => readSlot0(client, poolId), "slot0", 4);
     const spot = slot.tick;
     const minT = minUsableTick(spacing);
     const maxT = maxUsableTick(spacing);
     const now = Number((await withRetry(() => client.getBlock(), "latest block", 4)).timestamp);
+    const maxReb = await getMaxRebalances();
     for (const addr of curatorVaults()) {
       const v = addr as Hex;
       try {
@@ -100,43 +140,82 @@ export function makeCurator(db: Db, client: Client) {
           `curator state ${addr}`,
           4,
         )) as [Hex, boolean, readonly [number, number, bigint], bigint, bigint, bigint];
-        if (fired || lc(curator) !== lc(account.address)) continue;
+        if (fired || lc(curator) !== lc(account.address)) {
+          state.outOfRangeSince.delete(lc(addr));
+          continue;
+        }
         // Bond repayment moves no liquidity, so it is allowed inside the deposit window (it is what reopens deposits).
         await repayDeficit(addr, v, nav);
         if (pos[2] === 0n) continue; // no position yet (before the first deposit): a rebalance would only revert
+        const fullRange = pos[0] <= minT && pos[1] >= maxT;
+        if (!fullRange && (spot < pos[0] || spot > pos[1])) {
+          if (!state.outOfRangeSince.has(lc(addr))) state.outOfRangeSince.set(lc(addr), Date.now());
+        } else state.outOfRangeSince.delete(lc(addr));
         if (now <= Number(epochStart) + DEPOSIT_WINDOW) continue; // never move liquidity under a depositor's quote
-        let plan = planRecenter(spot, pos[0], pos[1], spacing, minT, maxT);
-        let why = `spot ${spot}: [${pos[0]},${pos[1]}] -> `;
-        if (!plan && Number(rebalances) < MAX_ROUTINE_REBALANCES) {
-          // In range and centred, but funds drifted idle (a settle realised fees, a bond top-up, a partial swap): redeploy.
+        const used = Number(rebalances);
+        const idleStep = async (limit: number, why: string) => {
           const idle = await idleBps(v, nav, slot.sqrtPriceX96);
-          if (idle > IDLE_REDEPLOY_BPS) {
-            plan = [pos[0], pos[1]];
-            why = `idle ${idle} bps of NAV > ${IDLE_REDEPLOY_BPS}: redeploy [${pos[0]},${pos[1]}] -> `;
+          if (idle <= IDLE_REDEPLOY_BPS) {
+            pendingRedeploy.delete(lc(addr));
+            return;
           }
+          if (used >= limit) {
+            if (pendingRedeploy.has(lc(addr))) state.curatorWarnings.set(`${lc(addr)}:curator_rebalance`, `idle ${idle} bps after re-centre but ${used}/${maxReb} rebalances used this epoch; redeploy waits for the next epoch`);
+            return;
+          }
+          const ok = await send("curator_rebalance", addr, { address: v, abi: vaultAbi, functionName: "rebalance", args: [pos[0], pos[1], MAX_IDLE_BPS] }, `${why}idle ${idle} bps of NAV > ${IDLE_REDEPLOY_BPS}: redeploy [${pos[0]},${pos[1]}]`);
+          if (ok) pendingRedeploy.delete(lc(addr));
+        };
+        if (!full) {
+          if (pendingRedeploy.has(lc(addr))) await idleStep(maxReb, "step 2 of re-centre: ");
+          continue;
         }
-        if (!plan) continue;
-        await send("curator_rebalance", addr, { address: v, abi: vaultAbi, functionName: "rebalance", args: [plan[0], plan[1], MAX_IDLE_BPS] }, `${why}[${plan[0]},${plan[1]}]`);
+        const plan = planRecenter(spot, pos[0], pos[1], spacing, minT, maxT);
+        if (plan) {
+          // Step 1 of a two-step re-centre: accept whatever idle the move leaves (maxIdleBps 10000). A far move cannot
+          // convert enough in one swap-limited call to pass 200, and a strict first step reverts RebalanceIncomplete forever.
+          if (used >= maxReb) {
+            state.curatorWarnings.set(`${lc(addr)}:curator_rebalance`, `needs re-centre to [${plan[0]},${plan[1]}] (spot ${spot}) but ${used}/${maxReb} rebalances used this epoch`);
+            continue;
+          }
+          const ok = await send("curator_rebalance", addr, { address: v, abi: vaultAbi, functionName: "rebalance", args: [plan[0], plan[1], RECENTRE_MAX_IDLE_BPS] }, `step 1 of re-centre, spot ${spot}: [${pos[0]},${pos[1]}] -> [${plan[0]},${plan[1]}]`);
+          if (ok) pendingRedeploy.add(lc(addr)); // step 2 (idle redeploy at 200 bps) follows on the next tick(s)
+          continue;
+        }
+        // In range and centred, but funds drifted idle (a re-centre's step 1, a settle that realised fees, a bond top-up): redeploy.
+        await idleStep(pendingRedeploy.has(lc(addr)) ? maxReb : MAX_ROUTINE_REBALANCES, pendingRedeploy.has(lc(addr)) ? "step 2 of re-centre: " : "");
       } catch (e) {
         await record("curator_check", addr, null, false, errMsg(e));
       }
     }
-    state.lastCuratorRunAt = Date.now();
+    if (full) state.lastCuratorRunAt = Date.now();
   }
+
+  /** Passes never overlap (one wallet, one nonce): the loop, the settle kick and manual calls queue here. */
+  let chain_: Promise<unknown> = Promise.resolve();
+  const tick = (full = true) => (chain_ = chain_.catch(() => undefined).then(() => tickOnce(full)));
 
   return {
     address: account.address,
     tick,
     async run(signal: { stopped: boolean }) {
-      log("curator", `starting; curator bot ${account.address}, every ${env.curatorMs / 1000}s`);
+      const fastMs = Math.min(env.curatorMs, env.curatorFastMs);
+      log("curator", `starting; curator bot ${account.address}, re-centre every ${env.curatorMs / 1000}s, deficit check every ${fastMs / 1000}s and right after a keeper settle`);
+      // The keeper settled a vault: a shortfall may be owed. Check now, and again after the RPC (load-balanced) has caught up.
+      bus.on("settled", () => {
+        for (const delay of [0, 6_000, 20_000]) setTimeout(() => void tick(false).catch((e) => log("curator", `post-settle check error: ${errMsg(e)}`)), delay).unref();
+      });
       await sleep(25_000);
+      let lastFull = 0;
       while (!signal.stopped) {
+        const full = Date.now() - lastFull >= env.curatorMs - 1000;
+        if (full) lastFull = Date.now();
         try {
-          await tick();
+          await tick(full);
         } catch (e) {
           log("curator", `tick error (continuing): ${errMsg(e)}`);
         }
-        await sleep(env.curatorMs);
+        await sleep(fastMs);
       }
     },
   };
