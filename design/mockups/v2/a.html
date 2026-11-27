@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hurdle · Ledger</title>
+<meta name="description" content="Hurdle mockup A: a calm web app in the style of Divan Raj's finance UI.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#EEEEF0; --card:#FFFFFF; --well:#F4F4F6; --line:#EBEBEE;
+  --ink:#111214; --ink-2:#5E6068; --ink-3:#A2A4AB;
+  --you:#E4572E; --par:#1E9E5A; --par-tint:#E6F5EC; --miss:#D9481F; --miss-tint:#FCEDE7; --bar:#D7D8DC;
+  --r-card:24px; --r-row:16px;
+  --font:"Geist",ui-sans-serif,system-ui,sans-serif; --mono:"Geist Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0}
+html{background:var(--canvas)}
+body{background:var(--canvas);color:var(--ink);font:400 15px/1.45 var(--font);font-feature-settings:"tnum" 1,"cv11" 1;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+.num,td,.amt{font-variant-numeric:tabular-nums}
+.dim{color:var(--ink-3)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+/* top bar */
+.top{display:flex;align-items:center;gap:28px;height:72px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px;letter-spacing:-.01em}
+.brand svg{display:block}
+.top nav{display:flex;gap:22px;color:var(--ink-2);font-size:14px}
+.top nav a{color:inherit;text-decoration:none}.top nav a:hover{color:var(--ink)}
+.top .sp{flex:1}
+.chip-net{font-size:13px;color:var(--ink-2);display:flex;align-items:center;gap:8px}
+.chip-net i{width:7px;height:7px;border-radius:50%;background:var(--par)}
+.btn{text-decoration:none;height:44px;padding:0 20px;border-radius:999px;border:0;cursor:pointer;font-weight:500;font-size:14px;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:transform .15s cubic-bezier(.22,1,.36,1),background .2s}
+.btn:active{transform:scale(.97)}
+.btn.black{background:var(--ink);color:#fff}.btn.black:hover{background:#2a2b2f}
+.btn.white{background:var(--card);color:var(--ink)}.btn.white:hover{background:#fafafa}
+.btn:focus-visible,.seg button:focus-visible,.row:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.iconbtn{width:44px;height:44px;border-radius:50%;background:var(--card);border:0;display:grid;place-items:center;cursor:pointer}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;padding:64px 0 72px}
+h1{font-size:52px;line-height:1.04;letter-spacing:-.035em;font-weight:600;text-wrap:balance;max-width:13ch}
+.lede{margin-top:22px;font-size:17px;color:var(--ink-2);max-width:46ch;text-wrap:pretty}
+.cta{display:flex;gap:10px;margin-top:32px;flex-wrap:wrap}
+.meta{color:var(--ink-2);font-size:13px}
+.meta b{color:var(--ink);font-weight:500}
+
+/* cards */
+.card{background:var(--card);border-radius:var(--r-card);padding:22px 24px}
+.card-h{display:flex;align-items:center;gap:10px;color:var(--ink-2);font-size:14px}
+.card-h .sp{flex:1}
+.pill{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap}
+.pill.up{background:var(--par-tint);color:#16784A}
+.pill.down{background:var(--miss-tint);color:#B23A17}
+.pill.grey{background:var(--well);color:var(--ink-2)}
+.big{font-size:44px;line-height:1.1;letter-spacing:-.03em;font-weight:500;margin-top:8px}
+.big small{font-size:20px;letter-spacing:-.01em;margin-left:4px;color:var(--ink-3);font-weight:500}
+.sub{color:var(--ink-2);font-size:13px;margin-top:4px}
+.legend{display:flex;gap:18px;font-size:12px;color:var(--ink-2);margin-top:6px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:2px;border-radius:2px;background:var(--you)}
+.sw.par{background:repeating-linear-gradient(90deg,var(--par) 0 3px,transparent 3px 6px)}
+.sw.strat{background:#B9BBC1}
+.sw.box{width:10px;height:10px;border-radius:3px;background:var(--bar)}
+.sw.box.miss{background:var(--miss)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.stats div{font-size:12px;color:var(--ink-2)}
+.stats div i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.stats b{display:block;color:var(--ink);font-size:18px;font-weight:500;margin-top:2px;letter-spacing:-.01em}
+
+/* chart */
+.plot{margin-top:14px;touch-action:pan-y}
+.chart{display:block;width:100%;height:auto;overflow:visible}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .grid.zero{stroke:#C9CACF;stroke-dasharray:3 4}
+.chart .axis{fill:var(--ink-3);font:400 11px var(--font);font-variant-numeric:tabular-nums}
+.chart .par-lbl{fill:var(--par);font-weight:500}
+.ln-you{fill:none;stroke:var(--you);stroke-width:2.25;stroke-linejoin:round;stroke-linecap:round}
+.ln-par{fill:none;stroke:var(--par);stroke-width:1.5;stroke-dasharray:3 4}
+.ln-strat{fill:none;stroke:#BDBFC5;stroke-width:1.5}
+.end-dot{fill:#fff;stroke:var(--you);stroke-width:2}
+.miss-dot{fill:var(--miss)}
+.scrub{stroke:var(--ink);stroke-width:2}
+.bar{fill:var(--bar);transition:fill .15s}.bar.miss{fill:var(--miss)}.bar.on{fill:var(--ink)}
+.tip{position:absolute;top:-8px;transform:translate(-50%,-100%);background:var(--ink);color:#fff;border-radius:12px;padding:8px 11px;font-size:11px;line-height:1.35;pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap;display:grid}
+.tip.on{opacity:1}.tip span{color:#A9AAB0}.tip b{font-size:14px;font-weight:600}
+
+/* sections */
+section.block{padding:24px 0 56px}
+.sec-h{display:flex;align-items:flex-end;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+h2{font-size:30px;letter-spacing:-.025em;font-weight:600;line-height:1.1}
+.sec-h .sp{flex:1}
+.seg{position:relative;display:inline-flex;background:#E3E3E7;border-radius:999px;padding:4px}
+.seg .thumb{position:absolute;top:4px;bottom:4px;left:0;background:var(--card);border-radius:999px;box-shadow:0 1px 2px rgba(0,0,0,.06);transition:transform .32s cubic-bezier(.22,1,.36,1),width .32s cubic-bezier(.22,1,.36,1)}
+.seg button{white-space:nowrap;position:relative;border:0;background:none;height:36px;padding:0 18px;border-radius:999px;font-size:13px;color:var(--ink-2);cursor:pointer}
+.seg button[aria-pressed=true]{color:var(--ink);font-weight:500}
+
+/* vault list */
+.list{padding:6px 8px}
+.list-head,.row{display:grid;grid-template-columns:minmax(220px,2.2fr) 1fr 1fr 1.3fr 1fr 24px;align-items:center;gap:16px;padding:0 16px}
+.list-head{height:44px;font-size:12px;color:var(--ink-3)}
+.list-head>*:not(:first-child){text-align:right}
+.row{min-height:76px;border-radius:var(--r-row);cursor:pointer;border:0;background:none;width:100%;text-align:left;transition:background .15s}
+.row+.row{box-shadow:0 -1px 0 var(--line)}
+.row:hover,.row[aria-current=true]{background:var(--well);box-shadow:none}
+.row:hover+.row,.row[aria-current=true]+.row{box-shadow:none}
+.row>*:not(:first-child){text-align:right}
+.who{display:flex;align-items:center;gap:12px;min-width:0}
+.ic{width:40px;height:40px;border-radius:50%;background:var(--well);display:grid;place-items:center;flex:none;color:var(--ink-2)}
+.row:hover .ic,.row[aria-current=true] .ic{background:var(--card)}
+.who b{display:block;font-weight:500;font-size:15px}
+.who .ic{display:grid}
+.who span:not(.ic){display:block;font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.amt{font-size:15px;font-weight:500}
+.amt small{display:block;font-size:12px;color:var(--ink-2);font-weight:400}
+.bondbar{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.mini{width:96px;height:4px;border-radius:4px;background:var(--well);position:relative;overflow:hidden}
+.mini i{position:absolute;inset:0 auto 0 0;background:var(--ink);border-radius:4px}
+.mini.low i{background:var(--miss)}
+.chev{color:var(--ink-3)}
+.row[hidden]{display:none}
+
+/* detail */
+.d-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.d-head .ic{width:52px;height:52px}
+.addr{font:400 12px var(--mono);color:var(--ink-2);background:var(--card);padding:5px 10px;border-radius:999px}
+.grid2{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-top:22px;align-items:start}
+.col{display:grid;gap:16px}
+.hist{padding:8px 8px 8px}
+.hist .card-h{padding:14px 16px 6px}
+.ev{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:center;padding:12px 16px;min-height:68px}
+.ev+.ev{border-top:1px solid var(--line)}
+.ev b{display:block;font-weight:500}
+.ev .ic{display:grid}
+.ev span:not(.ic):not(.pill){display:block;font-size:12px;color:var(--ink-2)}
+.ev .late{color:var(--miss)}
+.ev .r{text-align:right}
+.ev .r .pill{margin-top:4px;display:inline-flex}
+.ic.mono{font-weight:600;font-size:15px;color:var(--ink)}
+.more{display:flex;justify-content:center;padding:6px 0 4px}
+.linkbtn[hidden]{display:none}
+.linkbtn{border:0;background:var(--well);border-radius:999px;height:36px;padding:0 14px;font-size:13px;cursor:pointer;color:var(--ink)}
+.linkbtn:hover{background:#ECECEF}
+
+.bond .scale{margin-top:16px;height:8px;border-radius:8px;background:var(--well);position:relative}
+.bond .scale>i{position:absolute;inset:0 auto 0 0;border-radius:8px;background:var(--ink);transition:width .9s cubic-bezier(.22,1,.36,1)}
+.bond .scale.low>i{background:var(--miss)}
+.bond .tick{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--card);box-shadow:0 0 0 1px #C9CACF;border-radius:2px}
+.bond .ends{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-2);margin-top:10px}
+.bond .ends b{color:var(--ink);font-weight:500}
+.kv{margin-top:16px;border-top:1px solid var(--line)}
+.kv div{display:flex;justify-content:space-between;gap:12px;padding:11px 0;font-size:14px}
+.kv div+div{border-top:1px solid var(--line)}
+.kv dt{color:var(--ink-2)}
+.kv dd{font-weight:500;text-align:right}
+
+.dep .field{margin-top:14px;background:var(--well);border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:10px}
+.dep .field label{font-size:12px;color:var(--ink-2);display:block}
+.dep input{border:0;background:none;outline:none;font-size:28px;font-weight:500;letter-spacing:-.02em;width:100%;font-variant-numeric:tabular-nums}
+.dep .tok{font-size:13px;color:var(--ink-2);background:var(--card);border-radius:999px;padding:6px 10px;white-space:nowrap}
+.dep .split{display:flex;justify-content:space-between;font-size:13px;color:var(--ink-2);padding:12px 4px 0}
+.dep .split b{color:var(--ink);font-weight:500}
+.dep .btn{width:100%;margin-top:16px;height:52px;font-size:15px}
+.dep .btn.done{background:var(--par)}
+.dep .note{font-size:12px;color:var(--ink-2);text-align:center;margin-top:10px}
+
+footer{padding:24px 0 48px;color:var(--ink-3);font-size:12px}
+
+@media (max-width:1000px){
+  .hero{grid-template-columns:1fr;gap:40px;padding:40px 0 64px}
+  .grid2{grid-template-columns:1fr}
+  .top nav{display:none}
+}
+@media (max-width:720px){
+  .wrap{padding:0 16px}
+  .top{height:64px;gap:12px}.chip-net{display:none}
+  h1{font-size:38px}
+  .lede{font-size:16px}
+  .cta .btn{flex:1}
+  .big{font-size:38px}
+  h2{font-size:26px}
+  .list-head{display:none}
+  .list{padding:4px}
+  .row{grid-template-columns:1fr auto;padding:0 12px;min-height:72px}
+  .row>.c-hide{display:none}
+  .row .chev{display:none}
+  .card{padding:18px 18px}
+  .stats b{font-size:16px}
+  .sec-h .seg{width:100%}.sec-h .seg button{flex:1}
+  .hist{padding:4px}.ev{padding:12px}
+  .card-h{flex-wrap:wrap}.card-h>.seg{order:9;width:100%;margin-top:6px}.card-h>.seg button{flex:1}
+  .hist .card-h>.seg{margin-top:10px}
+  #dIc{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<!-- Direction A, "Ledger": closest to Divan Raj's invoicing app. White cards on grey, one orange line, a dashed green target (par), grey hourly bars. -->
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="2" y="13" width="18" height="2.4" rx="1.2" fill="#111214"/><rect x="5" y="6" width="2.4" height="13" rx="1.2" fill="#111214"/><rect x="14.6" y="6" width="2.4" height="13" rx="1.2" fill="#111214"/></svg>Hurdle</div>
+    <nav aria-label="Main"><a href="#vaults">Vaults</a><a href="#detail">Patient</a><a href="#how">How par works</a></nav>
+    <span class="sp"></span>
+    <span class="chip-net"><i></i>Unichain Sepolia</span>
+    <button class="btn black" type="button">Connect wallet</button>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="h1">
+      <div>
+        <h1 id="h1">Your curator must beat par every hour, or their bond pays you.</h1>
+        <p class="lede">Par is what a passive full-range position earns in the same Uniswap v4 pool, computed by the pool itself. Each hour the vault settles. A miss is paid to you from the curator's bond.</p>
+        <div class="cta"><a class="btn black" href="#vaults">Browse vaults</a><a class="btn white" href="#how" id="how">How par works</a></div>
+      </div>
+      <div class="card" id="heroCard">
+        <div class="card-h"><span>Patient · you vs par</span><span class="pill up" id="hChip"></span></div>
+        <div class="big num" id="hBig"></div>
+        <div class="sub" id="hSub"></div>
+        <div class="plot" id="hPlot"></div>
+        <div class="legend"><span><i class="sw"></i>You</span><span><i class="sw par"></i>Par</span><span><i class="sw strat"></i>Curator</span></div>
+        <div class="stats" id="hStats"></div>
+      </div>
+    </section>
+
+    <section class="block" id="vaults" aria-labelledby="vh">
+      <div class="sec-h">
+        <div><h2 id="vh">Vaults</h2><p class="meta" style="margin-top:6px">Three vaults on one ETH/USDC pool · settles hourly</p></div>
+        <span class="sp"></span>
+        <div class="seg" id="filter" role="group" aria-label="Filter vaults"><button data-v="all" aria-pressed="true">All</button><button data-v="ACTIVE">Active</button><button data-v="FIRED">Fired</button></div>
+      </div>
+      <div class="card list">
+        <div class="list-head"><span>Vault</span><span>You vs par</span><span>Hours beat</span><span>Bond / deposits</span><span>Deposits</span><span></span></div>
+        <div id="rows"></div>
+      </div>
+    </section>
+
+    <section class="block" id="detail" aria-labelledby="dh">
+      <div class="d-head">
+        <span class="ic mono" id="dIc" style="font-size:20px"></span>
+        <div><h2 id="dh"></h2><p class="meta" id="dNote" style="margin-top:4px"></p></div>
+        <span class="addr" id="dAddr"></span>
+        <span class="pill" id="dStatus"></span>
+      </div>
+      <div class="grid2">
+        <div class="col">
+          <div class="card">
+            <div class="card-h"><span id="cLbl">You vs par</span><span class="pill" id="cChip"></span><span class="sp"></span>
+              <div class="seg" id="mode" role="group" aria-label="Chart"><button data-v="line" aria-pressed="true">Return</button><button data-v="bars">Each hour</button></div></div>
+            <div class="big num" id="cBig"></div>
+            <div class="sub" id="cSub"></div>
+            <div class="plot" id="cPlot"></div>
+            <div class="legend" id="cLeg"></div>
+          </div>
+          <div class="card hist">
+            <div class="card-h"><div><b style="color:var(--ink);font-weight:600;font-size:17px;display:block">Settle history</b><span id="hCount" style="font-size:12px"></span></div><span class="sp"></span>
+              <div class="seg" id="hf" role="group" aria-label="Filter settles"><button data-v="all" aria-pressed="true">All</button><button data-v="miss">Missed</button></div></div>
+            <div id="evs"></div>
+            <div class="more"><button class="linkbtn" id="moreBtn" type="button"></button></div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card bond">
+            <div class="card-h"><span>Curator bond</span><span class="pill" id="bChip"></span></div>
+            <div class="big num" id="bBig"></div>
+            <div class="scale" id="bScale"><i id="bFill" style="width:0"></i><span class="tick" id="bFloor"></span></div>
+            <div class="ends"><span><b id="bPct"></b> of deposits</span><span>floor <b id="bFl"></b></span></div>
+            <dl class="kv" id="bKv"></dl>
+          </div>
+          <div class="card dep">
+            <div class="card-h"><span>Deposit</span><span class="sp"></span><span class="pill" id="wChip"></span></div>
+            <div class="field"><div style="flex:1"><label for="amt">Amount</label><input id="amt" inputmode="decimal" value="1,000.00" aria-describedby="split"></div><span class="tok">USD value</span></div>
+            <div class="split" id="split"></div>
+            <button class="btn black" id="depBtn" type="button">Deposit</button>
+            <p class="note" id="depNote"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer id="foot"></footer>
+</div>
+<script>window.HURDLE={"fetchedAt":1795763192,"vaults":[{"addr":"0x22e97BDB1E4B29033b729B0B7B6D59B56C9d095B","label":"Patient","note":"\u00b110% wide range, re-centered by the demo bot near its edges","status":"ACTIVE","fired":false,"firedAt":0,"nav":5842.669795,"bond":600.0,"bondBps":1026.92,"minBondBps":200,"carryBps":2000,"epochStart":1795761989,"epochSeconds":3600,"lo":-197200,"hi":-195300,"cum":{"strategy":0.9653551759002641,"par":0.9731459963288577,"depositor":0.9736283121053115},"totals":{"settlements":11,"beats":10,"misses":1,"paid":50.331305,"take":0.7235219999999999},"series":[{"ts":1795722017,"s":1,"p":1,"d":1,"miss":false},{"ts":1795725666,"s":0.964757,"p":0.973146,"d":0.973146,"miss":true},{"ts":1795729280,"s":0.964822,"p":0.973146,"d":0.973198,"miss":false},{"ts":1795732943,"s":0.964881,"p":0.973146,"d":0.973246,"miss":false},{"ts":1795736546,"s":0.96494,"p":0.973146,"d":0.973293,"miss":false},{"ts":1795740207,"s":0.964999,"p":0.973146,"d":0.973341,"miss":false},{"ts":1795743866,"s":0.965059,"p":0.973146,"d":0.973389,"miss":false},{"ts":1795747474,"s":0.965118,"p":0.973146,"d":0.973437,"miss":false},{"ts":1795751125,"s":0.965177,"p":0.973146,"d":0.973485,"miss":false},{"ts":1795754783,"s":0.965237,"p":0.973146,"d":0.973533,"miss":false},{"ts":1795758386,"s":0.965296,"p":0.973146,"d":0.97358,"miss":false},{"ts":1795761989,"s":0.965355,"p":0.973146,"d":0.973628,"miss":false}],"bondHist":[{"ts":1795722290,"bps":1002.97},{"ts":1795722899,"bps":1013.37},{"ts":1795723285,"bps":1020.6},{"ts":1795723934,"bps":1035.42},{"ts":1795724662,"bps":1036.55},{"ts":1795725391,"bps":1036.55},{"ts":1795726118,"bps":941.54},{"ts":1795726725,"bps":1028.0},{"ts":1795727365,"bps":1028.0},{"ts":1795728094,"bps":1027.68},{"ts":1795728820,"bps":1027.6},{"ts":1795729546,"bps":1027.52},{"ts":1795730272,"bps":1027.52},{"ts":1795730998,"bps":1027.52},{"ts":1795731724,"bps":1027.52},{"ts":1795732449,"bps":1027.52},{"ts":1795733175,"bps":1027.46},{"ts":1795733901,"bps":1027.46},{"ts":1795734628,"bps":1027.46},{"ts":1795735355,"bps":1027.46},{"ts":1795736081,"bps":1027.46},{"ts":1795736807,"bps":1027.39},{"ts":1795737533,"bps":1027.39},{"ts":1795738258,"bps":1027.39},{"ts":1795738985,"bps":1027.39},{"ts":1795739710,"bps":1027.39},{"ts":1795740437,"bps":1027.32},{"ts":1795741162,"bps":1027.32},{"ts":1795741890,"bps":1027.32},{"ts":1795742617,"bps":1027.32},{"ts":1795743343,"bps":1027.32},{"ts":1795744069,"bps":1027.26},{"ts":1795744795,"bps":1027.26},{"ts":1795745521,"bps":1027.26},{"ts":1795746105,"bps":1027.26},{"ts":1795746833,"bps":1027.26},{"ts":1795747565,"bps":1027.19},{"ts":1795748291,"bps":1027.19},{"ts":1795749018,"bps":1027.19},{"ts":1795749743,"bps":1027.19},{"ts":1795750469,"bps":1027.19},{"ts":1795751196,"bps":1027.13},{"ts":1795751921,"bps":1027.13},{"ts":1795752647,"bps":1027.13},{"ts":1795753373,"bps":1027.13},{"ts":1795754099,"bps":1027.13},{"ts":1795754825,"bps":1027.06},{"ts":1795755550,"bps":1027.06},{"ts":1795756276,"bps":1027.06},{"ts":1795757002,"bps":1027.06},{"ts":1795757728,"bps":1027.06},{"ts":1795758453,"bps":1026.99},{"ts":1795759179,"bps":1026.99},{"ts":1795759906,"bps":1026.99},{"ts":1795760633,"bps":1026.99},{"ts":1795761358,"bps":1026.99},{"ts":1795762085,"bps":1026.93},{"ts":1795762811,"bps":1026.93}],"settles":[{"ts":1795761989,"nav":5842.669795,"par":5842.310991,"paid":0.0,"carry":0.07176,"tx":"0x60e33a2a471163d15f2723d64ba01a01722c7fd8a531b81a56789bacf30ba710"},{"ts":1795758386,"nav":5842.29351,"par":5841.934703,"paid":0.0,"carry":0.071761,"tx":"0x5621a95ea48615ee748d647f1023bb23eba150770bccc203120070078964f5bd"},{"ts":1795754783,"nav":5841.917224,"par":5841.558418,"paid":0.0,"carry":0.071761,"tx":"0xbae5e118eb3b77dd190eeb99bb698e9275261db93c609c48134982f02566db83"},{"ts":1795751125,"nav":5841.540939,"par":5841.182131,"paid":0.0,"carry":0.071761,"tx":"0xb35e27ce67a571d982e4872fb4f3d53846d55148f6f0f24319e9e333669073da"},{"ts":1795747474,"nav":5841.164654,"par":5840.805844,"paid":0.0,"carry":0.071762,"tx":"0x4574011acb3d7afca1a9c1a37ea5244eaab9be6339b7080033e393c782772f57"},{"ts":1795743866,"nav":5840.788368,"par":5840.429558,"paid":0.0,"carry":0.071762,"tx":"0xf04f1a849683a1b61060fc8a2d52c06af26bb9f6fa3d2b05ad19981d8329b817"},{"ts":1795740207,"nav":5840.412083,"par":5840.05327,"paid":0.0,"carry":0.071762,"tx":"0x6005fd10501f2ffe2d3cd378e73ad3f29e084bab8f3bb06478a265bc42289e58"},{"ts":1795736546,"nav":5840.035797,"par":5839.676985,"paid":0.0,"carry":0.071762,"tx":"0x889b536863faec95a3d8f25e6169f0cca0b53f8f39e174eba87caa7e28a09022"},{"ts":1795732943,"nav":5839.659512,"par":5839.300697,"paid":0.0,"carry":0.071763,"tx":"0x70ebcf3f3b9b1291ea02799dab410b5e5a59d7a3681397cbfaa37c5e948aa8ec"},{"ts":1795729280,"nav":5839.283226,"par":5838.894885,"paid":0.0,"carry":0.077668,"tx":"0xa4c63114bb30c40781a41e84845b7b734c9b30f901c872253fe526bcc5f96069"},{"ts":1795725666,"nav":5788.544672,"par":5838.875977,"paid":50.331305,"carry":0.0,"tx":"0xe72b13af832d81b880a0a8bcda90ace58b70eb76010dc54e77c9cde45e8b4e95"}]},{"addr":"0xaCd6a6228D29a099BA269B2b3d39745b24C3fD24","label":"Chaser","note":"\u00b12% range, re-centered by the demo bot","status":"ACTIVE","fired":false,"firedAt":0,"nav":5854.652261,"bond":601.148172,"bondBps":1026.78,"minBondBps":200,"carryBps":2000,"epochStart":1795762050,"epochSeconds":3600,"lo":-197010,"hi":-196610,"cum":{"strategy":0.9560945767590292,"par":0.9707443815642677,"depositor":0.9728192067873487},"totals":{"settlements":11,"beats":9,"misses":2,"paid":103.453295,"take":3.1207309999999997},"series":[{"ts":1795722032,"s":1,"p":1,"d":1,"miss":false},{"ts":1795725670,"s":0.95364,"p":0.970744,"d":0.970744,"miss":true},{"ts":1795729281,"s":0.953546,"p":0.970744,"d":0.970744,"miss":true},{"ts":1795732944,"s":0.95383,"p":0.970744,"d":0.970975,"miss":false},{"ts":1795736607,"s":0.954113,"p":0.970744,"d":0.971206,"miss":false},{"ts":1795740268,"s":0.954396,"p":0.970744,"d":0.971436,"miss":false},{"ts":1795743927,"s":0.954679,"p":0.970744,"d":0.971667,"miss":false},{"ts":1795747535,"s":0.954962,"p":0.970744,"d":0.971897,"miss":false},{"ts":1795751186,"s":0.955245,"p":0.970744,"d":0.972128,"miss":false},{"ts":1795754844,"s":0.955528,"p":0.970744,"d":0.972358,"miss":false},{"ts":1795758447,"s":0.955811,"p":0.970744,"d":0.972589,"miss":false},{"ts":1795762050,"s":0.956095,"p":0.970744,"d":0.972819,"miss":false}],"bondHist":[{"ts":1795722290,"bps":1002.8},{"ts":1795722899,"bps":1016.46},{"ts":1795723285,"bps":1026.41},{"ts":1795723934,"bps":1044.96},{"ts":1795724662,"bps":1046.29},{"ts":1795725391,"bps":1046.29},{"ts":1795726118,"bps":851.55},{"ts":1795726725,"bps":1028.21},{"ts":1795727365,"bps":1028.21},{"ts":1795728094,"bps":1028.01},{"ts":1795728820,"bps":1027.96},{"ts":1795729546,"bps":1029.56},{"ts":1795730272,"bps":1029.56},{"ts":1795730998,"bps":1029.56},{"ts":1795731724,"bps":1029.56},{"ts":1795732449,"bps":1029.56},{"ts":1795733175,"bps":1029.25},{"ts":1795733901,"bps":1029.25},{"ts":1795734628,"bps":1029.25},{"ts":1795735355,"bps":1029.25},{"ts":1795736081,"bps":1029.25},{"ts":1795736807,"bps":1028.94},{"ts":1795737533,"bps":1028.94},{"ts":1795738258,"bps":1028.94},{"ts":1795738985,"bps":1028.94},{"ts":1795739710,"bps":1028.94},{"ts":1795740437,"bps":1028.63},{"ts":1795741162,"bps":1028.63},{"ts":1795741890,"bps":1028.63},{"ts":1795742617,"bps":1028.63},{"ts":1795743343,"bps":1028.63},{"ts":1795744069,"bps":1028.33},{"ts":1795744795,"bps":1028.33},{"ts":1795745521,"bps":1028.33},{"ts":1795746105,"bps":1028.33},{"ts":1795746833,"bps":1028.33},{"ts":1795747565,"bps":1028.02},{"ts":1795748291,"bps":1028.02},{"ts":1795749018,"bps":1028.02},{"ts":1795749743,"bps":1028.02},{"ts":1795750469,"bps":1028.02},{"ts":1795751196,"bps":1027.71},{"ts":1795751921,"bps":1027.71},{"ts":1795752647,"bps":1027.71},{"ts":1795753373,"bps":1027.71},{"ts":1795754099,"bps":1027.71},{"ts":1795754825,"bps":1027.71},{"ts":1795755550,"bps":1027.4},{"ts":1795756276,"bps":1027.4},{"ts":1795757002,"bps":1027.4},{"ts":1795757728,"bps":1027.4},{"ts":1795758453,"bps":1027.09},{"ts":1795759179,"bps":1027.09},{"ts":1795759906,"bps":1027.09},{"ts":1795760633,"bps":1027.09},{"ts":1795761358,"bps":1027.09},{"ts":1795762085,"bps":1026.79},{"ts":1795762811,"bps":1026.79}],"settles":[{"ts":1795762050,"nav":5854.652261,"par":5852.918543,"paid":0.0,"carry":0.346743,"tx":"0x1b0154a3f2bf159c05425c6ee93f135eeede077dc5e2f8042a905da39d57ce3d"},{"ts":1795758447,"nav":5852.90103,"par":5851.167305,"paid":0.0,"carry":0.346745,"tx":"0xb37720fc04f262830f438cb8845d669b253cbe349d637891f797f4991a86cb6b"},{"ts":1795754844,"nav":5851.149798,"par":5849.416068,"paid":0.0,"carry":0.346746,"tx":"0x9a80489f00a4f349115a6b396f812fdcdd488722282d9b8a2f8e23b2102c6cdb"},{"ts":1795751186,"nav":5849.398567,"par":5847.664832,"paid":0.0,"carry":0.346747,"tx":"0x4516326ec84e7b37f48b4c34e5e368d337a60a9fc3a27683cd1bb9d8dadf00f4"},{"ts":1795747535,"nav":5847.647335,"par":5845.913594,"paid":0.0,"carry":0.346748,"tx":"0xebafdbbd18aed9ca68fa54d49e5eb33277b51634612e10b8ff1928098f693437"},{"ts":1795743927,"nav":5845.896103,"par":5844.162358,"paid":0.0,"carry":0.346749,"tx":"0x33690c513d8da73c44b0ca3c9d67f1a69f6483f3d1aecf3d67d7c3090cf949c7"},{"ts":1795740268,"nav":5844.144872,"par":5842.411121,"paid":0.0,"carry":0.34675,"tx":"0x46176da139251df0490ad8a5d38e978dbfbda8d51c7b7ec4f3325f6c74e4b816"},{"ts":1795736607,"nav":5842.39364,"par":5840.659884,"paid":0.0,"carry":0.346751,"tx":"0x7979ebe6ed1671a3ced7f0db6081941871ec537c80055c2c3b8b4d69d521eebc"},{"ts":1795732944,"nav":5840.642409,"par":5838.908648,"paid":0.0,"carry":0.346752,"tx":"0x47591e7577cd0e8d1815f362c2490c7ead48681b074179f357b231992f00ac53"},{"ts":1795729281,"nav":5838.317091,"par":5838.891177,"paid":0.574086,"carry":0.0,"tx":"0x7d68665820d621cf880c50381a8f1cd62739806f8943b47a7107d3aad3f7c5c2"},{"ts":1795725670,"nav":5735.99306,"par":5838.872269,"paid":102.879209,"carry":0.0,"tx":"0xb82392daeeab34a3191f3291c28f1df0a992d1e17809b7dffb4686b86bc355d0"}]},{"addr":"0x45ADcEcE45Cade3f8850019fAcf34ed99D0DF82D","label":"Reckless","note":"\u00b11% range, 2.5% bond, built to get fired","status":"FIRED","fired":true,"firedAt":1795725671,"nav":5839.044868,"bond":2.543741,"bondBps":4.35,"minBondBps":200,"carryBps":2000,"epochStart":1795762111,"epochSeconds":3600,"lo":-887270,"hi":887270,"cum":{"strategy":0.9486101724186772,"par":0.9731765271479623,"depositor":0.9731765271479623},"totals":{"settlements":11,"beats":0,"misses":11,"paid":147.4562590000001,"take":0},"series":[{"ts":1795722049,"s":1,"p":1,"d":1,"miss":false},{"ts":1795725671,"s":0.949022,"p":0.973177,"d":0.973177,"miss":true},{"ts":1795729282,"s":0.94861,"p":0.973177,"d":0.973177,"miss":true},{"ts":1795732948,"s":0.94861,"p":0.973177,"d":0.973177,"miss":true},{"ts":1795736608,"s":0.94861,"p":0.973177,"d":0.973177,"miss":true},{"ts":1795740269,"s":0.94861,"p":0.973177,"d":0.973177,"miss":true},{"ts":1795743928,"s":0.94861,"p":0.973177,"d":0.973177,"miss":true},{"ts":1795747536,"s":0.94861,"p":0.973177,"d":0.973177,"miss":true},{"ts":1795751187,"s":0.94861,"p":0.973177,"d":0.973177,"miss":true},{"ts":1795754845,"s":0.94861,"p":0.973177,"d":0.973177,"miss":true},{"ts":1795758448,"s":0.94861,"p":0.973177,"d":0.973177,"miss":true},{"ts":1795762111,"s":0.94861,"p":0.973177,"d":0.973177,"miss":true}],"bondHist":[{"ts":1795722290,"bps":250.96},{"ts":1795722899,"bps":255.25},{"ts":1795723285,"bps":258.0},{"ts":1795723934,"bps":263.13},{"ts":1795724662,"bps":263.5},{"ts":1795725391,"bps":263.5},{"ts":1795726118,"bps":8.7},{"ts":1795726725,"bps":8.7},{"ts":1795727365,"bps":8.7},{"ts":1795728094,"bps":8.7},{"ts":1795728820,"bps":8.7},{"ts":1795729546,"bps":4.36},{"ts":1795730272,"bps":4.36},{"ts":1795730998,"bps":4.36},{"ts":1795731724,"bps":4.36},{"ts":1795732449,"bps":4.36},{"ts":1795733175,"bps":4.36},{"ts":1795733901,"bps":4.36},{"ts":1795734628,"bps":4.36},{"ts":1795735355,"bps":4.36},{"ts":1795736081,"bps":4.36},{"ts":1795736807,"bps":4.36},{"ts":1795737533,"bps":4.36},{"ts":1795738258,"bps":4.36},{"ts":1795738985,"bps":4.36},{"ts":1795739710,"bps":4.36},{"ts":1795740437,"bps":4.36},{"ts":1795741162,"bps":4.36},{"ts":1795741890,"bps":4.36},{"ts":1795742617,"bps":4.36},{"ts":1795743343,"bps":4.36},{"ts":1795744069,"bps":4.36},{"ts":1795744795,"bps":4.36},{"ts":1795745521,"bps":4.36},{"ts":1795746105,"bps":4.36},{"ts":1795746833,"bps":4.36},{"ts":1795747565,"bps":4.36},{"ts":1795748291,"bps":4.36},{"ts":1795749018,"bps":4.36},{"ts":1795749743,"bps":4.36},{"ts":1795750469,"bps":4.36},{"ts":1795751196,"bps":4.36},{"ts":1795751921,"bps":4.36},{"ts":1795752647,"bps":4.36},{"ts":1795753373,"bps":4.36},{"ts":1795754099,"bps":4.36},{"ts":1795754825,"bps":4.36},{"ts":1795755550,"bps":4.36},{"ts":1795756276,"bps":4.36},{"ts":1795757002,"bps":4.36},{"ts":1795757728,"bps":4.36},{"ts":1795758453,"bps":4.36},{"ts":1795759179,"bps":4.36},{"ts":1795759906,"bps":4.36},{"ts":1795760633,"bps":4.36},{"ts":1795761358,"bps":4.36},{"ts":1795762085,"bps":4.36},{"ts":1795762811,"bps":4.36}],"settles":[{"ts":1795762111,"nav":5839.044861,"par":5839.044868,"paid":7e-06,"carry":0.0,"tx":"0x696e1480874a6f60d22a0428f1eb315b996ee3721f39ae7aa4ebcaff94607db8"},{"ts":1795758448,"nav":5839.02739,"par":5839.027397,"paid":7e-06,"carry":0.0,"tx":"0xe8f1872e253de6419676f02b7ab135b93a6efa6e5561e701e6c59860ca302e52"},{"ts":1795754845,"nav":5839.009919,"par":5839.009926,"paid":7e-06,"carry":0.0,"tx":"0xfbc410a524a144250d03a6aa3dc4be0dab06b56fe6b86de1f3752f4f0fcc658e"},{"ts":1795751187,"nav":5838.992448,"par":5838.992455,"paid":7e-06,"carry":0.0,"tx":"0xbb1cd5a0b8a6f6f29860d884f9f97035907a878c3d585e2c5496dc4e97de8b97"},{"ts":1795747536,"nav":5838.974977,"par":5838.974984,"paid":7e-06,"carry":0.0,"tx":"0xce17e12820bfd417b078c9d4fb3cebdb26abff0c91a37f1a5f74c026f17d8776"},{"ts":1795743928,"nav":5838.957506,"par":5838.957513,"paid":7e-06,"carry":0.0,"tx":"0x30719d7d6d54e39d88d8c61457d5789a24a356ee0cd609ceaf3ae05fbd5c8d34"},{"ts":1795740269,"nav":5838.940035,"par":5838.940042,"paid":7e-06,"carry":0.0,"tx":"0xa1200e1576274c945559d2bdd189965575d9bd2216a25fecd53f7a01624f8b94"},{"ts":1795736608,"nav":5838.922564,"par":5838.922571,"paid":7e-06,"carry":0.0,"tx":"0x6cac505ff9a92f0d52f9e9e046f4812f35d6001a370773224404bc43f60ed8c3"},{"ts":1795732948,"nav":5838.905093,"par":5838.9051,"paid":7e-06,"carry":0.0,"tx":"0xed8663f9626065e49ee4272b657969a105ff882e3e87bba530096915db23278a"},{"ts":1795729282,"nav":5836.352238,"par":5838.887629,"paid":2.535391,"carry":0.0,"tx":"0x1720f60f3d0532f412e59a38edb38a6d69d8e908b36ef34e0c7401d5fd0a7ba6"},{"ts":1795725671,"nav":5693.947916,"par":5838.868721,"paid":144.920805,"carry":0.0,"tx":"0xdf4810ad8b49326d66bbe131f4b769f8bff84c7d16d9130b077f10b1c0df25ae"}]}],"price":2841.266124613183,"startPrice":3000.0};</script>
+<script>/* Shared mockup kit: formatting, charts, segmented controls. Data is window.HURDLE (inlined from the live API). */
+(() => {
+  const D = window.HURDLE;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const byLabel = Object.fromEntries(D.vaults.map(v => [v.label, v]));
+  const pct = x => (x - 1) * 100;
+  const pad2 = n => String(n).padStart(2, '0');
+  const t = ts => { const d = new Date(ts * 1000); return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`; };
+  const day = ts => new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const sign = n => (n > 0 ? '+' : n < 0 ? '−' : '');
+  const money = (n, dp = 2) => Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+
+  // "5,842.67" -> <span>5,842</span><span class="dim">.67</span>
+  function splitNum(n, dp = 2, prefix = '', suffix = '') {
+    const s = money(n, dp); const i = s.indexOf('.');
+    const whole = i < 0 ? s : s.slice(0, i), frac = i < 0 ? '' : s.slice(i);
+    return `${prefix}${whole}<span class="dim">${frac}${suffix}</span>`;
+  }
+
+  // vault facts, all derived from the API numbers
+  function facts(v) {
+    const last = v.series[v.series.length - 1];
+    const youVsPar = (v.cum.depositor - v.cum.par) * 100;
+    const stratVsPar = (v.cum.strategy - v.cum.par) * 100;
+    const hours = (v.series[v.series.length - 1].ts - v.series[0].ts) / 3600;
+    return {
+      you: pct(v.cum.depositor), par: pct(v.cum.par), strat: pct(v.cum.strategy),
+      youVsPar, stratVsPar, hours: Math.round(hours), last,
+      bondPct: v.bondBps / 100, floorPct: v.minBondBps / 100, fireAt: v.minBondBps / 200,
+      paidTotal: v.settles.reduce((a, s) => a + s.paid, 0),
+      carryTotal: v.settles.reduce((a, s) => a + s.carry, 0),
+    };
+  }
+
+  /* ---------- line chart: you (depositor) vs par vs strategy ---------- */
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (n, a = {}) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
+
+  function lineChart(host, v, o = {}) {
+    const W = host.clientWidth || 600, H = o.height || 220, R = o.axisRight ?? 44, T = 14, B = 26;
+    const S = v.series, n = S.length;
+    // relative: everything measured against par, so par is the flat target line at 0
+    const val = (p, k) => o.relative ? (k === 'p' ? 0 : (p[k] - p.p) * 100) : pct(p[k]);
+    const unit = o.relative ? '' : '%';
+    const ys = S.flatMap(p => [val(p, 's'), val(p, 'p'), val(p, 'd')]);
+    let lo = Math.min(...ys), hi = Math.max(...ys); const padY = (hi - lo) * 0.12 || 0.5; lo -= padY; hi += padY;
+    const x = i => (i / (n - 1)) * (W - R);
+    const y = val => T + (1 - (val - lo) / (hi - lo)) * (H - T - B);
+    host.innerHTML = '';
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: 'chart', role: 'img',
+      'aria-label': `${v.label}: you ${sign(pct(v.cum.depositor))}${Math.abs(pct(v.cum.depositor)).toFixed(2)}%, par ${pct(v.cum.par).toFixed(2)}%` });
+    // grid: 3 lines, labels at right like the reference
+    const step = niceStep((hi - lo) / 3);
+    for (let g = Math.ceil(lo / step) * step; g <= hi; g += step) {
+      svg.append(el('line', { x1: 0, x2: W - R + 6, y1: y(g), y2: y(g), class: 'grid' }));
+      const tx = el('text', { x: W, y: y(g) + 4, class: 'axis', 'text-anchor': 'end' }); if (o.relative && Math.abs(g) < step / 2) continue; tx.textContent = `${g > 0 ? '+' : g < 0 ? '−' : ''}${Math.abs(g).toFixed(step < 1 ? (step < .1 ? 2 : 1) : 0)}${unit}`; svg.append(tx);
+    }
+    [0, Math.floor((n - 1) / 2), n - 1].forEach((i, k) => {
+      const tx = el('text', { x: x(i), y: H - 6, class: 'axis', 'text-anchor': k === 0 ? 'start' : k === 2 ? 'end' : 'middle' }); tx.textContent = t(S[i].ts); svg.append(tx);
+    });
+    const path = key => S.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(val(p, key)).toFixed(1)}`).join('');
+    if (o.strategy !== false) svg.append(el('path', { d: path('s'), class: 'ln-strat' }));
+    svg.append(el('path', { d: path('p'), class: 'ln-par' }));
+    const you = el('path', { d: path('d'), class: 'ln-you' }); svg.append(you);
+    // misses as small marks on the par line
+    S.forEach((p, i) => { if (p.miss) svg.append(el('circle', { cx: x(i), cy: y(val(p, 'p')), r: 3, class: 'miss-dot' })); });
+    const end = S[n - 1];
+    svg.append(el('circle', { cx: x(n - 1), cy: y(val(end, 'd')), r: 4.5, class: 'end-dot' }));
+    // par end label like "$8k" target label in the reference
+    const pl = el('text', { x: W, y: y(val(end, 'p')) + (val(end, 'p') >= val(end, 'd') ? 14 : -6), class: 'axis par-lbl', 'text-anchor': 'end' }); pl.textContent = 'par';
+    if (o.parLabel !== false) svg.append(pl);
+    // scrub
+    const cur = el('line', { y1: T - 6, y2: H - B, class: 'scrub', opacity: 0 }); svg.append(cur);
+    host.append(svg);
+    if (!reduce) { const L = you.getTotalLength(); you.style.strokeDasharray = L; you.style.strokeDashoffset = L; requestAnimationFrame(() => { you.style.transition = 'stroke-dashoffset 900ms cubic-bezier(.22,1,.36,1)'; you.style.strokeDashoffset = 0; }); }
+    const tip = tipFor(host);
+    host.onpointermove = e => {
+      const r = svg.getBoundingClientRect(); const i = Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left) / r.width * W) / (W - R) * (n - 1))));
+      const p = S[i]; cur.setAttribute('x1', x(i)); cur.setAttribute('x2', x(i)); cur.setAttribute('opacity', 1);
+      if (o.relative) tip.show(x(i) / W * r.width, `${day(p.ts)}, ${t(p.ts)} UTC`, `You ${fmtPts(val(p, 'd'))} vs par`, `Curator ${fmtPts(val(p, 's'))}${p.miss ? ' · bond paid' : ''}`);
+      else tip.show(x(i) / W * r.width, `${day(p.ts)}, ${t(p.ts)} UTC`, `You ${fmtPct(pct(p.d))}`, `Par ${fmtPct(pct(p.p))} · curator ${fmtPct(pct(p.s))}${p.miss ? ' · bond paid' : ''}`);
+    };
+    host.onpointerleave = () => { cur.setAttribute('opacity', 0); tip.hide(); };
+  }
+
+  /* ---------- bar chart: each hourly settle, curator NAV minus par ---------- */
+  function barChart(host, v, o = {}) {
+    const W = host.clientWidth || 600, H = o.height || 200, R = o.axisRight ?? 44, T = 14, B = 26;
+    const S = v.settles.slice().reverse(), n = S.length;
+    const gaps = S.map(s => s.nav - s.par);
+    const m = Math.max(...gaps.map(Math.abs), 1);
+    const lo = Math.min(0, ...gaps) - m * 0.1, hi = Math.max(0, ...gaps) + m * 0.1;
+    const y = val => T + (1 - (val - lo) / (hi - lo)) * (H - T - B);
+    const bw = (W - R) / n, gap = Math.max(4, bw * 0.38);
+    host.innerHTML = '';
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: 'chart', role: 'img', 'aria-label': `${v.label}: hourly gap to par` });
+    svg.append(el('line', { x1: 0, x2: W - R + 6, y1: y(0), y2: y(0), class: 'grid zero' }));
+    [hi * 0.9, lo * 0.9].forEach(g => { if (Math.abs(g) < m * 0.2) return; const tx = el('text', { x: W, y: y(g) + 4, class: 'axis', 'text-anchor': 'end' }); tx.textContent = `${g > 0 ? '+' : '−'}$${Math.abs(g).toFixed(0)}`; svg.append(tx); });
+    const zl = el('text', { x: W, y: y(0) + 4, class: 'axis par-lbl', 'text-anchor': 'end' }); zl.textContent = 'par'; svg.append(zl);
+    const bars = S.map((s, i) => {
+      const g = gaps[i], h = Math.max(2, Math.abs(y(g) - y(0)));
+      const r = el('rect', { x: i * bw + gap / 2, width: bw - gap, y: g >= 0 ? y(0) - h : y(0), height: h, rx: Math.min(4, (bw - gap) / 2), class: g < -0.005 ? 'bar miss' : 'bar' });
+      if (!reduce) { r.style.transformOrigin = `0 ${y(0)}px`; r.style.transform = 'scaleY(0)'; r.style.transition = `transform 600ms cubic-bezier(.22,1,.36,1) ${i * 35}ms`; requestAnimationFrame(() => requestAnimationFrame(() => r.style.transform = 'scaleY(1)')); }
+      svg.append(r); return r;
+    });
+    [0, n - 1].forEach((i, k) => { const tx = el('text', { x: k ? W - R : 0, y: H - 6, class: 'axis', 'text-anchor': k ? 'end' : 'start' }); tx.textContent = t(S[i].ts); svg.append(tx); });
+    host.append(svg);
+    const tip = tipFor(host);
+    host.onpointermove = e => {
+      const r = svg.getBoundingClientRect(); const i = Math.max(0, Math.min(n - 1, Math.floor(((e.clientX - r.left) / r.width * W) / bw)));
+      bars.forEach((b, j) => b.classList.toggle('on', j === i));
+      const s = S[i], g = gaps[i];
+      tip.show(((i + 0.5) * bw) / W * r.width, `Settle ${day(s.ts)}, ${t(s.ts)}`, g >= -0.005 ? `${sign(g)}$${money(g)} vs par` : `Bond paid $${money(s.paid)}`, g >= -0.005 ? `Curator carry $${money(s.carry)}` : `Curator ${sign(g)}$${money(g)} under par`);
+    };
+    host.onpointerleave = () => { bars.forEach(b => b.classList.remove('on')); tip.hide(); };
+  }
+
+  /* ---------- dot columns (Saif's "payment rhythm") ---------- */
+  function dotChart(host, v, o = {}) {
+    // two-sided: beats rise above the par row, misses hang below it; each side scaled to its own largest hour
+    const S = v.settles.slice().reverse(); const half = o.half || 4;
+    const gaps = S.map(s => s.nav - s.par);
+    const maxUp = Math.max(...gaps.filter(g => g > 0), 1e-9), maxDn = Math.max(...S.map(s => s.paid), 1e-9);
+    host.innerHTML = ''; host.classList.add('dots');
+    S.forEach((s, i) => {
+      const g = gaps[i], miss = g < -0.005;
+      const k = Math.max(1, Math.round(Math.sqrt(miss ? s.paid / maxDn : Math.max(g, 0) / maxUp) * half));
+      const col = document.createElement('div'); col.className = 'dcol' + (miss ? ' neg' : '');
+      col.style.gridTemplateRows = `repeat(${half * 2 + 1},1fr)`;
+      col.title = `${t(s.ts)} UTC · ${miss ? `bond paid $${money(s.paid)}` : `${sign(g)}$${money(g)} vs par`}`;
+      for (let j = 0; j < half * 2 + 1; j++) {
+        const d = document.createElement('i');
+        if (j === half) d.className = 'mid';
+        else if (!miss && j < half && j >= half - k) d.className = 'on';
+        else if (miss && j > half && j <= half + k) d.className = 'on';
+        if (!reduce) d.style.transitionDelay = `${i * 40 + Math.abs(j - half) * 30}ms`;
+        col.append(d);
+      }
+      host.append(col);
+    });
+    requestAnimationFrame(() => requestAnimationFrame(() => host.classList.add('in')));
+  }
+
+  function tipFor(host) {
+    host.style.position = 'relative';
+    let tip = host.querySelector('.tip'); if (!tip) { tip = document.createElement('div'); tip.className = 'tip'; host.append(tip); }
+    return {
+      show(px, a, b, c) { tip.innerHTML = `<span>${a}</span><b>${b}</b><span>${c}</span>`; tip.style.left = Math.max(70, Math.min(host.clientWidth - 70, px)) + 'px'; tip.classList.add('on'); },
+      hide() { tip.classList.remove('on'); },
+    };
+  }
+  const niceStep = r => { const p = Math.pow(10, Math.floor(Math.log10(r))); const f = r / p; return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p; };
+  const fmtPct = n => `${sign(+n.toFixed(2))}${Math.abs(n).toFixed(2)}%`;
+  const fmtPts = n => `${sign(+n.toFixed(2))}${Math.abs(n).toFixed(2)} pts`;
+
+  /* ---------- segmented control with a sliding thumb ---------- */
+  function segmented(root, onPick) {
+    const btns = [...root.querySelectorAll('button')];
+    let thumb = root.querySelector('.thumb'); if (!thumb) { thumb = document.createElement('span'); thumb.className = 'thumb'; root.prepend(thumb); }
+    const place = b => { thumb.style.width = b.offsetWidth + 'px'; thumb.style.transform = `translateX(${b.offsetLeft}px)`; };
+    const pick = (b, fire = true) => { btns.forEach(x => x.setAttribute('aria-pressed', x === b)); place(b); if (fire && onPick) onPick(b.dataset.v, b); };
+    btns.forEach(b => b.addEventListener('click', () => pick(b)));
+    const init = btns.find(b => b.getAttribute('aria-pressed') === 'true') || btns[0];
+    requestAnimationFrame(() => { thumb.style.transition = 'none'; pick(init, false); requestAnimationFrame(() => thumb.style.transition = ''); });
+    addEventListener('resize', () => place(btns.find(b => b.getAttribute('aria-pressed') === 'true')));
+  }
+
+  /* ---------- count-up for hero numbers ---------- */
+  function rollIn(root = document) {
+    root.querySelectorAll('[data-roll]').forEach(node => {
+      const to = parseFloat(node.dataset.roll), dp = +(node.dataset.dp ?? 2), pre = node.dataset.pre || '', suf = node.dataset.suf || '';
+      const render = val => node.innerHTML = splitNum(val, dp, pre, suf);
+      if (reduce) return render(to);
+      const t0 = performance.now(), dur = 900;
+      const tick = now => { const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 4); render(to * e); if (k < 1) requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    });
+  }
+
+  // deposit window: first 5 minutes of each hourly epoch, clock starts at fetch time
+  function epochClock(v, cb) {
+    const startWall = Date.now();
+    const tick = () => {
+      const now = D.fetchedAt + Math.floor((Date.now() - startWall) / 1000);
+      const into = (now - v.epochStart) % v.epochSeconds; const open = into < 300;
+      const left = open ? 300 - into : v.epochSeconds - into;
+      cb({ open, left, label: `${pad2(Math.floor(left / 60))}:${pad2(left % 60)}`, nextSettle: v.epochSeconds - into });
+    };
+    tick(); return setInterval(tick, 1000);
+  }
+
+  function redrawOnResize(fn) { let w = innerWidth; addEventListener('resize', () => { if (innerWidth !== w) { w = innerWidth; fn(); } }); }
+
+  window.HK = { D, byLabel, facts, splitNum, money, sign, fmtPct, fmtPts, t, day, lineChart, barChart, dotChart, segmented, rollIn, epochClock, redrawOnResize, reduce,
+    short: a => a.slice(0, 6) + '…' + a.slice(-4) };
+})();
+</script>
+<script>
+const {D,byLabel,facts,splitNum,money,sign,fmtPct,fmtPts,t,day,lineChart,barChart,segmented,rollIn,epochClock,redrawOnResize,short}=HK;
+const icon={Patient:'P',Chaser:'C',Reckless:'R'};
+const ethMove=(D.price/D.startPrice-1)*100;
+
+/* hero */
+const P=byLabel.Patient, pf=facts(P);
+document.getElementById('hChip').textContent=`above par`;
+document.getElementById('hBig').innerHTML=`<span data-roll="${pf.youVsPar.toFixed(2)}" data-dp="2" data-pre="+">+0.00</span><small>pts</small>`;
+document.getElementById('hSub').textContent=`You ${fmtPct(pf.you)} · par ${fmtPct(pf.par)} · ETH ${fmtPct(ethMove)} over ${pf.hours} hours`;
+document.getElementById('hStats').innerHTML=`
+ <div><i style="background:var(--par)"></i>Hours beat<b class="num">${P.totals.beats} of ${P.totals.settlements}</b></div>
+ <div><i style="background:var(--miss)"></i>Bond paid you<b class="num">$${money(pf.paidTotal)}</b></div>
+ <div><i style="background:var(--ink)"></i>Bond left<b class="num">$${money(P.bond,0)}</b></div>`;
+
+/* list */
+const rows=document.getElementById('rows');
+rows.innerHTML=D.vaults.map(v=>{const f=facts(v),fired=v.status==='FIRED';return `
+<button class="row" data-label="${v.label}" data-status="${v.status}" aria-current="${v.label==='Patient'}">
+  <span class="who"><span class="ic mono">${icon[v.label]}</span><span style="min-width:0"><b>${v.label}</b><span>${v.note}</span></span></span>
+  <span class="amt c-hide ${f.youVsPar<0?'':''}">${fmtPts(f.youVsPar)}<small>${fired?'tracks par':'you vs par'}</small></span>
+  <span class="amt c-hide">${v.totals.beats}<span class="dim"> / ${v.totals.settlements}</span><small>${v.totals.misses} missed</small></span>
+  <span class="bondbar c-hide"><span class="amt">${(v.bondBps/100).toFixed(2)}%</span><span class="mini ${fired?'low':''}"><i style="width:${Math.min(100,v.bondBps/100/12*100)}%"></i></span></span>
+  <span class="amt">$${money(v.nav,0)}<small style="margin-top:2px"><span class="pill ${fired?'down':'up'}">${fired?'Fired · passive':'Active'}</span></small></span>
+  <span class="chev" aria-hidden="true">›</span>
+</button>`}).join('');
+segmented(document.getElementById('filter'),val=>rows.querySelectorAll('.row').forEach(r=>r.hidden=!(val==='all'||r.dataset.status===val)));
+rows.addEventListener('click',e=>{const r=e.target.closest('.row');if(!r)return;rows.querySelectorAll('.row').forEach(x=>x.setAttribute('aria-current',x===r));show(r.dataset.label);document.getElementById('detail').scrollIntoView({behavior:HK.reduce?'auto':'smooth'})});
+
+/* detail */
+let cur=P, mode='line', showAll=false, hf='all', clock;
+function show(label){
+  cur=byLabel[label]; const v=cur,f=facts(v),fired=v.status==='FIRED';
+  document.getElementById('dIc').textContent=icon[v.label];
+  document.getElementById('dh').textContent=v.label;
+  document.getElementById('dNote').textContent=v.note;
+  document.getElementById('dAddr').textContent=short(v.addr);
+  const st=document.getElementById('dStatus');st.className='pill '+(fired?'down':'up');st.textContent=fired?`Fired ${day(v.firedAt)}, ${t(v.firedAt)} · parked passive`:'Active';
+  // bond
+  const bc=document.getElementById('bChip');bc.className='pill '+(fired?'down':'grey');bc.textContent=fired?'Below fire line':'Above floor';
+  document.getElementById('bBig').innerHTML=`${splitNum(v.bond)}<small>mUSDC</small>`;
+  const scaleMax=12; document.getElementById('bScale').className='scale'+(fired?' low':'');
+  requestAnimationFrame(()=>document.getElementById('bFill').style.width=Math.max(.6,Math.min(100,f.bondPct/scaleMax*100))+'%');
+  document.getElementById('bFloor').style.left=(f.floorPct/scaleMax*100)+'%';
+  document.getElementById('bPct').textContent=f.bondPct.toFixed(2)+'%';
+  document.getElementById('bFl').textContent=f.floorPct.toFixed(0)+'%';
+  const cap=v.bond/(v.minBondBps/1e4);
+  document.getElementById('bKv').innerHTML=fired?`
+   <div><dt>Paid to depositors</dt><dd class="num">$${money(f.paidTotal)}</dd></div>
+   <div><dt>Fired at</dt><dd class="num">${day(v.firedAt)}, ${t(v.firedAt)} UTC</dd></div>
+   <div><dt>Now</dt><dd>Passive full range, equal to par</dd></div>`:`
+   <div><dt>Paid to depositors</dt><dd class="num">$${money(f.paidTotal)}</dd></div>
+   <div><dt>Curator carry earned</dt><dd class="num">$${money(f.carryTotal)}</dd></div>
+   <div><dt>Deposit cap (bond ÷ ${f.floorPct}%)</dt><dd class="num">$${money(cap,0)}</dd></div>`;
+  // history
+  renderHist();
+  // deposit
+  clearInterval(clock);
+  const room=Math.max(0,cap-v.nav);
+  clock=epochClock(v,c=>{
+    const w=document.getElementById('wChip'),b=document.getElementById('depBtn');
+    if(fired){w.className='pill up';w.textContent='Open while parked';b.disabled=false;b.textContent='Deposit';return}
+    w.className='pill '+(c.open?'up':'grey');w.textContent=c.open?`Open · ${c.label} left`:`Opens in ${c.label}`;
+    if(!b.classList.contains('done')){b.textContent=c.open?'Deposit':`Deposit at next window`;}
+  });
+  document.getElementById('depNote').textContent=fired?'This vault now holds the passive position. Your return is par.':`Deposits open in the first 5 minutes of each hour. Room left: $${money(room,0)}.`;
+  updateSplit(); drawChart();
+}
+function updateSplit(){
+  const val=parseFloat(document.getElementById('amt').value.replace(/,/g,''))||0;
+  document.getElementById('split').innerHTML=`<span>You send</span><span><b class="num">${(val/2/D.price).toFixed(4)}</b> mWETH + <b class="num">${money(val/2)}</b> mUSDC</span>`;
+}
+document.getElementById('amt').addEventListener('input',updateSplit);
+document.getElementById('depBtn').addEventListener('click',e=>{const b=e.currentTarget;b.classList.add('done');b.textContent='✓ Queued for the next window';setTimeout(()=>{b.classList.remove('done');show(cur.label)},2200)});
+function renderHist(){
+  const v=cur, src=hf==='miss'?v.settles.filter(s=>s.nav-s.par<-0.005):v.settles, list=showAll?src:src.slice(0,5);
+  document.getElementById('hCount').textContent=`${v.totals.settlements} settles · ${v.totals.misses} missed`;
+  document.getElementById('evs').innerHTML=list.map(s=>{const g=s.nav-s.par,miss=g<-0.005;return `
+   <div class="ev"><span class="ic">${miss?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D9481F" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>':'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'}</span>
+    <span><b>${miss?'Missed par':'Beat par'}</b><span>${day(s.ts)}, ${t(s.ts)} UTC · ${miss?`<span class="late">${sign(g)}$${money(g)} under par</span>`:`${sign(g)}$${money(g)} over par`}</span></span>
+    <span class="r"><b class="amt">${miss?'+$'+money(s.paid):'$'+money(s.carry)}</b><span class="pill ${miss?'down':'grey'}">${miss?'Bond paid you':'Curator carry'}</span></span></div>`}).join('');
+  const mb=document.getElementById('moreBtn');mb.hidden=src.length<=5;mb.textContent=showAll?'Show fewer':`View all ${src.length}`;
+}
+document.getElementById('moreBtn').addEventListener('click',()=>{showAll=!showAll;renderHist()});
+function drawChart(){
+  const v=cur,f=facts(v),host=document.getElementById('cPlot');
+  const chip=document.getElementById('cChip');
+  if(mode==='line'){
+    document.getElementById('cLbl').textContent='You vs par';
+    chip.className='pill '+(f.youVsPar>=0?'up':'down');chip.textContent=f.youVsPar>=0.005?'above par':'at par';
+    document.getElementById('cBig').innerHTML=`<span data-roll="${Math.abs(f.youVsPar).toFixed(2)}" data-pre="${f.youVsPar>=0?'+':'−'}">0.00</span><small>pts</small>`;
+    document.getElementById('cSub').textContent=`You ${fmtPct(f.you)} · par ${fmtPct(f.par)} · curator ${fmtPct(f.strat)} over ${f.hours} hours`;
+    document.getElementById('cLeg').innerHTML='<span><i class="sw"></i>You</span><span><i class="sw par"></i>Par</span><span><i class="sw strat"></i>Curator</span>';
+    lineChart(host,v,{height:240,relative:true});
+  }else{
+    document.getElementById('cLbl').textContent='Curator vs par, each hour';
+    chip.className='pill '+(v.totals.misses?'down':'up');chip.textContent=`${v.totals.misses} missed`;
+    document.getElementById('cBig').innerHTML=`<span data-roll="${f.paidTotal.toFixed(2)}" data-pre="$">0.00</span><small>bond paid</small>`;
+    document.getElementById('cSub').textContent=`Grey: curator beat par, kept 20% of the extra · orange: missed, the bond paid the gap`;
+    document.getElementById('cLeg').innerHTML='<span><i class="sw box"></i>Beat par</span><span><i class="sw box miss"></i>Missed, bond paid</span>';
+    barChart(host,v,{height:240});
+  }
+  rollIn(document.getElementById('detail'));
+}
+segmented(document.getElementById('hf'),val=>{hf=val;showAll=false;renderHist()});
+segmented(document.getElementById('mode'),val=>{mode=val;drawChart()});
+
+lineChart(document.getElementById('hPlot'),P,{height:180,relative:true});
+rollIn(document.getElementById('heroCard'));
+show('Patient');
+redrawOnResize(()=>{lineChart(document.getElementById('hPlot'),P,{height:180,relative:true});drawChart()});
+document.getElementById('foot').textContent=`Live numbers from hurdle-app.onrender.com/api/vaults, Unichain Sepolia testnet, read ${day(D.fetchedAt)} ${t(D.fetchedAt)} UTC. Amounts in mUSDC (test dollars).`;
+</script>
+</body>
+</html>
