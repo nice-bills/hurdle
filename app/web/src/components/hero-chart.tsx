@@ -48,7 +48,7 @@ export function HeroChart() {
   return (
     <figure className="m-0">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-        <Legend items={[{ label: "Par: passive full-range LP", kind: "par" }, { label: "Patient depositors", kind: "solid", color: "var(--ink)" }, { label: "Patient strategy NAV", kind: "dash", color: "var(--ink-2)" }]} />
+        <Legend items={[{ label: "Par: passive full-range LP", kind: "par" }, { label: "Patient depositors", kind: "solid", color: "var(--you)" }, { label: "Patient strategy NAV", kind: "dash", color: "var(--ink-2)" }]} />
       </div>
       <ParChart
         t={t}
@@ -60,7 +60,7 @@ export function HeroChart() {
         lines={[
           { id: "par", label: "Par", values: P.map((p) => p.par - 1), color: "var(--bar)", kind: "par" },
           { id: "nav", label: "NAV", values: P.map((p) => p.vaults.patient.nav - 1), color: "var(--ink-2)", kind: "dash" },
-          { id: "dep", label: "Depositors", values: P.map((p) => p.vaults.patient.depositor - 1), color: "var(--ink)", kind: "solid" },
+          { id: "dep", label: "Depositors", values: P.map((p) => p.vaults.patient.depositor - 1), color: "var(--you)", kind: "solid" },
         ]}
         tooltip={(i) => (
           <div className="space-y-0.5">
