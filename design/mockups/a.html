@@ -74,7 +74,7 @@ h2{font-weight:900;font-stretch:118%;text-transform:uppercase;letter-spacing:-.0
 .scores div:last-child{border:0}
 .scores .k{font:500 11px 'IBM Plex Mono',monospace;color:var(--mute);text-transform:uppercase}
 .scores .v{font-weight:900;font-stretch:115%;font-size:30px;letter-spacing:-.02em;margin-top:4px}
-.meter{position:relative;height:16px;border-radius:3px;background:repeating-linear-gradient(90deg,#0000 0 9px,#0001 9px 10px),#ece9de;margin:14px 0 26px}
+.meter{position:relative;height:16px;border-radius:3px;margin-top:30px!important;background:repeating-linear-gradient(90deg,#0000 0 9px,#0001 9px 10px),#ece9de;margin:14px 0 26px}
 .meter .fill{position:absolute;inset:0 auto 0 0;background:repeating-linear-gradient(135deg,var(--ink) 0 3px,#3a3a34 3px 6px);border-radius:3px}
 .meter .tick{position:absolute;top:-6px;bottom:-6px;width:2px}
 .meter .tick span{position:absolute;top:24px;left:50%;transform:translateX(-50%);white-space:nowrap;font:500 10px 'IBM Plex Mono',monospace}
@@ -292,11 +292,11 @@ $('settles').innerHTML = v.settles.slice().reverse().map(r => `<tr>
   <td>${hhmm(r.ts)}</td><td>${r.miss ? '<span class="chip loss">▼ Miss</span>' : '<span class="chip win">▲ Beat</span>'}</td>
   <td>${fmt(r.nav)}</td><td class="hide-sm">${fmt(r.bench)}</td>
   <td style="color:${r.diff < 0 ? 'var(--loss)' : 'var(--win)'}">${sign(r.diff)}</td><td>${r.paid > 0 ? fmt(r.paid) : '—'}</td></tr>`).join('');
-$('bondv').innerHTML = `${fmt(v.bond)} <span style="font-size:14px;font-weight:500;color:var(--mute)">mUSDC · ${v.bondPct.toFixed(1)}% of NAV</span>`;
+$('bondv').innerHTML = `${fmt(v.bond)} <span style="font-size:14px;font-weight:500;color:var(--mute)">mUSDC</span><div class="kicker" style="margin-top:4px">${v.bondPct.toFixed(1)}% of NAV</div>`;
 const scale = 12; // meter shows 0–12% of NAV
 $('meter').innerHTML = `<div class="fill" style="width:${Math.min(100, v.bondPct / scale * 100)}%"></div>
   <div class="tick" style="left:${1/scale*100}%;background:var(--loss)"><span style="color:var(--loss)">FIRE 1%</span></div>
-  <div class="tick" style="left:${2/scale*100}%;background:var(--amber)"><span style="color:var(--amber-ink);top:-16px">FLOOR 2%</span></div>`;
+  <div class="tick" style="left:${2/scale*100}%;background:var(--amber)"><span style="color:var(--amber-ink);top:-18px">FLOOR 2%</span></div>`;
 $('bpaid').textContent = fmt(v.paid) + ' mUSDC';
 $('bcap').textContent = fmt(v.bond / 0.02, 0) + ' mUSDC';
 $('shares').textContent = '≈ 2,881.7 shares';

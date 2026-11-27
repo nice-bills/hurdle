@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hurdle — C · Instrument</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400..900&family=Martian+Mono:wdth,wght@75..100,300..600&display=swap" rel="stylesheet">
+<style>
+:root{--al:#dcdad4;--al2:#cfccc4;--ink:#1d1d1b;--mute:#6f6c64;--edge:#b5b2a9;--amber:#f2a516;--signal:#e8590c;--win:#1f7a45;--loss:#b8321d;--glass:#1a1c19;--phos:#cfe8c4}
+*{box-sizing:border-box}
+body{margin:0}
+.page{color:var(--ink);font-family:'Schibsted Grotesk',system-ui,sans-serif;border-radius:14px;overflow:hidden;background-color:var(--al);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.mono{font-family:'Martian Mono',ui-monospace,monospace;font-stretch:80%}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:1140px;margin:0 auto;padding:0 24px}
+.lbl{font:500 10px 'Martian Mono',monospace;font-stretch:80%;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+/* raised plate: edges + shadow, no colour gradient */
+.plate{background:#e6e4de;border-radius:16px;box-shadow:0 1px 0 #fff inset,0 -1px 0 #0000001a inset,0 1px 2px #0000001f,0 8px 20px -10px #0000004d;padding:20px;position:relative}
+.plate .screw{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--al2);box-shadow:inset 0 1px 1px #0004,0 1px 0 #fff}
+.plate .screw::after{content:"";position:absolute;left:1px;right:1px;top:4px;height:1px;background:#0005;transform:rotate(35deg)}
+.s1{top:10px;left:10px}.s2{top:10px;right:10px}.s3{bottom:10px;left:10px}.s4{bottom:10px;right:10px}
+.screen{background:var(--glass);border-radius:10px;box-shadow:inset 0 2px 6px #000c,0 1px 0 #fff;color:var(--phos);padding:14px;position:relative;overflow:hidden;
+  background-image:linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px);background-size:20px 20px}
+.screen::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,#0000 0 2px,#00000038 2px 3px);pointer-events:none}
+nav{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;letter-spacing:-.02em}
+.led{width:8px;height:8px;border-radius:50%;background:var(--signal);box-shadow:0 0 0 2px #0000000f,0 0 8px var(--signal)}
+.led.g{background:#3bd16f;box-shadow:0 0 0 2px #0000000f,0 0 8px #3bd16f}
+.led.off{background:#8a877f;box-shadow:inset 0 1px 1px #0006}
+.key{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:10px;padding:12px 18px;font:700 14px 'Schibsted Grotesk',sans-serif;cursor:pointer;color:var(--ink);background:#ecebe6;box-shadow:0 1px 0 #fff inset,0 2px 0 var(--edge),0 3px 6px #0003;text-decoration:none}
+.key.go{background:var(--ink);color:#f3f1ea;box-shadow:0 1px 0 #ffffff30 inset,0 3px 0 #000,0 4px 10px #0005}
+.key:active{transform:translateY(2px);box-shadow:0 1px 0 var(--edge)}
+.hero{display:grid;grid-template-columns:1.1fr 1fr;gap:28px;align-items:center;padding:28px 0 40px}
+h1{font-size:clamp(42px,6.4vw,82px);line-height:.92;letter-spacing:-.045em;font-weight:900;margin:12px 0 18px}
+h1 u{text-decoration:none;box-shadow:inset 0 -.14em 0 var(--amber)}
+.lede{font-size:18px;line-height:1.5;color:#3c3a35;margin:0 0 24px;max-width:31em}
+.readouts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+.readouts .screen{padding:10px 12px}
+.readouts .v{font:500 22px 'Martian Mono',monospace;font-stretch:75%;color:#ffcf6e;text-shadow:0 0 8px #f2a51680;margin-top:4px}
+.readouts .lbl{color:#8d9a86}
+section{padding:36px 0}
+h2{font-size:30px;font-weight:800;letter-spacing:-.03em;margin:0}
+.shead{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.modules{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.mod{padding:26px 20px 20px}
+.mod .top{display:flex;justify-content:space-between;align-items:center}
+.mod .nm{font-size:24px;font-weight:800;letter-spacing:-.02em}
+.mod .dial{margin:10px auto 2px;max-width:240px}
+.mod .rd{display:flex;justify-content:space-between;border-top:1px solid #0000001a;padding-top:12px;margin-top:6px}
+.mod .rd .v{font:500 16px 'Martian Mono',monospace;font-stretch:80%}
+.mod.fired{background:#dedbd3}
+.stamp{font:600 11px 'Martian Mono',monospace;letter-spacing:.12em;color:var(--loss);border:2px solid var(--loss);padding:3px 8px;border-radius:4px;transform:rotate(-6deg);display:inline-block}
+.grid2{display:grid;grid-template-columns:1fr 360px;gap:20px;align-items:start}.grid2>*{min-width:0}
+.dhead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.dhead h3{margin:0;font-size:44px;font-weight:900;letter-spacing:-.04em}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font:500 10px 'Martian Mono',monospace;font-stretch:80%;letter-spacing:.06em;color:#8d9a86;text-transform:uppercase}
+.legend i{display:inline-block;width:14px;height:3px;margin-right:6px;vertical-align:2px}
+.tape{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 12px;scroll-snap-type:x mandatory}
+.ticket{flex:0 0 132px;scroll-snap-align:start;background:#f4f2ec;border-radius:8px;padding:12px;position:relative;box-shadow:0 1px 2px #0002;
+  -webkit-mask:radial-gradient(circle 6px at 0 50%,#0000 98%,#000) left/51% 100% no-repeat,radial-gradient(circle 6px at 100% 50%,#0000 98%,#000) right/51% 100% no-repeat;
+  mask:radial-gradient(circle 6px at 0 50%,#0000 98%,#000) left/51% 100% no-repeat,radial-gradient(circle 6px at 100% 50%,#0000 98%,#000) right/51% 100% no-repeat}
+.ticket .t{font:500 11px 'Martian Mono',monospace;font-stretch:80%;color:var(--mute)}
+.ticket .r{font-weight:800;font-size:13px;margin:6px 0 2px;letter-spacing:.04em}
+.ticket .d{font:500 18px 'Martian Mono',monospace;font-stretch:75%}
+.ticket .p{font:400 10px 'Martian Mono',monospace;font-stretch:80%;color:var(--mute);margin-top:6px;border-top:1px dashed #0003;padding-top:6px}
+.navlinks{display:flex;gap:22px}.tube{display:flex;gap:16px;align-items:stretch}
+.glass{width:46px;height:220px;border-radius:23px;background:#d3d0c8;box-shadow:inset 0 2px 6px #0004,0 1px 0 #fff;position:relative;overflow:hidden}
+.glass .lvl{position:absolute;left:5px;right:5px;bottom:5px;border-radius:18px;background:repeating-linear-gradient(0deg,var(--ink) 0 2px,#3a3935 2px 4px)}
+.scale{position:relative;flex:1;font:500 10px 'Martian Mono',monospace;font-stretch:80%}
+.scale div{position:absolute;left:0;right:0;border-top:1px solid #0003;padding-top:2px}
+.kv{display:flex;justify-content:space-between;font-size:13px;color:var(--mute);padding:6px 0}
+.kv b{color:var(--ink);font-weight:600}
+.switch{display:flex;background:#cfccc4;border-radius:10px;padding:4px;box-shadow:inset 0 1px 3px #0003;margin-bottom:14px}
+.switch button{flex:1;border:0;background:none;padding:9px;border-radius:7px;font:700 13px 'Schibsted Grotesk';color:var(--mute);cursor:pointer}
+.switch .on{background:#efeee9;color:var(--ink);box-shadow:0 1px 0 #fff inset,0 1px 3px #0003}
+.well{background:#efeee9;border-radius:10px;box-shadow:inset 0 1px 3px #0003;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.well input{background:none;border:0;outline:none;font:500 24px 'Martian Mono',monospace;font-stretch:75%;width:62%;color:var(--ink)}
+.well span{font-weight:700;font-size:13px}
+.guard{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.45;margin:12px 0}
+.key.full{width:100%;padding:15px}
+footer{padding:16px 0 26px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+@media (max-width:900px){.hero,.grid2{grid-template-columns:1fr}.modules{grid-template-columns:1fr}.navlinks{display:none}}
+@media (max-width:520px){.wrap{padding:0 14px}.readouts{grid-template-columns:1fr 1fr}.readouts>div:last-child{grid-column:1/-1}.dhead h3{font-size:34px}.plate{padding:16px}.hide-sm{display:none}}
+</style>
+</head>
+<body>
+<div class="page">
+<div class="wrap">
+  <nav>
+    <div class="logo"><span class="led"></span>HURDLE <span class="lbl hide-sm" style="margin-left:6px">Model H-1 · v4 hook</span></div>
+    <div class="navlinks lbl"><span>Vaults</span><span>Curate</span><span>Keepers</span><span>Docs</span></div>
+    <button class="key">Connect</button>
+  </nav>
+
+  <div class="hero">
+    <div>
+      <div class="lbl"><span class="led g" style="display:inline-block;margin-right:8px;vertical-align:-1px"></span>Live on Unichain Sepolia</div>
+      <h1>A meter for your<br>LP curator. <u>Par</u> is zero.</h1>
+      <p class="lede">The pool measures every curator against a passive LP each hour. Needle right: the curator earns carry. Needle left: their bond pays you back. Too far left: fired.</p>
+      <a class="key go" href="#mods">Open the panel</a> <a class="key" href="#">Read the math</a>
+    </div>
+    <div class="plate">
+      <i class="screw s1"></i><i class="screw s2"></i><i class="screw s3"></i><i class="screw s4"></i>
+      <div class="lbl" style="text-align:center;margin:2px 0 4px">Depositors vs par · all vaults</div>
+      <div id="bigdial"></div>
+      <div class="readouts num" id="readouts"></div>
+    </div>
+  </div>
+
+  <section id="mods">
+    <div class="shead"><h2>Vaults</h2><span class="lbl">Needle = curator's strategy vs par, ±3 pts</span></div>
+    <div class="modules" id="mods-in"></div>
+  </section>
+
+  <section>
+    <div class="grid2">
+      <div class="plate">
+        <i class="screw s1"></i><i class="screw s2"></i><i class="screw s3"></i><i class="screw s4"></i>
+        <div class="dhead"><div><div class="lbl" id="dmeta"></div><h3 id="dname"></h3></div><div style="display:flex;gap:8px;align-items:center"><span class="led g"></span><b style="font-size:13px">ACTIVE</b></div></div>
+        <div class="screen">
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;position:relative;z-index:1;margin-bottom:6px">
+            <span class="lbl" style="color:#8d9a86">CH1 Strategy · CH2 Par · CH3 Depositor · indexed 100</span>
+            <div class="legend"><span><i style="background:#ffcf6e"></i>Par</span><span><i style="background:#e9e6dc"></i>Strategy</span><span><i style="background:#7fe39f"></i>Depositor</span></div></div>
+          <div id="chart"></div>
+          <div class="readouts num" id="dread" style="position:relative;z-index:1"></div>
+        </div>
+        <div class="shead" style="margin:22px 0 10px"><b style="font-size:16px">Settle tape</b><span class="lbl">newest first · scroll →</span></div>
+        <div class="tape num" id="tape"></div>
+      </div>
+      <div style="display:grid;gap:20px">
+        <div class="plate">
+          <i class="screw s1"></i><i class="screw s2"></i><i class="screw s3"></i><i class="screw s4"></i>
+          <div class="lbl">Bond reservoir</div>
+          <div style="font:500 30px 'Martian Mono',monospace;font-stretch:75%;margin:8px 0 14px" class="num" id="bond"></div>
+          <div class="tube"><div class="glass"><div class="lvl" id="lvl"></div></div><div class="scale" id="scale"></div></div>
+          <div style="height:12px"></div>
+          <div class="kv"><span>Paid to depositors</span><b class="num" id="bpaid"></b></div>
+          <div class="kv"><span>Keeper settles</span><b class="num" id="kr"></b></div>
+        </div>
+        <div class="plate">
+          <i class="screw s1"></i><i class="screw s2"></i><i class="screw s3"></i><i class="screw s4"></i>
+          <div class="switch"><button class="on">Deposit</button><button>Withdraw</button></div>
+          <div class="well"><input class="num" value="0.50" aria-label="mWETH"><span>mWETH</span></div>
+          <div class="well"><input class="num" value="1,420.49" aria-label="mUSDC"><span>mUSDC</span></div>
+          <div class="kv"><span>Shares out</span><b class="num">≈ 2,881.7</b></div>
+          <div class="kv"><span>TWAP</span><b class="num" id="twap"></b></div>
+          <div class="guard"><span class="led" style="flex:none;margin-top:5px;background:var(--amber);box-shadow:0 0 8px var(--amber)"></span><span><b>Floored at par.</b> If Chaser misses, its bond pays you the gap at the next settle.</span></div>
+          <div class="guard" style="margin-top:0"><span class="led off" style="flex:none;margin-top:5px"></span><span style="color:var(--mute)">Deposit window closed. Opens at :00 for 5 min.</span></div>
+          <button class="key go full">Deposit</button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <footer class="lbl"><span>Live API snapshot · <span id="upd"></span></span><span>Keepers earn 5% of carry</span></footer>
+</div>
+</div>
+<script>window.HURDLE={"patient":{"address":"0x22e97BDB1E4B29033b729B0B7B6D59B56C9d095B","label":"Patient","note":"\u00b110% wide range, re-centered by the demo bot near its edges","curator":"0xa9b480c2694aa3f16cd109fcd2c91acbf3bc689f","status":"ACTIVE","fired":false,"parked":false,"nav":5842.29351,"bond":600.0,"bondBps":1026.99,"deficit":0.0,"carryBps":2000,"minBondBps":200,"lo":-197200,"hi":-195300,"epochStart":1795758386,"firedAt":0,"cumulative":{"strategy":0.9652958925057396,"par":0.9731459963288577,"depositor":0.9735804782198474,"strategyUsd":0.9652958925057396,"parUsd":0.9731459963288577,"depositorUsd":0.9735804782198474},"totals":{"settlements":10,"shortfallPaid":"50331305","take":"651762","carry":"0","beats":9,"misses":1,"shortfallPaidUsd":50.331305,"takeUsd":0.6517619999999998,"carryUsd":0},"series":[{"ts":1795722017,"strategy":1,"par":1,"depositor":1,"vsPar":0,"miss":false,"price":3000.0000000000005},{"ts":1795725666,"strategy":0.9647574454941262,"par":0.9731459963288577,"depositor":0.9731459963288577,"vsPar":-0.00862003323897631,"miss":true,"price":2840.9820264105424},{"ts":1795729280,"strategy":0.9648216108676292,"par":0.9731459963288577,"depositor":0.9731977749945251,"vsPar":6.650933227070333e-05,"miss":false,"price":2840.9820264105424},{"ts":1795732943,"strategy":0.964880897498729,"par":0.9731459963288577,"depositor":0.9732456160601257,"vsPar":6.144828270016056e-05,"miss":false,"price":2840.9820264105424},{"ts":1795736546,"strategy":0.9649401834567507,"par":0.9731459963288577,"depositor":0.9732934560613462,"vsPar":6.144380946437877e-05,"miss":false,"price":2840.9820264105424},{"ts":1795740207,"strategy":0.9649994694026213,"par":0.9731459963288577,"depositor":0.9733412954982382,"vsPar":6.14400217620048e-05,"miss":false,"price":2840.9820264105424},{"ts":1795743866,"strategy":0.9650587546754213,"par":0.9731459963288577,"depositor":0.9733891337042154,"vsPar":6.143554963489173e-05,"miss":false,"price":2840.9820264105424},{"ts":1795747474,"strategy":0.9651180397708368,"par":0.9731459963288577,"depositor":0.9734369711793026,"vsPar":6.143159173288559e-05,"miss":false,"price":2840.9820264105424},{"ts":1795751125,"strategy":0.9651773243584165,"par":0.9731459963288577,"depositor":0.9734848077568993,"vsPar":6.142729193392427e-05,"miss":false,"price":2840.9820264105424},{"ts":1795754783,"strategy":0.965236608438154,"par":0.9731459963288577,"depositor":0.9735326432704126,"vsPar":6.142299268874218e-05,"miss":false,"price":2840.9820264105424},{"ts":1795758386,"strategy":0.9652958925057396,"par":0.9731459963288577,"depositor":0.9735804782198474,"vsPar":6.14192075469866e-05,"miss":false,"price":2840.9820264105424}],"settles":[{"ts":1795758386,"block":68905958,"tx":"0x5621a95ea48615ee748d647f1023bb23eba150770bccc203120070078964f5bd","nav":5842.29351,"bench":5841.934703,"bond":600.0,"paid":0.0,"take":0.071761},{"ts":1795754783,"block":68902355,"tx":"0xbae5e118eb3b77dd190eeb99bb698e9275261db93c609c48134982f02566db83","nav":5841.917224,"bench":5841.558418,"bond":600.0,"paid":0.0,"take":0.071761},{"ts":1795751125,"block":68898697,"tx":"0xb35e27ce67a571d982e4872fb4f3d53846d55148f6f0f24319e9e333669073da","nav":5841.540939,"bench":5841.182131,"bond":600.0,"paid":0.0,"take":0.071761},{"ts":1795747474,"block":68895046,"tx":"0x4574011acb3d7afca1a9c1a37ea5244eaab9be6339b7080033e393c782772f57","nav":5841.164654,"bench":5840.805844,"bond":600.0,"paid":0.0,"take":0.071762},{"ts":1795743866,"block":68891438,"tx":"0xf04f1a849683a1b61060fc8a2d52c06af26bb9f6fa3d2b05ad19981d8329b817","nav":5840.788368,"bench":5840.429558,"bond":600.0,"paid":0.0,"take":0.071762},{"ts":1795740207,"block":68887779,"tx":"0x6005fd10501f2ffe2d3cd378e73ad3f29e084bab8f3bb06478a265bc42289e58","nav":5840.412083,"bench":5840.05327,"bond":600.0,"paid":0.0,"take":0.071762},{"ts":1795736546,"block":68884118,"tx":"0x889b536863faec95a3d8f25e6169f0cca0b53f8f39e174eba87caa7e28a09022","nav":5840.035797,"bench":5839.676985,"bond":600.0,"paid":0.0,"take":0.071762},{"ts":1795732943,"block":68880515,"tx":"0x70ebcf3f3b9b1291ea02799dab410b5e5a59d7a3681397cbfaa37c5e948aa8ec","nav":5839.659512,"bench":5839.300697,"bond":600.0,"paid":0.0,"take":0.071763},{"ts":1795729280,"block":68876852,"tx":"0xa4c63114bb30c40781a41e84845b7b734c9b30f901c872253fe526bcc5f96069","nav":5839.283226,"bench":5838.894885,"bond":600.0,"paid":0.0,"take":0.077668},{"ts":1795725666,"block":68873238,"tx":"0xe72b13af832d81b880a0a8bcda90ace58b70eb76010dc54e77c9cde45e8b4e95","nav":5788.544672,"bench":5838.875977,"bond":549.668695,"paid":50.331305,"take":0.0}],"other":[{"name":"SettlerPaid","ts":1795758386,"tx":"0x5621a95ea48615ee748d647f1023bb23eba150770bccc203120070078964f5bd"},{"name":"SettlerPaid","ts":1795754783,"tx":"0xbae5e118eb3b77dd190eeb99bb698e9275261db93c609c48134982f02566db83"},{"name":"SettlerPaid","ts":1795751125,"tx":"0xb35e27ce67a571d982e4872fb4f3d53846d55148f6f0f24319e9e333669073da"},{"name":"SettlerPaid","ts":1795747474,"tx":"0x4574011acb3d7afca1a9c1a37ea5244eaab9be6339b7080033e393c782772f57"},{"name":"SettlerPaid","ts":1795743866,"tx":"0xf04f1a849683a1b61060fc8a2d52c06af26bb9f6fa3d2b05ad19981d8329b817"},{"name":"SettlerPaid","ts":1795740207,"tx":"0x6005fd10501f2ffe2d3cd378e73ad3f29e084bab8f3bb06478a265bc42289e58"},{"name":"SettlerPaid","ts":1795736546,"tx":"0x889b536863faec95a3d8f25e6169f0cca0b53f8f39e174eba87caa7e28a09022"},{"name":"SettlerPaid","ts":1795732943,"tx":"0x70ebcf3f3b9b1291ea02799dab410b5e5a59d7a3681397cbfaa37c5e948aa8ec"},{"name":"SettlerPaid","ts":1795729280,"tx":"0xa4c63114bb30c40781a41e84845b7b734c9b30f901c872253fe526bcc5f96069"},{"name":"BondPosted","ts":1795726241,"tx":"0xfc720161e75786a3a1c390a2b23d4b385115ed47c197b1dba7b839b78285d0f4"},{"name":"Rebalanced","ts":1795723838,"tx":"0xfd612cfdaaa3821e93f9ea926dad1d4084d10970c0a3f7601dd6b65c7a12dbd3"},{"name":"Rebalanced","ts":1795722020,"tx":"0x797221aae45a826c9740dbf542653c7e88c2215bff52226e3a16517f9870c075"},{"name":"Deposited","ts":1795722017,"tx":"0x4a1d4922880834eae2fba643f6c6a78ae6209ba999877dac181b5f42ea041a79"},{"name":"BondPosted","ts":1795722015,"tx":"0xcfef1501c711e2af4d59818c4c18b24183fffdd7eca896d4cfcd7200db4d6454"},{"name":"VaultCreated","ts":1795722007,"tx":"0x9b35d5eb8fcd3bfe4021fda455f39d93e20df4de97ca5bca6ee016fa6be84b6e"}],"snaps":[[1795722290,5982.21,1003.0],[1795723142,5896.12,1017.6],[1795723691,5826.97,1029.7],[1795724662,5788.41,1036.6],[1795725634,5788.41,1036.6],[1795726604,5836.6,1028.0],[1795727365,5836.6,1028.0],[1795728335,5838.88,1027.6],[1795729303,5839.28,1027.5],[1795730272,5839.28,1027.5],[1795731240,5839.28,1027.5],[1795732207,5839.28,1027.5],[1795733175,5839.66,1027.5],[1795734143,5839.66,1027.5],[1795735113,5839.66,1027.5],[1795736081,5839.66,1027.5],[1795737048,5840.04,1027.4],[1795738017,5840.04,1027.4],[1795738985,5840.04,1027.4],[1795739952,5840.04,1027.4],[1795740920,5840.41,1027.3],[1795741890,5840.41,1027.3],[1795742858,5840.41,1027.3],[1795743827,5840.41,1027.3],[1795744795,5840.79,1027.3],[1795745763,5840.79,1027.3],[1795746590,5840.79,1027.3],[1795747565,5841.16,1027.2],[1795748533,5841.16,1027.2],[1795749502,5841.16,1027.2],[1795750469,5841.16,1027.2],[1795751437,5841.54,1027.1],[1795752404,5841.54,1027.1],[1795753373,5841.54,1027.1],[1795754341,5841.54,1027.1],[1795755308,5841.92,1027.1],[1795756276,5841.92,1027.1],[1795757244,5841.92,1027.1],[1795758212,5841.92,1027.1],[1795759179,5842.29,1027.0],[1795760149,5842.29,1027.0],[1795761117,5842.29,1027.0]],"keeper":[{"ts":1795758385,"action":"settle","vault":"0x22e97bdb1e4b29033b729b0b7b6d59b56c9d095b","tx":"0x5621a95ea48615ee748d647f1023bb23eba150770bccc203120070078964f5bd","ok":true,"skipped":false,"note":null},{"ts":1795754782,"action":"settle","vault":"0x22e97bdb1e4b29033b729b0b7b6d59b56c9d095b","tx":"0xbae5e118eb3b77dd190eeb99bb698e9275261db93c609c48134982f02566db83","ok":true,"skipped":false,"note":null},{"ts":1795751124,"action":"settle","vault":"0x22e97bdb1e4b29033b729b0b7b6d59b56c9d095b","tx":"0xb35e27ce67a571d982e4872fb4f3d53846d55148f6f0f24319e9e333669073da","ok":true,"skipped":false,"note":null},{"ts":1795747473,"action":"settle","vault":"0x22e97bdb1e4b29033b729b0b7b6d59b56c9d095b","tx":"0x4574011acb3d7afca1a9c1a37ea5244eaab9be6339b7080033e393c782772f57","ok":true,"skipped":false,"note":null},{"ts":1795743865,"action":"settle","vault":"0x22e97bdb1e4b29033b729b0b7b6d59b56c9d095b","tx":"0xf04f1a849683a1b61060fc8a2d52c06af26bb9f6fa3d2b05ad19981d8329b817","ok":true,"skipped":false,"note":null},{"ts":1795740206,"action":"settle","vault":"0x22e97bdb1e4b29033b729b0b7b6d59b56c9d095b","tx":"0x6005fd10501f2ffe2d3cd378e73ad3f29e084bab8f3bb06478a265bc42289e58","ok":true,"skipped":false,"note":null},{"ts":1795736545,"action":"settle","vault":"0x22e97bdb1e4b29033b729b0b7b6d59b56c9d095b","tx":"0x889b536863faec95a3d8f25e6169f0cca0b53f8f39e174eba87caa7e28a09022","ok":true,"skipped":false,"note":null},{"ts":1795732942,"action":"settle","vault":"0x22e97bdb1e4b29033b729b0b7b6d59b56c9d095b","tx":"0x70ebcf3f3b9b1291ea02799dab410b5e5a59d7a3681397cbfaa37c5e948aa8ec","ok":true,"skipped":false,"note":null}]},"pool":{"price":2841.266124613183,"tick":-196800,"history":[[1795740315,-196800],[1795740678,-196800],[1795741041,-196800],[1795741404,-196800],[1795741769,-196800],[1795742132,-196800],[1795742495,-196800],[1795742858,-196800],[1795743222,-196800],[1795743585,-196800],[1795743948,-196800],[1795744311,-196800],[1795744674,-196800],[1795745037,-196800],[1795745400,-196800],[1795745763,-196800],[1795745984,-196800],[1795746348,-196800],[1795746711,-196800],[1795747075,-196800],[1795747437,-196800],[1795747807,-196800],[1795748170,-196800],[1795748533,-196800],[1795748896,-196800],[1795749259,-196800],[1795749622,-196800],[1795749985,-196800],[1795750349,-196800],[1795750712,-196800],[1795751074,-196800],[1795751437,-196800],[1795751800,-196800],[1795752163,-196800],[1795752526,-196800],[1795752889,-196800],[1795753252,-196800],[1795753615,-196800],[1795753978,-196800],[1795754341,-196800],[1795754704,-196800],[1795755066,-196800],[1795755428,-196800],[1795755791,-196800],[1795756155,-196800],[1795756518,-196800],[1795756880,-196800],[1795757244,-196800],[1795757607,-196800],[1795757970,-196800],[1795758333,-196800],[1795758693,-196820],[1795759058,-196800],[1795759422,-196800],[1795759785,-196800],[1795760149,-196800],[1795760511,-196800],[1795760874,-196800],[1795761237,-196800],[1795761602,-196800]]},"chaser":{"address":"0xaCd6a6228D29a099BA269B2b3d39745b24C3fD24","label":"Chaser","note":"\u00b12% range, re-centered by the demo bot","curator":"0xa9b480c2694aa3f16cd109fcd2c91acbf3bc689f","status":"ACTIVE","fired":false,"parked":false,"nav":5852.90103,"bond":601.148172,"bondBps":1027.09,"deficit":0.0,"carryBps":2000,"minBondBps":200,"lo":-197010,"hi":-196610,"epochStart":1795758447,"firedAt":0,"cumulative":{"strategy":0.9558114517665387,"par":0.9707443815642677,"depositor":0.972588730958032,"strategyUsd":0.9558114517665387,"parUsd":0.9707443815642677,"depositorUsd":0.972588730958032},"totals":{"settlements":10,"shortfallPaid":"103453295","take":"2773988","carry":"0","beats":8,"misses":2,"shortfallPaidUsd":103.453295,"takeUsd":2.7739879999999997,"carryUsd":0},"series":[{"ts":1795722032,"strategy":1,"par":1,"depositor":1,"vsPar":0,"miss":false,"price":3014.8401379933184},{"ts":1795725670,"strategy":0.953640151583633,"par":0.9707443815642677,"depositor":0.9707443815642677,"vsPar":-0.01761970535752444,"miss":true,"price":2840.9820264105424},{"ts":1795729281,"strategy":0.9535463886681297,"par":0.9707443815642677,"depositor":0.9707443815642677,"vsPar":-9.83210651812616e-05,"miss":true,"price":2840.9820264105424},{"ts":1795732944,"strategy":0.9538295274599876,"par":0.9707443815642677,"depositor":0.9709749779436767,"vsPar":0.0002969323729005158,"miss":false,"price":2840.9820264105424},{"ts":1795736607,"strategy":0.954112664588164,"par":0.9707443815642677,"depositor":0.9712055592779832,"vsPar":0.0002968424860261276,"miss":false,"price":2840.9820264105424},{"ts":1795740268,"strategy":0.9543958000526294,"par":0.9707443815642677,"depositor":0.9714361255722795,"vsPar":0.0002967526529873421,"miss":false,"price":2840.9820264105424},{"ts":1795743927,"strategy":0.9546789336900953,"par":0.9707443815642677,"depositor":0.9716666766654708,"vsPar":0.0002966627026756985,"miss":false,"price":2840.9820264105424},{"ts":1795747535,"strategy":0.9549620658271958,"par":0.9707443815642677,"depositor":0.971897212895129,"vsPar":0.0002965731484261269,"miss":false,"price":2840.9820264105424},{"ts":1795751186,"strategy":0.9552451961372875,"par":0.9707443815642677,"depositor":0.9721277339339105,"vsPar":0.0002964833056970928,"miss":false,"price":2840.9820264105424},{"ts":1795754844,"strategy":0.9555283247837449,"par":0.9707443815642677,"depositor":0.9723582399531863,"vsPar":0.00029639368782197195,"miss":false,"price":2840.9820264105424},{"ts":1795758447,"strategy":0.9558114517665387,"par":0.9707443815642677,"depositor":0.972588730958032,"vsPar":0.00029630412354109126,"miss":false,"price":2840.9820264105424}],"settles":[{"ts":1795758447,"block":68906019,"tx":"0xb37720fc04f262830f438cb8845d669b253cbe349d637891f797f4991a86cb6b","nav":5852.90103,"bench":5851.167305,"bond":601.148172,"paid":0.0,"take":0.346745},{"ts":1795754844,"block":68902416,"tx":"0x9a80489f00a4f349115a6b396f812fdcdd488722282d9b8a2f8e23b2102c6cdb","nav":5851.149798,"bench":5849.416068,"bond":601.148172,"paid":0.0,"take":0.346746},{"ts":1795751186,"block":68898758,"tx":"0x4516326ec84e7b37f48b4c34e5e368d337a60a9fc3a27683cd1bb9d8dadf00f4","nav":5849.398567,"bench":5847.664832,"bond":601.148172,"paid":0.0,"take":0.346747},{"ts":1795747535,"block":68895107,"tx":"0xebafdbbd18aed9ca68fa54d49e5eb33277b51634612e10b8ff1928098f693437","nav":5847.647335,"bench":5845.913594,"bond":601.148172,"paid":0.0,"take":0.346748},{"ts":1795743927,"block":68891499,"tx":"0x33690c513d8da73c44b0ca3c9d67f1a69f6483f3d1aecf3d67d7c3090cf949c7","nav":5845.896103,"bench":5844.162358,"bond":601.148172,"paid":0.0,"take":0.346749},{"ts":1795740268,"block":68887840,"tx":"0x46176da139251df0490ad8a5d38e978dbfbda8d51c7b7ec4f3325f6c74e4b816","nav":5844.144872,"bench":5842.411121,"bond":601.148172,"paid":0.0,"take":0.34675},{"ts":1795736607,"block":68884179,"tx":"0x7979ebe6ed1671a3ced7f0db6081941871ec537c80055c2c3b8b4d69d521eebc","nav":5842.39364,"bench":5840.659884,"bond":601.148172,"paid":0.0,"take":0.346751},{"ts":1795732944,"block":68880516,"tx":"0x47591e7577cd0e8d1815f362c2490c7ead48681b074179f357b231992f00ac53","nav":5840.642409,"bench":5838.908648,"bond":601.148172,"paid":0.0,"take":0.346752},{"ts":1795729281,"block":68876853,"tx":"0x7d68665820d621cf880c50381a8f1cd62739806f8943b47a7107d3aad3f7c5c2","nav":5838.317091,"bench":5838.891177,"bond":599.425914,"paid":0.574086,"take":0.0},{"ts":1795725670,"block":68873242,"tx":"0xb82392daeeab34a3191f3291c28f1df0a992d1e17809b7dffb4686b86bc355d0","nav":5735.99306,"bench":5838.872269,"bond":497.120791,"paid":102.879209,"take":0.0}],"other":[{"name":"SettlerPaid","ts":1795758447,"tx":"0xb37720fc04f262830f438cb8845d669b253cbe349d637891f797f4991a86cb6b"},{"name":"SettlerPaid","ts":1795754844,"tx":"0x9a80489f00a4f349115a6b396f812fdcdd488722282d9b8a2f8e23b2102c6cdb"},{"name":"SettlerPaid","ts":1795751186,"tx":"0x4516326ec84e7b37f48b4c34e5e368d337a60a9fc3a27683cd1bb9d8dadf00f4"},{"name":"SettlerPaid","ts":1795747535,"tx":"0xebafdbbd18aed9ca68fa54d49e5eb33277b51634612e10b8ff1928098f693437"},{"name":"SettlerPaid","ts":1795743927,"tx":"0x33690c513d8da73c44b0ca3c9d67f1a69f6483f3d1aecf3d67d7c3090cf949c7"},{"name":"SettlerPaid","ts":1795740268,"tx":"0x46176da139251df0490ad8a5d38e978dbfbda8d51c7b7ec4f3325f6c74e4b816"},{"name":"SettlerPaid","ts":1795736607,"tx":"0x7979ebe6ed1671a3ced7f0db6081941871ec537c80055c2c3b8b4d69d521eebc"},{"name":"SettlerPaid","ts":1795732944,"tx":"0x47591e7577cd0e8d1815f362c2490c7ead48681b074179f357b231992f00ac53"},{"name":"BondPosted","ts":1795729289,"tx":"0x76ca99d64d5046b0a4936ef1dd1463e6b59fe4433b3da4ee88f1b17a24dd5cc4"},{"name":"BondPosted","ts":1795729288,"tx":"0x120da58f447f031ec4183dcf1a2cdc3b92f72290774a4b99a5744beb81cb8265"},{"name":"BondPosted","ts":1795729287,"tx":"0x657771bf70a6760a79d03f2e45e768dfaba326e1e7c1c7f946339e05794081a5"},{"name":"Rebalanced","ts":1795726334,"tx":"0xd6da5200a995e4c55cac1fb86e15b7c7c0d8d15057e0bcab236799e60cb32c5b"},{"name":"Rebalanced","ts":1795726328,"tx":"0xb4ef57f7d535f49e18f41590b23505b9316cc8a042f7636fc0492d8bde4b32de"},{"name":"BondPosted","ts":1795726242,"tx":"0xd6b8eeb8c638dcee234a8f30fe7f5b86aa82c32a560f15fb010c3dfcaf62c030"},{"name":"Rebalanced","ts":1795722034,"tx":"0xfc0de746fa9563ad5e0082573ce02825d0fd0f67b4cdde69aa791a760ce53f2a"},{"name":"Deposited","ts":1795722032,"tx":"0x5f8a93f2a0e0bef14c0f639044bd6a8a9a5dbed5c78547cb164544a51474e1a6"},{"name":"BondPosted","ts":1795722030,"tx":"0x828e8fff3ada4328c5769a8719e603ba9fb55ed02f681db246b67279001ce5e5"},{"name":"VaultCreated","ts":1795722023,"tx":"0xb72c9dacf53e1ccfef2b2d4bee8f2235c6d5712f2bc688efaaff5a599a10a129"}],"snaps":[[1795722290,5983.24,1002.8],[1795723142,5868.56,1022.4],[1795723691,5780.6,1038.0],[1795724662,5734.57,1046.3],[1795725634,5734.57,1046.3],[1795726604,5835.38,1028.2],[1795727365,5835.38,1028.2],[1795728335,5836.8,1028.0],[1795729303,5838.89,1029.6],[1795730272,5838.89,1029.6],[1795731240,5838.89,1029.6],[1795732207,5838.89,1029.6],[1795733175,5840.64,1029.3],[1795734143,5840.64,1029.3],[1795735113,5840.64,1029.3],[1795736081,5840.64,1029.3],[1795737048,5842.39,1028.9],[1795738017,5842.39,1028.9],[1795738985,5842.39,1028.9],[1795739952,5842.39,1028.9],[1795740920,5844.14,1028.6],[1795741890,5844.14,1028.6],[1795742858,5844.14,1028.6],[1795743827,5844.14,1028.6],[1795744795,5845.9,1028.3],[1795745763,5845.9,1028.3],[1795746590,5845.9,1028.3],[1795747565,5847.65,1028.0],[1795748533,5847.65,1028.0],[1795749502,5847.65,1028.0],[1795750469,5847.65,1028.0],[1795751437,5849.4,1027.7],[1795752404,5849.4,1027.7],[1795753373,5849.4,1027.7],[1795754341,5849.4,1027.7],[1795755308,5851.15,1027.4],[1795756276,5851.15,1027.4],[1795757244,5851.15,1027.4],[1795758212,5851.15,1027.4],[1795759179,5852.9,1027.1],[1795760149,5852.9,1027.1],[1795761117,5852.9,1027.1]],"keeper":[{"ts":1795758446,"action":"settle","vault":"0xacd6a6228d29a099ba269b2b3d39745b24c3fd24","tx":"0xb37720fc04f262830f438cb8845d669b253cbe349d637891f797f4991a86cb6b","ok":true,"skipped":false,"note":null},{"ts":1795754843,"action":"settle","vault":"0xacd6a6228d29a099ba269b2b3d39745b24c3fd24","tx":"0x9a80489f00a4f349115a6b396f812fdcdd488722282d9b8a2f8e23b2102c6cdb","ok":true,"skipped":false,"note":null},{"ts":1795751185,"action":"settle","vault":"0xacd6a6228d29a099ba269b2b3d39745b24c3fd24","tx":"0x4516326ec84e7b37f48b4c34e5e368d337a60a9fc3a27683cd1bb9d8dadf00f4","ok":true,"skipped":false,"note":null},{"ts":1795747534,"action":"settle","vault":"0xacd6a6228d29a099ba269b2b3d39745b24c3fd24","tx":"0xebafdbbd18aed9ca68fa54d49e5eb33277b51634612e10b8ff1928098f693437","ok":true,"skipped":false,"note":null},{"ts":1795743926,"action":"settle","vault":"0xacd6a6228d29a099ba269b2b3d39745b24c3fd24","tx":"0x33690c513d8da73c44b0ca3c9d67f1a69f6483f3d1aecf3d67d7c3090cf949c7","ok":true,"skipped":false,"note":null},{"ts":1795740267,"action":"settle","vault":"0xacd6a6228d29a099ba269b2b3d39745b24c3fd24","tx":"0x46176da139251df0490ad8a5d38e978dbfbda8d51c7b7ec4f3325f6c74e4b816","ok":true,"skipped":false,"note":null},{"ts":1795736606,"action":"settle","vault":"0xacd6a6228d29a099ba269b2b3d39745b24c3fd24","tx":"0x7979ebe6ed1671a3ced7f0db6081941871ec537c80055c2c3b8b4d69d521eebc","ok":true,"skipped":false,"note":null},{"ts":1795732947,"action":"settle","vault":"0xacd6a6228d29a099ba269b2b3d39745b24c3fd24","tx":"0x47591e7577cd0e8d1815f362c2490c7ead48681b074179f357b231992f00ac53","ok":true,"skipped":false,"note":null}]},"reckless":{"address":"0x45ADcEcE45Cade3f8850019fAcf34ed99D0DF82D","label":"Reckless","note":"\u00b11% range, 2.5% bond, built to get fired","curator":"0xa9b480c2694aa3f16cd109fcd2c91acbf3bc689f","status":"FIRED","fired":true,"parked":true,"nav":5839.027397,"bond":2.543748,"bondBps":4.35,"deficit":147.456252,"carryBps":2000,"minBondBps":200,"lo":-887270,"hi":887270,"epochStart":1795758448,"firedAt":1795725671,"cumulative":{"strategy":0.9486101735558959,"par":0.9731765271479623,"depositor":0.9731765271479623,"strategyUsd":0.9486101735558959,"parUsd":0.9731765271479623,"depositorUsd":0.9731765271479623},"totals":{"settlements":10,"shortfallPaid":"147456252","take":"0","carry":"0","beats":0,"misses":10,"shortfallPaidUsd":147.4562520000001,"takeUsd":0,"carryUsd":0},"series":[{"ts":1795722049,"strategy":1,"par":1,"depositor":1,"vsPar":0,"miss":false,"price":2999.804309975331},{"ts":1795725671,"strategy":0.9490222718529002,"par":0.9731765271479623,"depositor":0.9731765271479623,"vsPar":-0.024820014274131497,"miss":true,"price":2840.9820264105424},{"ts":1795729282,"strategy":0.9486101826537684,"par":0.9731765271479623,"depositor":0.9731765271479623,"vsPar":-0.0004342250033050332,"miss":true,"price":2840.9820264105424},{"ts":1795732948,"strategy":0.9486101815165224,"par":0.9731765271479623,"depositor":0.9731765271479623,"vsPar":-1.1988549042385443e-09,"miss":true,"price":2840.9820264105424},{"ts":1795736608,"strategy":0.9486101803792798,"par":0.9731765271479623,"depositor":0.9731765271479623,"vsPar":-1.1988513515248655e-09,"miss":true,"price":2840.9820264105424},{"ts":1795740269,"strategy":0.9486101792420407,"par":0.9731765271479623,"depositor":0.9731765271479623,"vsPar":-1.1988476877888843e-09,"miss":true,"price":2840.9820264105424},{"ts":1795743928,"strategy":0.948610178104805,"par":0.9731765271479623,"depositor":0.9731765271479623,"vsPar":-1.1988441350752055e-09,"miss":true,"price":2840.9820264105424},{"ts":1795747536,"strategy":0.9486101769675725,"par":0.9731765271479623,"depositor":0.9731765271479623,"vsPar":-1.1988405823615267e-09,"miss":true,"price":2840.9820264105424},{"ts":1795751187,"strategy":0.9486101758303437,"par":0.9731765271479623,"depositor":0.9731765271479623,"vsPar":-1.1988369186255454e-09,"miss":true,"price":2840.9820264105424},{"ts":1795754845,"strategy":0.9486101746931181,"par":0.9731765271479623,"depositor":0.9731765271479623,"vsPar":-1.1988333659118666e-09,"miss":true,"price":2840.9820264105424},{"ts":1795758448,"strategy":0.9486101735558959,"par":0.9731765271479623,"depositor":0.9731765271479623,"vsPar":-1.1988298131981878e-09,"miss":true,"price":2840.9820264105424}],"settles":[{"ts":1795758448,"block":68906020,"tx":"0xe8f1872e253de6419676f02b7ab135b93a6efa6e5561e701e6c59860ca302e52","nav":5839.02739,"bench":5839.027397,"bond":2.543748,"paid":7e-06,"take":0.0},{"ts":1795754845,"block":68902417,"tx":"0xfbc410a524a144250d03a6aa3dc4be0dab06b56fe6b86de1f3752f4f0fcc658e","nav":5839.009919,"bench":5839.009926,"bond":2.543755,"paid":7e-06,"take":0.0},{"ts":1795751187,"block":68898759,"tx":"0xbb1cd5a0b8a6f6f29860d884f9f97035907a878c3d585e2c5496dc4e97de8b97","nav":5838.992448,"bench":5838.992455,"bond":2.543762,"paid":7e-06,"take":0.0},{"ts":1795747536,"block":68895108,"tx":"0xce17e12820bfd417b078c9d4fb3cebdb26abff0c91a37f1a5f74c026f17d8776","nav":5838.974977,"bench":5838.974984,"bond":2.543769,"paid":7e-06,"take":0.0},{"ts":1795743928,"block":68891500,"tx":"0x30719d7d6d54e39d88d8c61457d5789a24a356ee0cd609ceaf3ae05fbd5c8d34","nav":5838.957506,"bench":5838.957513,"bond":2.543776,"paid":7e-06,"take":0.0},{"ts":1795740269,"block":68887841,"tx":"0xa1200e1576274c945559d2bdd189965575d9bd2216a25fecd53f7a01624f8b94","nav":5838.940035,"bench":5838.940042,"bond":2.543783,"paid":7e-06,"take":0.0},{"ts":1795736608,"block":68884180,"tx":"0x6cac505ff9a92f0d52f9e9e046f4812f35d6001a370773224404bc43f60ed8c3","nav":5838.922564,"bench":5838.922571,"bond":2.54379,"paid":7e-06,"take":0.0},{"ts":1795732948,"block":68880520,"tx":"0xed8663f9626065e49ee4272b657969a105ff882e3e87bba530096915db23278a","nav":5838.905093,"bench":5838.9051,"bond":2.543797,"paid":7e-06,"take":0.0},{"ts":1795729282,"block":68876854,"tx":"0x1720f60f3d0532f412e59a38edb38a6d69d8e908b36ef34e0c7401d5fd0a7ba6","nav":5836.352238,"bench":5838.887629,"bond":2.543804,"paid":2.535391,"take":0.0},{"ts":1795725671,"block":68873243,"tx":"0xdf4810ad8b49326d66bbe131f4b769f8bff84c7d16d9130b077f10b1c0df25ae","nav":5693.947916,"bench":5838.868721,"bond":5.079195,"paid":144.920805,"take":0.0}],"other":[{"name":"Rebalanced","ts":1795725671,"tx":"0xdf4810ad8b49326d66bbe131f4b769f8bff84c7d16d9130b077f10b1c0df25ae"},{"name":"Fired","ts":1795725671,"tx":"0xdf4810ad8b49326d66bbe131f4b769f8bff84c7d16d9130b077f10b1c0df25ae"},{"name":"Rebalanced","ts":1795722051,"tx":"0xeac65d23419dec27f5a4b6a25742172be8631a64eb14381b1c65c0c1ed53e004"},{"name":"Deposited","ts":1795722049,"tx":"0xfa798988ea4def86253eb7677f21eaeeab65662e53fcb179d61b99d3041d625c"},{"name":"BondPosted","ts":1795722046,"tx":"0x0a8cd45fbaea03035091778c830926e11915880cb3f93aa8357caa6149c86fed"},{"name":"VaultCreated","ts":1795722037,"tx":"0x3d259de85db305aabac6d78c5da17e776aa1eda40c82e0b2fab8d7693409ba32"}],"snaps":[[1795722290,5976.97,251.0],[1795723142,5839.06,256.9],[1795723691,5742.93,261.2],[1795724662,5692.62,263.5],[1795725634,5692.62,263.5],[1795726604,5834.88,8.7],[1795727365,5834.88,8.7],[1795728335,5836.33,8.7],[1795729303,5838.89,4.4],[1795730272,5838.89,4.4],[1795731240,5838.89,4.4],[1795732207,5838.89,4.4],[1795733175,5838.91,4.4],[1795734143,5838.91,4.4],[1795735113,5838.91,4.4],[1795736081,5838.91,4.4],[1795737048,5838.92,4.4],[1795738017,5838.92,4.4],[1795738985,5838.92,4.4],[1795739952,5838.92,4.4],[1795740920,5838.94,4.4],[1795741890,5838.94,4.4],[1795742858,5838.94,4.4],[1795743827,5838.94,4.4],[1795744795,5838.96,4.4],[1795745763,5838.96,4.4],[1795746590,5838.96,4.4],[1795747565,5838.97,4.4],[1795748533,5838.97,4.4],[1795749502,5838.97,4.4],[1795750469,5838.97,4.4],[1795751437,5838.99,4.4],[1795752404,5838.99,4.4],[1795753373,5838.99,4.4],[1795754341,5838.99,4.4],[1795755308,5839.01,4.4],[1795756276,5839.01,4.4],[1795757244,5839.01,4.4],[1795758212,5839.01,4.4],[1795759179,5839.03,4.4],[1795760149,5839.03,4.4],[1795761117,5839.03,4.4]],"keeper":[{"ts":1795758508,"action":"rebalance_park","vault":"0x45adcece45cade3f8850019facf34ed99d0df82d","tx":null,"ok":false,"skipped":true,"note":"AlreadyParked"},{"ts":1795758447,"action":"settle","vault":"0x45adcece45cade3f8850019facf34ed99d0df82d","tx":"0xe8f1872e253de6419676f02b7ab135b93a6efa6e5561e701e6c59860ca302e52","ok":true,"skipped":false,"note":null},{"ts":1795754848,"action":"rebalance_park","vault":"0x45adcece45cade3f8850019facf34ed99d0df82d","tx":null,"ok":false,"skipped":true,"note":"AlreadyParked"},{"ts":1795754848,"action":"settle","vault":"0x45adcece45cade3f8850019facf34ed99d0df82d","tx":"0xfbc410a524a144250d03a6aa3dc4be0dab06b56fe6b86de1f3752f4f0fcc658e","ok":true,"skipped":false,"note":null},{"ts":1795751186,"action":"rebalance_park","vault":"0x45adcece45cade3f8850019facf34ed99d0df82d","tx":null,"ok":false,"skipped":true,"note":"AlreadyParked"},{"ts":1795751186,"action":"settle","vault":"0x45adcece45cade3f8850019facf34ed99d0df82d","tx":"0xbb1cd5a0b8a6f6f29860d884f9f97035907a878c3d585e2c5496dc4e97de8b97","ok":true,"skipped":false,"note":null},{"ts":1795747535,"action":"rebalance_park","vault":"0x45adcece45cade3f8850019facf34ed99d0df82d","tx":null,"ok":false,"skipped":true,"note":"AlreadyParked"},{"ts":1795747535,"action":"settle","vault":"0x45adcece45cade3f8850019facf34ed99d0df82d","tx":"0xce17e12820bfd417b078c9d4fb3cebdb26abff0c91a37f1a5f74c026f17d8776","ok":true,"skipped":false,"note":null}]},"updatedAt":1795761905,"head":68909474};</script>
+<script>/* Shared helpers for the Hurdle mockups. Data: window.HURDLE (snapshot of /api/vaults/<addr>). */
+const H = window.HURDLE;
+const KEYS = ['patient', 'chaser', 'reckless'];
+const VAULTS = KEYS.map(k => {
+  const v = H[k], c = v.cumulative;
+  const settles = v.settles.slice().sort((a, b) => a.ts - b.ts).map(s => ({
+    ...s, diff: s.nav - s.bench, miss: s.paid > 0.000001 || s.nav < s.bench
+  }));
+  return {
+    key: k, ...v, settles,
+    strat: (c.strategy - c.par) * 100,      // strategy vs par, points of starting capital
+    dep: (c.depositor - c.par) * 100,       // depositor vs par
+    parRet: (c.par - 1) * 100,              // par's own return since start
+    bondPct: v.bond / v.nav * 100,
+    paid: v.totals.shortfallPaidUsd,
+    take: v.totals.takeUsd,
+    keeperRuns: (v.keeper || []).filter(k => k.ok).length,
+    range: v.fired ? 'Full range (parked)' : (k === 'patient' ? '±10%' : k === 'chaser' ? '±2%' : '±1%'),
+  };
+});
+const byKey = Object.fromEntries(VAULTS.map(v => [v.key, v]));
+const fmt = (n, d = 2) => Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const sign = (x, d = 2) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(d);
+const hhmm = ts => new Date(ts * 1000).toISOString().slice(11, 16);
+const short = a => a.slice(0, 6) + '…' + a.slice(-4);
+const SCAN = 'https://sepolia.uniscan.xyz/';
+const TVL = VAULTS.reduce((s, v) => s + v.nav, 0);
+const PAID = VAULTS.reduce((s, v) => s + v.paid, 0);
+const SETTLES = VAULTS.reduce((s, v) => s + v.totals.settlements, 0);
+const POOL_PRICE = H.pool.price;
+const UPDATED = new Date(H.updatedAt * 1000).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+
+/* Line chart as an SVG string.
+   series: [{vals:[...], color, w, dash, area, label}] ; opts: {w,h,pad,grid,text,font,fmt} */
+function lineChart(series, o = {}) {
+  const W = o.w || 640, Hh = o.h || 260, p = o.pad || { t: 16, r: 56, b: 26, l: 8 };
+  const all = series.flatMap(s => s.vals);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const m = (hi - lo) * 0.12 || 0.01; lo -= m; hi += m;
+  const n = Math.max(...series.map(s => s.vals.length));
+  const x = i => p.l + (W - p.l - p.r) * (i / (n - 1));
+  const y = v => p.t + (Hh - p.t - p.b) * (1 - (v - lo) / (hi - lo));
+  let g = '';
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const v = lo + (hi - lo) * i / ticks, yy = y(v);
+    g += `<line x1="${p.l}" x2="${W - p.r}" y1="${yy}" y2="${yy}" stroke="${o.grid || '#0001'}" stroke-width="1"/>`;
+    g += `<text x="${W - p.r + 8}" y="${yy + 4}" font-size="11" fill="${o.text || '#888'}" font-family="${o.font || 'inherit'}">${(o.fmt || (v => v.toFixed(1)))(v)}</text>`;
+  }
+  (o.xlabels || []).forEach(([i, t]) => { g += `<text x="${x(i)}" y="${Hh - 6}" font-size="11" text-anchor="middle" fill="${o.text || '#888'}" font-family="${o.font || 'inherit'}">${t}</text>`; });
+  series.forEach(s => {
+    const d = s.vals.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+    if (s.area) g += `<path d="${d}L${x(s.vals.length - 1)},${Hh - p.b}L${x(0)},${Hh - p.b}Z" fill="${s.area}"/>`;
+    g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.w || 2}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ''} stroke-linecap="round" stroke-linejoin="round"/>`;
+    if (s.dot) { const i = s.vals.length - 1; g += `<circle cx="${x(i)}" cy="${y(s.vals[i])}" r="4" fill="${s.color}" stroke="${o.bg || '#fff'}" stroke-width="2"/>`; }
+  });
+  return `<svg viewBox="0 0 ${W} ${Hh}" width="100%" role="img" aria-label="${o.label || 'chart'}" style="display:block;overflow:visible">${g}</svg>`;
+}
+const idx = v => ({
+  strategy: v.series.map(s => s.strategy * 100),
+  par: v.series.map(s => s.par * 100),
+  depositor: v.series.map(s => s.depositor * 100),
+  xl: v.series.map((s, i) => [i, hhmm(s.ts)]).filter((_, i, a) => i % 3 === 0 || i === a.length - 1),
+});
+</script>
+<script>
+const $ = id => document.getElementById(id);
+/* analog dial: value in [-R,R] maps to -60..60 deg. needles: [{v,color,w}] */
+function dial(needles, R = 3, label = '', size = 240) {
+  const cx = 120, cy = 120, r = 96; let g = '';
+  const ang = v => (Math.max(-R, Math.min(R, v)) / R) * 60 * Math.PI / 180;
+  const pt = (a, rr) => [cx + rr * Math.sin(a), cy - rr * Math.cos(a)];
+  // loss arc (hatched) and gain arc
+  const arc = (a0, a1, rr) => { const [x0, y0] = pt(a0, rr), [x1, y1] = pt(a1, rr); return `M${x0},${y0}A${rr},${rr} 0 0 1 ${x1},${y1}`; };
+  g += `<path d="${arc(-Math.PI/3, 0, r - 6)}" stroke="#b8321d" stroke-width="8" fill="none" stroke-dasharray="1.5 2.5"/>`;
+  g += `<path d="${arc(0, Math.PI/3, r - 6)}" stroke="#1f7a45" stroke-width="8" fill="none" stroke-dasharray="1.5 2.5"/>`;
+  for (let i = -30; i <= 30; i++) { const a = i / 30 * Math.PI / 3, big = i % 10 === 0, [x0, y0] = pt(a, r + 2), [x1, y1] = pt(a, r + (big ? 14 : 7));
+    g += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="#1d1d1b" stroke-width="${big ? 1.6 : .7}"/>`;
+    if (big) { const [tx, ty] = pt(a, r + (i === 0 ? 34 : 24)); g += `<text x="${tx}" y="${ty + 3}" font-size="9" text-anchor="middle" font-family="Martian Mono" fill="${i === 0 ? '#8a5a00' : '#6f6c64'}">${i === 0 ? 'PAR' : (i > 0 ? '+' : '−') + parseFloat(Math.abs(i / 10 * R / 3).toFixed(2))}</text>`; } }
+  // par post
+  const [px, py] = pt(0, r + 18); g += `<rect x="${cx - 3}" y="${py}" width="6" height="${cy - py - 34}" rx="2" fill="#f2a516"/>`;
+  needles.forEach(n => { const [x, y] = pt(ang(n.v), r - 2); g += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="${n.color}" stroke-width="${n.w || 2.5}" stroke-linecap="round"/>`; });
+  g += `<circle cx="${cx}" cy="${cy}" r="9" fill="#1d1d1b"/><circle cx="${cx}" cy="${cy}" r="3" fill="#dcdad4"/>`;
+  if (label) g += `<text x="${cx}" y="${cy + 28}" text-anchor="middle" font-size="12" font-family="Martian Mono" font-weight="500" fill="#1d1d1b">${label}</text>`;
+  return `<svg viewBox="0 -18 240 170" width="100%" style="display:block;max-width:${size}px;margin:auto">${g}</svg>`;
+}
+const act = VAULTS.filter(v => !v.fired);
+$('bigdial').innerHTML = dial(VAULTS.map((v, i) => ({ v: v.dep, color: ['#1d1d1b', '#e8590c', '#8a877f'][i], w: 2 })), 0.3, 'ALL ≥ PAR', 340);
+$('readouts').innerHTML = `
+  <div class="screen"><div class="lbl">TVL mUSDC</div><div class="v">${fmt(TVL,0)}</div></div>
+  <div class="screen"><div class="lbl">Bond paid</div><div class="v">${fmt(PAID,1)}</div></div>
+  <div class="screen"><div class="lbl">Settles</div><div class="v">${SETTLES}</div></div>`;
+$('mods-in').innerHTML = VAULTS.map(v => `<div class="plate mod ${v.fired ? 'fired' : ''}">
+  <i class="screw s1"></i><i class="screw s2"></i><i class="screw s3"></i><i class="screw s4"></i>
+  <div class="top"><span class="nm">${v.label}</span>${v.fired ? '<span class="stamp">FIRED · PARKED</span>' : '<span style="display:flex;gap:6px;align-items:center" class="lbl"><span class="led g"></span>Active</span>'}</div>
+  <div class="lbl" style="margin-top:4px">${v.range} · ${v.totals.beats} beat / ${v.totals.misses} miss</div>
+  <div class="dial">${dial([{ v: v.strat, color: v.fired ? '#8a877f' : '#e8590c' }], 3, sign(v.strat) + ' pts')}</div>
+  <div class="rd num"><div><div class="lbl">Depositors</div><div class="v" style="color:var(--win)">${sign(v.dep)}</div></div>
+  <div><div class="lbl">Bond</div><div class="v">${v.bondPct.toFixed(v.bondPct < 1 ? 2 : 1)}%</div></div>
+  <div><div class="lbl">NAV</div><div class="v">${fmt(v.nav,0)}</div></div></div></div>`).join('');
+
+const v = byKey.chaser, s = idx(v);
+$('dname').textContent = v.label;
+$('dmeta').textContent = `${v.range} range · ${short(v.address)}`;
+$('chart').innerHTML = '<div style="position:relative;z-index:1">' + lineChart([
+  { vals: s.par, color: '#ffcf6e', w: 5 },
+  { vals: s.strategy, color: '#e9e6dc', w: 2, dot: 1 },
+  { vals: s.depositor, color: '#7fe39f', w: 2, dash: '2 4', dot: 1 },
+], { h: 250, grid: '#ffffff12', text: '#8d9a86', font: 'Martian Mono', xlabels: s.xl, bg: '#1a1c19', label: 'Chaser vs par' }) + '</div>';
+$('dread').innerHTML = `
+ <div class="screen" style="box-shadow:none;background:#0004"><div class="lbl">Strategy</div><div class="v" style="color:#ff9b7d;text-shadow:none">${sign(v.strat)}</div></div>
+ <div class="screen" style="box-shadow:none;background:#0004"><div class="lbl">Depositor</div><div class="v" style="color:#7fe39f;text-shadow:none">${sign(v.dep)}</div></div>
+ <div class="screen" style="box-shadow:none;background:#0004"><div class="lbl">NAV</div><div class="v">${fmt(v.nav,0)}</div></div>`;
+$('tape').innerHTML = v.settles.slice().reverse().map((r, i) => `<div class="ticket"><div class="t">#${String(v.settles.length - i).padStart(3, '0')} · ${hhmm(r.ts)}</div>
+ <div class="r" style="color:${r.miss ? 'var(--loss)' : 'var(--win)'}">${r.miss ? '▼ MISS' : '▲ BEAT'}</div>
+ <div class="d">${sign(r.diff)}</div><div class="p">${r.paid > 0 ? 'bond paid ' + fmt(r.paid) : 'carry ' + fmt(r.take, 3)}</div></div>`).join('');
+$('bond').textContent = fmt(v.bond) + ' mUSDC';
+const TOP = 12;
+$('lvl').style.height = `calc(${v.bondPct / TOP * 100}% - 10px)`;
+$('scale').innerHTML = [[12, ''], [10.3, '◀ ' + v.bondPct.toFixed(1) + '% now'], [6, '6%'], [2, 'FLOOR 2% · deposits freeze'], [1, 'FIRE 1%']]
+  .map(([p, t]) => `<div style="bottom:${p / TOP * 100}%;${p === 1 ? 'color:var(--loss);border-color:var(--loss)' : p === 2 ? 'color:#8a5a00;border-color:var(--amber)' : ''}">${t}</div>`).join('');
+$('bpaid').textContent = fmt(v.paid) + ' mUSDC';
+$('kr').textContent = v.keeperRuns;
+$('twap').textContent = fmt(POOL_PRICE);
+$('upd').textContent = UPDATED;
+</script>
+</body>
+</html>
