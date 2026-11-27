@@ -14,21 +14,13 @@ const base = ({ size = 16, ...p }: P) => ({
   ...p,
 });
 
-/** The mark: a hurdle. Two legs, one striped bar. */
+/** The mark: a hurdle. Two legs and one bar, in ink. */
 export function HurdleMark({ size = 28, className }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" className={className} aria-hidden>
-      <defs>
-        <pattern id="hm-stripe" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
-          <rect width="5" height="5" fill="var(--bar)" />
-          <rect width="2" height="5" fill="var(--on-bar)" opacity=".85" />
-        </pattern>
-      </defs>
-      <rect x="6.5" y="9" width="3" height="19" rx="1" fill="currentColor" />
-      <rect x="22.5" y="9" width="3" height="19" rx="1" fill="currentColor" />
-      <rect x="3" y="7" width="26" height="7" rx="1.5" fill="url(#hm-stripe)" />
-      <rect x="4" y="26.5" width="8" height="2" rx="1" fill="currentColor" />
-      <rect x="20" y="26.5" width="8" height="2" rx="1" fill="currentColor" />
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <rect x="2" y="12.6" width="20" height="2.6" rx="1.3" fill="currentColor" />
+      <rect x="5.2" y="6" width="2.6" height="14" rx="1.3" fill="currentColor" />
+      <rect x="16.2" y="6" width="2.6" height="14" rx="1.3" fill="currentColor" />
     </svg>
   );
 }
@@ -83,4 +75,31 @@ export const IconDownload = (p: P) => (
 );
 export const IconSwap = (p: P) => (
   <svg {...base(p)}><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4" /></svg>
+);
+export const IconBell = (p: P) => (
+  <svg {...base(p)}><path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15ZM10 20.5h4" /></svg>
+);
+export const IconPlus = (p: P) => (
+  <svg {...base(p)}><path d="M12 5v14M5 12h14" /></svg>
+);
+export const IconBack = (p: P) => (
+  <svg {...base(p)}><path d="m15 6-6 6 6 6" /></svg>
+);
+export const IconHome = (p: P) => (
+  <svg {...base(p)}><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4Z" /></svg>
+);
+export const IconVaults = (p: P) => (
+  <svg {...base(p)}><rect x="3" y="6" width="18" height="13" rx="3" /><path d="M3 10h18" /></svg>
+);
+export const IconChart = (p: P) => (
+  <svg {...base(p)}><path d="m4 19 5-6 4 3 7-9" /></svg>
+);
+export const IconDown = (p: P) => (
+  <svg {...base(p)}><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+);
+export const IconUpRight = (p: P) => (
+  <svg {...base(p)}><path d="M7 17 17 7M9 7h8v8" /></svg>
+);
+export const IconMore = (p: P) => (
+  <svg {...base(p)}><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
 );

@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { JetBrains_Mono, Schibsted_Grotesk } from "next/font/google";
+import { Host_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-import { Footer, Header } from "@/components/shell";
+import { Footer, Header, TabBar } from "@/components/shell";
 
-const sans = Schibsted_Grotesk({ subsets: ["latin"], variable: "--font-schibsted", display: "swap" });
+const sans = Host_Grotesk({ subsets: ["latin"], variable: "--font-host", display: "swap", weight: ["400", "500", "600", "700"] });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jbm", display: "swap", weight: ["400", "500"] });
 
 export const metadata: Metadata = {
@@ -18,7 +18,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: light)", color: "#eeeef0" },
     { media: "(prefers-color-scheme: dark)", color: "#0c0c0c" },
   ],
 };
@@ -38,10 +38,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             Skip to content
           </a>
           <Header />
-          <main id="main" className="mx-auto w-full max-w-[1200px] px-4 sm:px-6">
+          <main id="main" className="mx-auto w-full max-w-[1240px] px-4 sm:px-6">
             {children}
           </main>
           <Footer />
+          <TabBar />
         </Providers>
       </body>
     </html>

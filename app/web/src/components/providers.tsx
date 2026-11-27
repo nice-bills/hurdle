@@ -50,10 +50,10 @@ function readMode(): Mode {
 
 function rkTheme(mode: Mode): Theme {
   const base = mode === "dark" ? darkTheme : lightTheme;
-  const t = base({ accentColor: "var(--bar)", accentColorForeground: "var(--on-bar)", borderRadius: "small", overlayBlur: "small" });
+  const t = base({ accentColor: "var(--ink)", accentColorForeground: "var(--bg)", borderRadius: "large", overlayBlur: "small" });
   return {
     ...t,
-    fonts: { body: "var(--font-schibsted), system-ui, sans-serif" },
+    fonts: { body: "var(--font-host), system-ui, sans-serif" },
     colors: {
       ...t.colors,
       modalBackground: "var(--surface)",
