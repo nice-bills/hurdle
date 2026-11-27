@@ -86,6 +86,8 @@ export function makeCurator(db: Db, client: Client) {
   };
   const spacing = deployment.tickSpacing;
 
+  const REPAY_COOLDOWN_MS = 120_000;
+  const repaidAt = new Map<string, number>();
   const read = <T,>(address: Hex, abi: unknown, functionName: string, args: unknown[] = []) =>
     withRetry(() => client.readContract({ address, abi, functionName, args } as never), `${functionName} ${address}`, 4) as Promise<T>;
 
@@ -95,6 +97,9 @@ export function makeCurator(db: Db, client: Client) {
    * approve, postBond(deficit). A cap keeps a runaway deficit from minting without bound.
    */
   async function repayDeficit(addr: string, v: Hex, nav: bigint): Promise<void> {
+    // A lagging RPC can still show the old deficit for a few seconds after a repay; queued passes then paid it 2-3x
+    // (seen live on v6 Chaser). A new deficit only appears at the next settle (hourly), so a short cooldown is safe.
+    if (Date.now() - (repaidAt.get(lc(addr)) ?? 0) < REPAY_COOLDOWN_MS) return;
     const deficit = await read<bigint>(v, vaultAbi, "deficit");
     if (deficit === 0n) return;
     if (nav > 0n && deficit > nav) {
@@ -110,7 +115,7 @@ export function makeCurator(db: Db, client: Client) {
     if (have < deficit && !(await send("curator_mint_bond_token", addr, { address: token1, abi: erc20Abi, functionName: "mint", args: [account.address, deficit - have] }))) return;
     const allowance = await read<bigint>(token1, erc20Abi, "allowance", [account.address, v]);
     if (allowance < deficit && !(await send("curator_approve", addr, { address: token1, abi: erc20Abi, functionName: "approve", args: [v, MAX_UINT] }))) return;
-    await send("curator_post_bond", addr, { address: v, abi: vaultAbi, functionName: "postBond", args: [deficit] }, `repaid deficit ${deficit}`);
+    if (await send("curator_post_bond", addr, { address: v, abi: vaultAbi, functionName: "postBond", args: [deficit] }, `repaid deficit ${deficit}`)) repaidAt.set(lc(addr), Date.now());
   }
 
   /** Idle (undeployed) funds as a share of NAV, in bps, valued at spot. idle1 excludes the posted bond. */
