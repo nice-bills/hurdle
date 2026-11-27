@@ -39,6 +39,14 @@ export function buildSeries(events: VaultEvent[], startSqrt: bigint | null | und
   for (const e of ev) {
     if (e.name === "Deposited" && !firstDep && prevS === null) firstDep = e;
     if (e.name === "Fired" && series.length) series[series.length - 1].fired = true;
+    // Mirror every way the contract clears `deficit`, not just recoup from excess: postBond pays it down first,
+    // reclaimBond zeroes it. Without this a top-up after a miss left the off-chain deficit > 0 forever and every
+    // later `take` was booked as bond refill, so carry read $0 while the curator was being paid each hour.
+    if (e.name === "BondPosted") {
+      const amt = big(e.args.amount);
+      deficit = amt < deficit ? deficit - amt : 0n;
+    }
+    if (e.name === "BondReclaimed") deficit = 0n;
     if (e.name !== "Settled") continue;
     const nav = big(e.args.nav), bench = big(e.args.bench), take = big(e.args.take), paid = big(e.args.shortfallPaid);
     const s = big(e.args.sqrtPriceX96);

@@ -102,18 +102,8 @@ function Loaded({ d }: { d: VaultDetail }) {
         />
       </dl>
 
-      {/* chart first, then (on a phone) the actions, then the record; on desktop the actions stick in a right column */}
+      {/* phone: actions right under the stat cards, then the chart and the record; desktop: actions stick in a right column */}
       <div className="mt-2.5 grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-x-6">
-        <Panel
-          className="min-w-0 lg:col-start-1"
-          title="You vs par, per settlement"
-          aside={<Segmented label="Chart" value={view} onChange={setView} options={[{ v: "gap", label: "Gap to par" }, { v: "level", label: "Return" }]} className="[&>button]:h-[30px] [&>button]:px-3" />}
-        >
-          <Legend items={[{ label: "Par", kind: "par" }, { label: "Depositors (you)", kind: "solid", color: "var(--you)" }, { label: "Strategy NAV", kind: "dash", color: "var(--ink-3)" }]} />
-          <div className="mt-3"><SeriesChart d={d} unit={unit} bondIsWeth={bondIsWeth} view={view} /></div>
-          <p className="mt-3 text-[12.5px] text-ink-2">Live flow is synthetic: on this testnet pool the only trades are the keeper&apos;s scripted round trips, so fees and carry here are small and illustrative, not market demand.</p>
-        </Panel>
-
         <aside className="lg:sticky lg:top-20 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">
           <ActionPanel vault={v} pool={d.pool} />
           <p className="mt-3 px-1 text-[12px] leading-relaxed text-ink-2">
@@ -124,7 +114,27 @@ function Loaded({ d }: { d: VaultDetail }) {
           </p>
         </aside>
 
-        <div className="min-w-0 space-y-2.5 lg:col-start-1">
+        <Panel
+          className="min-w-0 lg:col-start-1 lg:row-start-1"
+          title="You vs par, per settlement"
+          aside={<Segmented label="Chart" value={view} onChange={setView} options={[{ v: "gap", label: "Gap to par" }, { v: "level", label: "Return" }]} className="[&>button]:h-[30px] [&>button]:px-3" />}
+        >
+          <Legend items={[{ label: "Par", kind: "par" }, { label: "Depositors (you)", kind: "solid", color: "var(--you)" }, { label: "Strategy NAV", kind: "dash", color: "var(--ink-3)" }]} />
+          <div className="mt-3"><SeriesChart d={d} unit={unit} bondIsWeth={bondIsWeth} view={view} /></div>
+          <details className="group mt-3 text-[12.5px] text-ink-2">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full bg-bg-2 px-3 py-1.5 font-medium text-ink-2 hover:text-ink [&::-webkit-details-marker]:hidden">
+              How this is calculated <span aria-hidden className="transition-transform group-open:rotate-180">⌄</span>
+            </summary>
+            <div className="mt-2.5 space-y-2 leading-relaxed">
+              <p>
+        {unit === "usd" ? "USD: each settlement is valued at its own pool price (mUSDC = $1), so a falling ETH is a loss for par and depositors alike." : `${bondIsWeth ? "mWETH" : "mUSDC"}: the contract's unit (token1)${bondIsWeth ? "; par here rises when ETH falls" : ""}.`} Derived from Settled events: each epoch&apos;s NAV ÷ par is exact; levels exclude par&apos;s fee credit (a fraction of a bp per epoch), equally for every line.
+              </p>
+              <p>Live flow is synthetic: on this testnet pool the only trades are the keeper&apos;s scripted round trips, so fees and carry here are small and illustrative, not market demand.</p>
+            </div>
+          </details>
+        </Panel>
+
+        <div className="min-w-0 space-y-2.5 lg:col-start-1 lg:row-start-2">
           <div className="grid gap-2.5 md:grid-cols-2">
             <Panel title="Bond" aside={<span className="text-[12.5px] text-ink-2">floor {v.minBondBps / 100}% · fire {v.minBondBps / 200}%</span>}>
               <div className="num mb-3 text-[34px] font-medium leading-none tracking-[-0.04em]">
@@ -270,9 +280,6 @@ function SeriesChart({ d, unit, bondIsWeth, view }: { d: VaultDetail; unit: Unit
         )}
       />
       )}
-      <p className="mt-2 text-[12px] text-ink-2">
-        {usd ? "USD: each settlement is valued at its own pool price (mUSDC = $1), so a falling ETH is a loss for par and depositors alike." : `${bondIsWeth ? "mWETH" : "mUSDC"}: the contract's unit (token1)${bondIsWeth ? "; par here rises when ETH falls" : ""}.`} Derived from Settled events: each epoch&apos;s NAV ÷ par is exact; levels exclude par&apos;s fee credit (a fraction of a bp per epoch), equally for every line.
-      </p>
     </div>
   );
 }
