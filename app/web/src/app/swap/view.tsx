@@ -115,7 +115,7 @@ function History({ pool, samples }: { pool: ReturnType<typeof usePool>["data"] |
       height={220}
       includeZero={false}
       ariaLabel="Pool spot price over time"
-      yFormat={(v) => `$${fmtNum(base * (1 + v), 0)}`}
+      yFormat={(v) => `$${fmtNum(base * (1 + v), 2)}`}
       xFormat={(ts) => new Date(ts * 1000).toISOString().slice(11, 16)}
       lines={[
         { id: "spot", label: "Spot", values: series.map((p) => usdPerEthFromTick(p.spot) / base - 1), color: "var(--ink)", kind: "solid", width: 2 },
