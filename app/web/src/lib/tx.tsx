@@ -41,8 +41,9 @@ export function useTx() {
           return null;
         }
         setState({ phase: "confirmed", label, hash });
-        setTimeout(() => qc.invalidateQueries(), 1500);
+        // Public RPC nodes lag a few seconds behind the receipt; re-read until they catch up (stale share balance seen live).
         qc.invalidateQueries();
+        for (const ms of [1500, 4000, 8000, 15000]) setTimeout(() => qc.invalidateQueries(), ms);
         return rc;
       } catch (e) {
         setState((s) => ({ phase: "failed", label, hash: s.hash, error: decodeError(e) }));

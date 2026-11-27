@@ -153,6 +153,9 @@ python3 demo/build_json.py demo/out/range-week.csv "Range-bound week (Oct 31 –
 cd demo && python3 -m http.server 8000         # open http://localhost:8000/ui/
 ```
 
+Live wallet flow (spends testnet gas, needs the hourly deposit window; not part of `e2e.sh`): fund a throwaway key in a chmod 600 file, then
+`UITEST_KEY_FILE=~/.config/hurdle/uitest.key node app/web/e2e/wallet-flow.mjs` (headless Chromium + injected wallet; mints, swaps, deposits, withdraws on the live dApp; screenshots go to `design/mockups/v2/build/walletflow-<n>.png`).
+
 ## Limits (known, documented)
 
 - The TWAP ring holds 32 entries written at least 60 s apart (so it spans at least ~31 minutes, more in

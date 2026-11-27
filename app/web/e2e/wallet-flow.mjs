@@ -1,4 +1,5 @@
 // Live wallet flow against the deployed dApp with a throwaway key (spends testnet gas; needs the deposit window).
+// WITHDRAW_ONLY=1 resumes at the withdraw step (set SHOT_OFFSET=<n> so screenshots are not overwritten).
 // usage: UITEST_KEY_FILE=~/.config/hurdle/uitest.key node app/web/e2e/wallet-flow.mjs
 // env: HURDLE_URL (default https://hurdle-app.onrender.com), CHROME (default /usr/bin/chromium), SHOTS (screenshot dir)
 import { readFileSync, mkdirSync } from 'node:fs';
@@ -75,7 +76,7 @@ const log = [];
 const errs = [];
 page.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error' && !/walletconnect|reown|web3modal|pulse|coinbase|cca-lite/i.test(m.text())) errs.push('console: ' + m.text().slice(0, 200)); });
-let n = 0;
+let n = Number(process.env.SHOT_OFFSET || 0);
 const shot = async (name) => { n++; const f = join(SHOTS, `walletflow-${n}.png`); await page.screenshot({ path: f, fullPage: true }); console.log(`  shot ${n}: ${name} -> ${f}`); };
 
 /** click a button and wait for the TxStatus line to say Confirmed (or fail); returns the tx hash from the explorer link. */
@@ -115,6 +116,8 @@ const connected = (await bodyText()).includes(account.address.slice(-4)); // the
 console.log(`${connected ? 'PASS' : 'FAIL'} connect`);
 await shot('connected');
 
+const WITHDRAW_ONLY = process.env.WITHDRAW_ONLY === '1'; // resume: skip mint/swap/deposit
+if (!WITHDRAW_ONLY) {
 // 2. faucet
 await page.getByRole('button', { name: 'Mint 10,000 mUSDC' }).first().scrollIntoViewIfNeeded().catch(() => {});
 await act('mint mUSDC', page.getByRole('button', { name: 'Mint 10,000 mUSDC' }).first());
@@ -146,7 +149,11 @@ for (const name of [/Approve mUSDC/, /Approve mWETH/]) {
 }
 const dep0 = await act('deposit 100 shares', page.getByRole('button', { name: /^Deposit$/ }).last());
 
-// 5. withdraw
+}
+
+// 5. withdraw (reload first: the Your-shares row does not refresh after a deposit without it)
+await page.goto(`${BASE}/vaults/${PATIENT}`, { waitUntil: 'domcontentloaded' });
+await page.waitForTimeout(4000);
 await page.getByRole('tab', { name: 'Withdraw' }).or(page.getByRole('button', { name: 'Withdraw', exact: true })).first().click();
 await page.waitForTimeout(1000);
 await page.locator('button', { hasText: /^max$/ }).first().click();
