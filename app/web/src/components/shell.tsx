@@ -100,7 +100,7 @@ export function TabBar() {
   const path = usePathname();
   const on = (h: string) => (h === "/" ? path === "/" : path === h || path.startsWith(h + "/"));
   return (
-    <nav aria-label="Sections" className="fixed inset-x-4 bottom-3 z-[var(--z-sticky)] flex justify-around rounded-full bg-surface p-1.5 shadow-[0_12px_32px_-12px_oklch(0.2_0.01_270/0.35)] md:hidden">
+    <nav aria-label="Sections" className="fixed inset-x-4 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-[var(--z-sticky)] flex justify-around rounded-full bg-surface p-1.5 shadow-[0_12px_32px_-12px_oklch(0.2_0.01_270/0.35)] md:hidden">
       {TABS.map(({ href, label, icon: Icon }) => (
         <Link
           key={href}
@@ -118,7 +118,7 @@ export function TabBar() {
 
 export function Footer() {
   return (
-    <footer className="mt-20 pb-24 md:pb-0">
+    <footer className="mt-20 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-0">
       <div className="mx-auto flex max-w-[1240px] flex-col gap-4 px-4 py-8 text-[13px] text-ink-2 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="flex items-center gap-2">
           <HurdleMark size={16} />

@@ -25,7 +25,8 @@ export function fmtUsd(x: number | null | undefined, compact = false) {
   if (x == null || !Number.isFinite(x)) return "–";
   if (compact && Math.abs(x) >= 10_000)
     return "$" + x.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 1 });
-  return "$" + x.toLocaleString("en-US", { maximumFractionDigits: Math.abs(x) >= 100 ? 0 : 2 });
+  const a = Math.abs(x);
+  return "$" + x.toLocaleString("en-US", { minimumFractionDigits: a < 10 && a > 0 ? 2 : 0, maximumFractionDigits: a >= 100 ? 0 : 2 });
 }
 
 /** Signed percent from a fraction (0.0123 -> +1.23%). Uses a real minus sign. */
