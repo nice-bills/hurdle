@@ -105,12 +105,13 @@ console.log('wallet', account.address, 'ETH', (Number(await pub.getBalance({ add
 await page.goto(`${BASE}/vaults/${PATIENT}`, { waitUntil: 'domcontentloaded' });
 await page.getByRole('button', { name: /^Connect/ }).first().click();
 await page.waitForTimeout(800);
-const opt = page.getByRole('button', { name: /Test Wallet|Browser Wallet|Injected/i }).first();
 await shot('connect-modal');
-await opt.click();
-await page.waitForFunction((a) => document.body.innerText.includes(a.slice(0, 6)), account.address, { timeout: 30000 }).catch(() => {});
+// the modal re-renders while wallets announce, so click through the DOM instead of waiting for a stable element
+await page.waitForSelector('[data-testid="rk-wallet-option-test.uitest"], [data-testid="rk-wallet-option-injected"]');
+await page.evaluate(() => (document.querySelector('[data-testid="rk-wallet-option-test.uitest"]') || document.querySelector('[data-testid="rk-wallet-option-injected"]')).click());
+await page.waitForFunction((a) => document.body.innerText.includes(a.slice(-4)), account.address, { timeout: 30000 }).catch(() => {});
 await page.waitForTimeout(1500);
-const connected = (await bodyText()).includes(account.address.slice(0, 6)) || (await bodyText()).includes(account.address.slice(2, 6));
+const connected = (await bodyText()).includes(account.address.slice(-4)); // the header shows 0x0c…75b5
 console.log(`${connected ? 'PASS' : 'FAIL'} connect`);
 await shot('connected');
 
