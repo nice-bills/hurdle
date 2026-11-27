@@ -130,8 +130,9 @@ export function BondMeter({ bondBps, minBondBps, compact = false }: { bondBps: n
       </div>
       {!compact && (
         <div className="relative mt-1.5 h-4 text-[11px] text-ink-2">
-          <span className="absolute -translate-x-1/2 whitespace-nowrap text-bad" style={{ left: pos(fire) }}>fire {fire}%</span>
-          <span className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: pos(floor) }}>floor {floor}%</span>
+          <span className="absolute -translate-x-[3px] whitespace-nowrap" style={{ left: pos(fire) }}>
+            <span className="text-bad">fire {fire}%</span> · floor {floor}%
+          </span>
         </div>
       )}
     </div>

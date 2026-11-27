@@ -52,8 +52,8 @@ function OverviewScreen() {
   const s = data?.stats;
   return (
     <Screen id="s-overview" title="Overview" sub="Live on Unichain Sepolia" action={error ? null : <SourceBadge source={data?.source} head={data?.head} />}>
-      {error ? <p className="card text-[13px] text-bad">Chain read failed: {(error as Error).message}</p> : null}
-      <Link href={v ? `/vaults/${v.address}` : "/vaults"} className="card block">
+      {error ? <p className="card mb-2.5 p-4 text-[13px] text-bad">Chain read failed: {(error as Error).message}</p> : null}
+      <Link href={v ? `/vaults/${v.address}` : "/vaults"} className="card block p-4">
         <div className="flex items-center justify-between gap-2 text-[12.5px] text-ink-2">
           <span>{v ? `${vaultName(v)} · you vs par` : "You vs par"}</span>
           {v ? <StatusPill status={v.status} size="sm" /> : null}
@@ -75,7 +75,7 @@ function OverviewScreen() {
           <Row swatch={<i className="h-[2px] w-4 rounded-full bg-ink-3" />} label="Curator strategy" value={g ? fmtSignedPct(g.stratAbs) : "–"} />
         </div>
       </Link>
-      <dl className="card mt-2.5 grid grid-cols-2 gap-x-4 gap-y-3.5">
+      <dl className="card mt-2.5 grid p-4 grid-cols-2 gap-x-4 gap-y-3.5">
         {[
           ["Deposits", s ? fmtUsd(s.tvlUsd) : null],
           ["Hours settled", s ? fmtNum(s.settlements) : null],
@@ -116,7 +116,7 @@ function VaultsScreen() {
 function Rule({ tone, icon, head, body }: { tone: "good" | "bad" | "ice"; icon: ReactNode; head: string; body: string }) {
   const c = { good: "bg-good-soft text-good", bad: "bg-bad-soft text-bad", ice: "bg-ice-soft text-ice" }[tone];
   return (
-    <li className="card flex gap-3">
+    <li className="card flex gap-3 p-3.5">
       <span aria-hidden className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${c}`}>{icon}</span>
       <div>
         <div className="text-[14.5px] font-medium">{head}</div>
