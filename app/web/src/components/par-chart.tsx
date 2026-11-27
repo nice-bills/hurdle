@@ -135,7 +135,7 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
             </text>
           ))}
           {belowPar && par && pts(par.values).length > 1 && (
-            <path d={`${path(pts(par.values))}L${pts(par.values).at(-1)![0]} ${g.t + ih}L${pts(par.values)[0][0]} ${g.t + ih}Z`} fill="var(--bad-soft)" />
+            <path d={`${path(pts(par.values))}L${pts(par.values).at(-1)![0]} ${g.t + ih}L${pts(par.values)[0][0]} ${g.t + ih}Z`} fill="var(--bad-soft)" opacity={0.45} />
           )}
           {par && pts(par.values).length > 1 && (
             <path d={path(pts(par.values))} fill="none" stroke="var(--bar)" strokeWidth={par.width ?? 1.6} strokeDasharray="3 4" strokeLinejoin="round" />
@@ -195,7 +195,7 @@ export function Legend({ items }: { items: { label: string; color?: string; kind
           {it.kind === "par" ? (
             <span className="bar-hatch h-[2px] w-5" />
           ) : it.kind === "area" ? (
-            <span className="h-2.5 w-3.5 rounded-sm bg-bad-soft outline outline-1 outline-bad/40" />
+            <span className="h-2.5 w-3.5 rounded-sm bg-bad-soft" />
           ) : (
             <span className="w-5 rounded-full" style={{ borderTop: `2px ${it.kind === "dash" ? "dashed" : "solid"} ${it.color}` }} />
           )}
