@@ -199,7 +199,7 @@ function DepositPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState })
   return (
     <div className="space-y-4">
       {status && <Note tone={status.tone}>{status.text}</Note>}
-      <div className={`flex items-center justify-between rounded-lg px-3 py-2 text-[13px] ${e.windowOpen ? "bg-good-soft" : "bg-bg-2"}`}>
+      <div className={`flex items-center justify-between rounded-2xl px-3.5 py-2.5 text-[13px] ${e.windowOpen ? "bg-good-soft" : "bg-bg-2"}`}>
         <span className="font-semibold">{e.windowOpen ? "Deposit window open" : "Deposit window closed"}</span>
         <span className="num text-ink-2">{e.windowOpen ? (e.due ? "epoch over: your deposit settles it first" : `${fmtDuration(e.windowLeft)} left`) : `opens in ${fmtDuration(e.left)}`}</span>
       </div>
@@ -299,7 +299,7 @@ function SettlePanel({ vault }: { vault: VaultSummary }) {
   const needsPark = vault.fired && !vault.parked;
   return (
     <div className="space-y-4">
-      <div className="rounded-lg bg-bg-2 p-4 text-center">
+      <div className="rounded-2xl bg-bg-2 p-4 text-center">
         <div className="text-[12.5px] text-ink-2">{e.due ? "Epoch ended" : "Epoch ends in"}</div>
         <div className={`tnum mt-1 text-[28px] font-semibold tracking-tight ${e.due ? "text-you" : ""}`}>{e.due ? "Settle now" : fmtDuration(e.left)}</div>
         <div className="num mt-1 text-[12px] text-ink-2">epoch {fmtDuration(vault.epochSeconds)} · started {new Date(vault.epochStart * 1000).toISOString().slice(11, 16)} UTC</div>

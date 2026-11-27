@@ -60,16 +60,16 @@ export function TxStatus({ state, className = "" }: { state: TxState; className?
   if (state.phase === "idle") return null;
   const map: Record<TxPhase, { t: string; cls: string }> = {
     idle: { t: "", cls: "" },
-    simulating: { t: "Checking against the contract…", cls: "border-line bg-bg-2" },
-    signing: { t: "Confirm in your wallet", cls: "border-bar/40 bg-bar-soft" },
-    pending: { t: "Pending onchain…", cls: "border-bar/40 bg-bar-soft" },
-    confirmed: { t: "Confirmed", cls: "border-good/30 bg-good-soft" },
-    failed: { t: state.error?.title ?? "Failed", cls: state.error?.rejected ? "border-line bg-bg-2" : "border-bad/30 bg-bad-soft" },
+    simulating: { t: "Checking against the contract…", cls: "bg-bg-2" },
+    signing: { t: "Confirm in your wallet", cls: "bg-bg-2" },
+    pending: { t: "Pending onchain…", cls: "bg-bg-2" },
+    confirmed: { t: "Confirmed", cls: "bg-good-soft" },
+    failed: { t: state.error?.title ?? "Failed", cls: state.error?.rejected ? "bg-bg-2" : "bg-bad-soft" },
   };
   const m = map[state.phase];
   const spinning = state.phase === "simulating" || state.phase === "signing" || state.phase === "pending";
   return (
-    <div role="status" aria-live="polite" className={`fade-in rounded-lg border px-3 py-2.5 text-[13.5px] ${m.cls} ${className}`}>
+    <div role="status" aria-live="polite" className={`fade-in rounded-2xl px-3.5 py-3 text-[13.5px] ${m.cls} ${className}`}>
       <div className="flex items-center gap-2">
         {spinning && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-ink-3 border-t-transparent" aria-hidden />}
         {state.phase === "confirmed" && <IconCheck size={15} className="text-good" />}

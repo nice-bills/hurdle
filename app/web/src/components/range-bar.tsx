@@ -34,13 +34,13 @@ export function RangeBar({ lo, hi, tick, twapTick, preview, liquidity, wethIs0 }
         {/* current position */}
         {!empty && (
           <div
-            className={`absolute top-5 h-6 rounded-md border ${inRange ? "border-good/50 bg-good-soft" : "border-bad/50 bg-bad-soft"}`}
+            className={`absolute top-5 h-6 rounded-full border ${inRange ? "border-good/50 bg-good-soft" : "border-bad/50 bg-bad-soft"}`}
             style={full ? { left: 0, width: "100%" } : { left: X(pLo), width: W(pLo, pHi) }}
             aria-hidden
           />
         )}
         {preview && vLo && vHi && (
-          <div className="absolute top-[18px] h-[28px] rounded-md border-2 border-dashed border-bar" style={{ left: X(vLo), width: W(vLo, vHi) }} aria-hidden />
+          <div className="absolute top-[18px] h-[28px] rounded-full border-2 border-dashed border-ink-2" style={{ left: X(vLo), width: W(vLo, vHi) }} aria-hidden />
         )}
         {/* twap */}
         {twap && (

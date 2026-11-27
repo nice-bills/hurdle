@@ -183,7 +183,7 @@ export const btn = {
   ink:
     "inline-flex items-center justify-center gap-2 rounded-full bg-ink px-5 h-11 text-[15px] font-medium text-bg transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40",
   ghost:
-    "inline-flex items-center justify-center gap-2 rounded-full bg-surface px-4 h-10 text-[14px] font-medium text-ink transition-[background-color,transform] duration-150 hover:bg-bg-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
+    "inline-flex items-center justify-center gap-2 rounded-full bg-surface px-4 h-10 text-[14px] font-medium text-ink shadow-[inset_0_0_0_1px_var(--line-2)] transition-[background-color,transform] duration-150 hover:bg-bg-2 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
 };
 
 export const inputCls =
