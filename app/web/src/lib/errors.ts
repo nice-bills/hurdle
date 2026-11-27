@@ -91,6 +91,9 @@ export function decodeError(e: unknown): DecodedError {
     }
     const msg = e.shortMessage || e.message;
     if (/insufficient funds/i.test(msg)) return { title: "Not enough ETH for gas", detail: "Get Unichain Sepolia ETH from a faucet, then retry." };
+    // EIP-1193 4100: wallet locked, or this site/account not approved in the wallet.
+    if (e.walk((x) => (x as { code?: number }).code === 4100) || /not been authorized/i.test(msg))
+      return { title: "Wallet not authorized", detail: "Unlock your wallet and make sure this account is connected to this site, then try again. Reconnecting from the account menu fixes it." };
     if (/chain/i.test(msg) && /mismatch|switch/i.test(msg)) return { title: "Wrong network", detail: "Switch your wallet to Unichain Sepolia (1301)." };
     return { title: "Transaction failed", detail: msg };
   }
