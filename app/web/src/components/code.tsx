@@ -33,7 +33,7 @@ export function CopyButton({ text, label = "Copy", className = "" }: { text: str
     <button
       type="button"
       onClick={() => navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1400); })}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:border-line-2 hover:text-ink ${className}`}
+      className={`inline-flex h-8 items-center gap-1.5 rounded-full bg-surface px-3 text-[12.5px] font-medium text-ink-2 shadow-[inset_0_0_0_1px_var(--line-2)] transition-colors hover:text-ink ${className}`}
       aria-label={done ? "Copied" : `${label} to clipboard`}
     >
       {done ? <IconCheck size={13} className="text-good" /> : <IconCopy size={13} />}
@@ -45,12 +45,12 @@ export function CopyButton({ text, label = "Copy", className = "" }: { text: str
 export function Code({ code, title, lang = "ts" }: { code: string; title?: string; lang?: string }) {
   const src = code.replace(/^\n+|\s+$/g, "");
   return (
-    <figure className="m-0 overflow-hidden rounded-xl border border-line bg-bg-2">
-      <figcaption className="flex items-center justify-between gap-3 border-b border-line px-3 py-1.5 sm:px-4">
+    <figure className="card m-0 overflow-hidden">
+      <figcaption className="flex items-center justify-between gap-3 px-4 pb-1 pt-3">
         <span className="truncate font-mono text-[12px] text-ink-2">{title ?? lang}</span>
         <CopyButton text={src} />
       </figcaption>
-      <pre className="overflow-x-auto px-3 py-3 font-mono text-[12.5px] leading-[1.65] text-ink sm:px-4 sm:text-[13px]" tabIndex={0}>
+      <pre className="mx-2 mb-2 overflow-x-auto rounded-2xl bg-bg-2 px-3 py-3 font-mono text-[12.5px] leading-[1.65] text-ink sm:px-4 sm:text-[13px]" tabIndex={0}>
         <code>{lang === "ts" ? highlight(src) : src}</code>
       </pre>
     </figure>

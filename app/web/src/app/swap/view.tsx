@@ -11,7 +11,7 @@ import { fmtNum, fmtToken } from "@/lib/format";
 import { usdPerEthFromSqrt, usdPerEthFromTick } from "@/lib/math";
 import { TxStatus, useTx } from "@/lib/tx";
 import { ParChart } from "@/components/par-chart";
-import { Note, Panel, Skeleton, SourceBadge, btn, inputCls } from "@/components/ui";
+import { Note, Panel, Skeleton, SourceBadge, btn } from "@/components/ui";
 import { IconSwap } from "@/components/icons";
 
 const DEV = 50; // the deployed vaults' maxTickDeviation
@@ -27,15 +27,15 @@ export function SwapView() {
   }, [pool]);
 
   return (
-    <div className="pt-10">
-      <h1 className="text-[32px] font-bold tracking-[-0.03em]">Swap</h1>
-      <p className="mt-1 max-w-[64ch] text-ink-2">
+    <div className="pt-8 sm:pt-10">
+      <h1 className="text-[clamp(2rem,4vw,2.6rem)] font-medium leading-tight tracking-[-0.04em]">Swap</h1>
+      <p className="mt-2 max-w-[62ch] text-[15.5px] text-ink-2">
         Trade on the hooked mUSDC/mWETH pool to move the price and generate fees. Vault NAV and par are valued at the hook&apos;s TWAP,
         so a swap moves spot at once and the TWAP over the next minutes.
       </p>
-      <div className="mt-8 grid gap-6 lg:grid-cols-[400px_minmax(0,1fr)]">
+      <div className="mt-6 grid gap-2.5 lg:grid-cols-[400px_minmax(0,1fr)] lg:gap-6">
         <SwapForm pool={pool ?? null} />
-        <div className="min-w-0 space-y-6">
+        <div className="min-w-0 space-y-2.5">
           <Panel title="Spot vs TWAP" aside={pool ? <SourceBadge source={pool.source as "db" | "rpc"} head={pool.head} /> : null}>
             {pool ? <PriceGrid pool={pool} /> : <Skeleton className="h-28" />}
             {pool && <DeviationRuler spot={pool.tick} twap={pool.twap10Tick} reference={pool.referenceTick} />}
@@ -57,11 +57,11 @@ function PriceGrid({ pool }: { pool: NonNullable<ReturnType<typeof usePool>["dat
     { k: "TWAP 30 min", tick: pool.twapTick },
   ];
   return (
-    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-4">
+    <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       {cells.map((c) => (
-        <div key={c.k} className="bg-surface px-3 py-3">
+        <div key={c.k} className="min-w-0 rounded-2xl bg-bg-2 px-3.5 py-3">
           <dt className="text-[12px] text-ink-2">{c.k}</dt>
-          <dd className={`num mt-0.5 font-semibold ${c.strong ? "text-[20px]" : "text-[17px]"}`}>{c.tick != null ? `$${fmtNum(usdPerEthFromTick(c.tick), 2)}` : "n/a"}</dd>
+          <dd className={`num mt-0.5 font-medium tracking-[-0.02em] ${c.strong ? "text-[20px]" : "text-[17px]"}`}>{c.tick != null ? `$${fmtNum(usdPerEthFromTick(c.tick), 2)}` : "n/a"}</dd>
           <dd className="num text-[11.5px] text-ink-2">{c.tick != null ? `tick ${c.tick}` : "needs 10 min history"}</dd>
         </div>
       ))}
@@ -83,8 +83,8 @@ function DeviationRuler({ spot, twap, reference }: { spot: number; twap: number 
         <span className={ok ? "text-good" : "text-bad"}>{ok ? `within ±${DEV}: deposits and rebalances pass` : `outside ±${DEV}: vaults refuse PriceDeviation`}</span>
       </div>
       <div className="relative h-8">
-        <div className="absolute inset-x-0 top-3.5 h-1 rounded-full bg-bad-soft" />
-        <div className="absolute top-3.5 h-1 rounded-full bg-good/50" style={{ left: X(-DEV), right: `calc(100% - ${X(DEV)})` }} />
+        <div className="absolute inset-x-0 top-3.5 h-1 rounded-full bg-bg-3" />
+        <div className="absolute top-3.5 h-1 rounded-full bg-good/60" style={{ left: X(-DEV), right: `calc(100% - ${X(DEV)})` }} />
         <div className="absolute top-1 h-6 w-px bg-ink-3" style={{ left: "50%" }} />
         {reference != null && <div className="absolute top-2 h-4 w-[2px] -translate-x-1/2 bg-ink-2" style={{ left: X(reference - twap) }} title="block open" />}
         <div className="absolute top-0.5 h-7 w-[3px] -translate-x-1/2 rounded bg-ink" style={{ left: X(d) }} />
@@ -104,7 +104,7 @@ function History({ pool, samples }: { pool: ReturnType<typeof usePool>["data"] |
   }, [pool, samples]);
   if (series.length < 2)
     return (
-      <div className="grid h-[200px] place-items-center rounded-lg border border-dashed border-line-2 bg-bg-2 px-6 text-center text-[13.5px] text-ink-2">
+      <div className="grid h-[200px] place-items-center rounded-2xl bg-bg-2 px-6 text-center text-[13.5px] text-ink-2">
         {pool ? "Collecting live samples (every few seconds). With the indexer running this shows the last 6 hours." : "Loading…"}
       </div>
     );
@@ -168,24 +168,24 @@ function SwapForm({ pool }: { pool: ReturnType<typeof usePool>["data"] | null })
     return { out, after, impact: after / pool.price - 1 };
   }, [pool, amount, zeroForOne]);
   return (
-    <div className="space-y-4 rounded-xl border border-line bg-surface p-4 sm:p-5">
-      <div className="space-y-1.5">
-        <label htmlFor="sw-amt" className="text-[13px] font-medium">You sell</label>
-        <div className="flex gap-2">
-          <input id="sw-amt" inputMode="decimal" placeholder={sellUsdc ? "500" : "0.2"} className={inputCls} value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} />
-          <span className="grid h-11 min-w-[88px] place-items-center rounded-lg bg-bg-2 px-3 text-[14px] font-semibold">{tin.symbol}</span>
+    <div className="card space-y-3 self-start p-3 sm:p-4">
+      <div className="rounded-2xl bg-bg-2 p-4">
+        <label htmlFor="sw-amt" className="text-[13px] text-ink-2">You sell</label>
+        <div className="mt-1 flex items-center gap-2">
+          <input id="sw-amt" inputMode="decimal" placeholder={sellUsdc ? "500" : "0.2"} className="num w-full min-w-0 bg-transparent text-[32px] font-medium tracking-[-0.03em] outline-none placeholder:text-ink-3" value={amt} onChange={(e) => setAmt(e.target.value.replace(/[^0-9.]/g, ""))} />
+          <span className="grid h-9 shrink-0 place-items-center rounded-full bg-surface px-3.5 text-[14px] font-medium">{tin.symbol}</span>
         </div>
-        <div className="flex justify-between text-[12.5px] text-ink-2">
+        <div className="mt-1 flex justify-between text-[12.5px] text-ink-2">
           <span className="num">Balance {fmtToken(bal, tin.decimals)}</span>
           {bal > 0n && <button type="button" className="hover:underline" onClick={() => setAmt(fmtToken(bal / 4n, tin.decimals).replace(/,/g, ""))}>25%</button>}
         </div>
       </div>
-      <button type="button" onClick={() => { setSellUsdc((x) => !x); setAmt(""); }} className="mx-auto grid h-9 w-9 place-items-center rounded-full border border-line hover:bg-bg-2" aria-label="Flip direction">
+      <button type="button" onClick={() => { setSellUsdc((x) => !x); setAmt(""); }} className="relative z-10 mx-auto -my-6 grid h-10 w-10 place-items-center rounded-full bg-surface text-ink shadow-[0_0_0_4px_var(--surface)] transition-transform hover:rotate-180 duration-300" aria-label="Flip direction">
         <IconSwap size={16} />
       </button>
-      <div className="rounded-lg bg-bg-2 px-3 py-3">
+      <div className="rounded-2xl bg-bg-2 p-4">
         <div className="text-[13px] text-ink-2">You receive (estimate)</div>
-        <div className="num mt-0.5 text-[20px] font-semibold">{est ? `${fmtNum(est.out / 10 ** tout.decimals, tout.decimals === 6 ? 2 : 5)} ${tout.symbol}` : `– ${tout.symbol}`}</div>
+        <div className="num mt-1 text-[24px] font-medium tracking-[-0.03em]">{est ? `${fmtNum(est.out / 10 ** tout.decimals, tout.decimals === 6 ? 2 : 5)} ${tout.symbol}` : `– ${tout.symbol}`}</div>
         {est && (
           <div className="num mt-1 text-[12.5px] text-ink-2">
             ETH ${fmtNum(pool!.price, 2)} → ${fmtNum(est.after, 2)} ({est.impact >= 0 ? "+" : "−"}{Math.abs(est.impact * 100).toFixed(2)}%) · 0.05% fee
@@ -226,7 +226,7 @@ function SwapForm({ pool }: { pool: ReturnType<typeof usePool>["data"] | null })
         </div>
       )}
       <TxStatus state={tx.state} />
-      <p className="text-[12px] leading-relaxed text-ink-2">Exact-input swap through the pool&apos;s PoolSwapTest router (fee 0.05%, tick spacing 10). Mock tokens on testnet.</p>
+      <p className="px-1 text-[12px] leading-relaxed text-ink-2">Exact-input swap through the pool&apos;s PoolSwapTest router (fee 0.05%, tick spacing 10). Mock tokens on testnet.</p>
     </div>
   );
 }

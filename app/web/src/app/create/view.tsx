@@ -36,14 +36,14 @@ export function CreateView() {
   const vault = sp.get("vault");
   const { address } = useAccount();
   return (
-    <div className="pt-10">
-      <h1 className="text-[32px] font-bold tracking-[-0.03em]">Create a vault</h1>
-      <p className="mt-1 max-w-[66ch] text-ink-2">
+    <div className="pt-8 sm:pt-10">
+      <h1 className="text-[clamp(2rem,4vw,2.6rem)] font-medium leading-tight tracking-[-0.04em]">Create a vault</h1>
+      <p className="mt-2 max-w-[62ch] text-[15.5px] text-ink-2">
         You become the curator: you set the range, you guarantee par, your bond pays any miss. Four steps, all on the canonical Hurdle
         mUSDC/mWETH pool.
       </p>
       {!address && (
-        <div className="mt-6 flex flex-wrap items-center gap-4 rounded-xl border border-line bg-bg-2 p-4">
+        <div className="card mt-6 flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5">
           <span className="text-[14px]">Connect the wallet that will curate this vault.</span>
           <ConnectButton label="Connect wallet" showBalance={false} />
         </div>
@@ -55,15 +55,15 @@ export function CreateView() {
 
 function Step({ n, title, state, children }: { n: number; title: string; state: "done" | "active" | "todo"; children?: ReactNode }) {
   return (
-    <li className="relative pl-10 sm:pl-12">
+    <li className={`card relative p-4 pl-[60px] sm:p-5 sm:pl-[68px] ${state === "todo" ? "bg-transparent shadow-[inset_0_0_0_1px_var(--line)]" : ""}`}>
       <span
-        className={`num absolute left-0 top-0 grid h-8 w-8 place-items-center rounded-full border text-[13px] font-semibold ${
-          state === "done" ? "border-good bg-good-soft text-good" : state === "active" ? "border-bar bg-bar text-on-bar" : "border-line text-ink-3"
+        className={`num absolute left-4 top-4 grid h-8 w-8 place-items-center rounded-full text-[13px] font-semibold sm:left-5 sm:top-5 ${
+          state === "done" ? "bg-good-soft text-good" : state === "active" ? "bg-ink text-bg" : "bg-bg-3 text-ink-3"
         }`}
       >
         {state === "done" ? <IconCheck size={15} strokeWidth={2.4} /> : n}
       </span>
-      <h2 className={`pt-1 text-[17px] font-semibold ${state === "todo" ? "text-ink-3" : ""}`}>{title}</h2>
+      <h2 className={`pt-1 text-[17px] font-semibold tracking-[-0.02em] ${state === "todo" ? "text-ink-3" : ""}`}>{title}</h2>
       {state === "active" && <div className="fade-in mt-4">{children}</div>}
     </li>
   );
@@ -84,8 +84,8 @@ function Steps({ vault }: { vault: string | null }) {
     return done.slice(0, i).every(Boolean) ? "active" : "todo";
   };
   return (
-    <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <ol className="space-y-8 border-l border-line pl-0 [&>li]:-ml-4">
+    <div className="mt-6 grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6">
+      <ol className="space-y-2.5">
         <Step n={1} title="Set the terms" state={vault && !v && q.isLoading ? "active" : state(0)}>
           {vault && q.isLoading ? <p className="text-ink-2">Loading vault {short(vault)}…</p> : <CreateForm />}
         </Step>
@@ -99,7 +99,7 @@ function Steps({ vault }: { vault: string | null }) {
           {v && d && <RebalanceForm vault={v} pool={d.pool} onDone={() => q.refetch()} />}
         </Step>
         {v && ranged && (
-          <li className="pl-10 sm:pl-12">
+          <li>
             <Note tone="good">
               The vault is live. Settle runs every {fmtNum(v.epochSeconds / 60, 0)} minutes; open deposits to others in each window.{" "}
               <Link href={`/vaults/${v.address}`} className="font-semibold underline">Open the vault page</Link>
@@ -107,16 +107,16 @@ function Steps({ vault }: { vault: string | null }) {
           </li>
         )}
       </ol>
-      <aside className="space-y-4 text-[13.5px] text-ink-2 lg:sticky lg:top-20 lg:self-start">
+      <aside className="space-y-2.5 text-[13.5px] text-ink-2 lg:sticky lg:top-20 lg:self-start">
         {v && (
-          <div className="rounded-xl border border-line bg-surface p-4 text-ink">
+          <div className="card p-4 text-ink">
             <div className="text-[12.5px] text-ink-2">Your vault</div>
             <Addr value={v.address} className="mt-1" />
             <div className="num mt-2 text-[13px] text-ink-2">carry {v.carryBps / 100}% · floor {v.minBondBps / 100}% · dev {v.maxTickDeviation} · epoch {v.epochSeconds}s</div>
           </div>
         )}
         {notCurator && <Note tone="warn">The connected wallet is not this vault&apos;s curator ({short(v!.curator)}). Steps 2–4 are curator-only.</Note>}
-        <div className="rounded-xl border border-line p-4">
+        <div className="card p-4">
           <h3 className="mb-2 text-[13.5px] font-semibold text-ink">What you are signing up for</h3>
           <ul className="space-y-2">
             <li>Each epoch the vault settles against par. A miss is paid from your bond.</li>
@@ -134,8 +134,8 @@ function NumField({ id, label, unit, value, onChange, err, help }: { id: string;
     <div>
       <label htmlFor={id} className="text-[13px] font-medium">{label}</label>
       <div className="relative mt-1.5">
-        <input id={id} inputMode="decimal" aria-invalid={Boolean(err)} aria-describedby={`${id}-h`} className={inputCls + (err ? " border-bad focus:border-bad" : "") + " pr-16"} value={value} onChange={(e) => onChange(e.target.value.replace(/[^0-9.]/g, ""))} />
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-ink-2">{unit}</span>
+        <input id={id} inputMode="decimal" aria-invalid={Boolean(err)} aria-describedby={`${id}-h`} className={inputCls + (err ? " !border-bad" : "") + " pr-20"} value={value} onChange={(e) => onChange(e.target.value.replace(/[^0-9.]/g, ""))} />
+        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[13px] text-ink-2">{unit}</span>
       </div>
       <p id={`${id}-h`} className={`mt-1 text-[12.5px] ${err ? "text-bad" : "text-ink-2"}`}>{err ?? help}</p>
     </div>
@@ -150,14 +150,14 @@ function CreateForm() {
   const val = validate(p);
   const set = (k: keyof Params) => (s: string) => setP((x) => ({ ...x, [k]: s }));
   return (
-    <div className="space-y-5 rounded-xl border border-line bg-surface p-4 sm:p-5">
+    <div className="space-y-5">
       <div className="grid gap-5 sm:grid-cols-2">
         <NumField id="c-carry" label="Carry" unit="%" value={p.carry} onChange={set("carry")} err={val.errs.carry} help="Your share of returns above par, after refilling any bond paid out." />
         <NumField id="c-bond" label="Bond floor (minBond)" unit="% NAV" value={p.minBond} onChange={set("minBond")} err={val.errs.minBond} help="Below this, deposits and rebalances freeze. Half of it is the fire line." />
         <NumField id="c-dev" label="Max tick deviation" unit="ticks" value={p.dev} onChange={set("dev")} err={val.errs.dev} help="How far spot, block-open price and TWAP may differ when you rebalance (50 ≈ 0.5%)." />
         <NumField id="c-epoch" label="Epoch" unit="seconds" value={p.epoch} onChange={set("epoch")} err={val.errs.epoch} help="Settlement period. Deposits open for the first 5 minutes of each." />
       </div>
-      <div className="rounded-lg bg-bg-2 px-3 py-2.5 font-mono text-[12px] text-ink-2 break-all">
+      <div className="rounded-2xl bg-bg-2 px-4 py-3 font-mono text-[12px] text-ink-2 break-all">
         factory.create(poolKey, {val.carry}, {val.minBond}, {val.dev}, {val.epoch})
       </div>
       <button
@@ -186,7 +186,7 @@ function CreateForm() {
 
 function BondStep({ v }: { v: VaultSummary }) {
   return (
-    <div className="space-y-3 rounded-xl border border-line bg-surface p-4 sm:p-5">
+    <div className="space-y-3">
       <p className="text-[13.5px] text-ink-2">
         The bond is posted in {BOND.symbol} (the pool's token1) and is what pays depositors when you miss par. It also sets your capacity: plan the first deposit at most bond ÷ {v.minBondBps / 100}%.
         Need {BOND.symbol}? Mint it on any vault&apos;s Deposit tab or on the swap page.
@@ -227,7 +227,7 @@ function FirstDeposit({ v, pool }: { v: VaultSummary; pool: PoolState }) {
   const self = receiver && receiver.toLowerCase() === v.curator.toLowerCase();
   const needs = useMemo(() => [a0 > al0 && "usdc", a1 > al1 && "weth"].filter(Boolean) as string[], [a0, a1, al0, al1]);
   return (
-    <div className="space-y-4 rounded-xl border border-line bg-surface p-4 sm:p-5">
+    <div className="space-y-4">
       <p className="text-[13.5px] text-ink-2">Valued at the TWAP and left idle until your first rebalance. Later deposits from anyone are in kind, in each epoch&apos;s window.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
@@ -246,7 +246,7 @@ function FirstDeposit({ v, pool }: { v: VaultSummary; pool: PoolState }) {
         <input id="fd-r" className={inputCls + " mt-1.5 font-mono text-[13px]"} placeholder={address ?? "0x…"} value={recv} onChange={(e) => setRecv(e.target.value.trim())} />
         <p className="mt-1 text-[12.5px] text-ink-2">Default: you. A separate depositor address is covered by your bond; your own shares are not.</p>
       </div>
-      <div className="rows rounded-lg border border-line px-3 text-[13.5px]">
+      <div className="rows rounded-2xl bg-bg-2 px-4 text-[13.5px]">
         <div className="flex justify-between py-1.5"><span className="text-ink-2">Value at TWAP (${fmtNum(price, 0)})</span><span className="num font-medium">{fmtUsd(valueUsd)}</span></div>
         <div className="flex justify-between py-1.5"><span className="text-ink-2">Capacity from bond</span><span className={`num font-medium ${over ? "text-bad" : ""}`}>{fmtUsd(capUsd)}</span></div>
       </div>

@@ -211,26 +211,26 @@ export function IntegrateView() {
   const active = TABS.find((t) => t.id === tab)!;
   const allAddrs = ADDRS.map((a) => `${a.name}: ${a.value}`).join("\n");
   return (
-    <div className="pt-10">
-      <p className="text-[12.5px] font-semibold uppercase tracking-[0.1em] text-bar-ink">Developers</p>
-      <h1 className="mt-1 text-[32px] font-bold tracking-[-0.03em] sm:text-[40px]">Integrate Hurdle</h1>
-      <p className="mt-2 max-w-[68ch] text-[16px] text-ink-2">
+    <div className="pt-8 sm:pt-10">
+      <p className="text-[13px] font-medium text-ink-2">Developers</p>
+      <h1 className="mt-1 text-[clamp(2rem,4vw,2.6rem)] font-medium leading-tight tracking-[-0.04em]">Integrate Hurdle</h1>
+      <p className="mt-2 max-w-[64ch] text-[15.5px] text-ink-2">
         Everything here is on Unichain Sepolia (chain 1301). Vaults are plain contracts: read them, deposit into them, settle them, or run one.
         No SDK, no API key. The ABIs and addresses below are the ones this app uses.
       </p>
 
       <nav aria-label="On this page" className="mt-5 flex flex-wrap gap-2 text-[13.5px]">
         {[["#addresses", "Addresses"], ["#abis", "ABIs"], ["#snippets", "Snippets"], ["#errors", "Errors"], ["#rpc", "Network"]].map(([h, l]) => (
-          <a key={h} href={h} className="rounded-full border border-line px-3 py-1 text-ink-2 hover:border-line-2 hover:text-ink">{l}</a>
+          <a key={h} href={h} className="rounded-full bg-surface px-3.5 py-1.5 text-ink-2 transition-colors hover:text-ink">{l}</a>
         ))}
       </nav>
 
       <section id="addresses" className="mt-10 scroll-mt-24">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-[20px] font-semibold">Addresses</h2>
+          <h2 className="text-[22px] font-semibold tracking-[-0.03em]">Addresses</h2>
           <CopyButton text={allAddrs} label="Copy all" />
         </div>
-        <div className="overflow-hidden rounded-xl border border-line bg-surface">
+        <div className="card overflow-hidden">
           <ul className="rows">
             {ADDRS.map((a) => (
               <li key={a.name} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
@@ -250,16 +250,16 @@ export function IntegrateView() {
       </section>
 
       <section id="abis" className="mt-12 scroll-mt-24">
-        <h2 className="mb-3 text-[20px] font-semibold">ABIs</h2>
-        <ul className="grid gap-3 sm:grid-cols-2">
+        <h2 className="mb-3 text-[22px] font-semibold tracking-[-0.03em]">ABIs</h2>
+        <ul className="grid gap-2.5 sm:grid-cols-2">
           {ABIS.map((a) => (
             <li key={a.file}>
               <a
                 href={`/abi/${a.file}`}
                 download={a.file}
-                className="group flex h-full items-start gap-3 rounded-xl border border-line bg-surface p-4 transition-colors hover:border-line-2 hover:bg-bg-2"
+                className="card group flex h-full items-start gap-3 p-4 transition-transform duration-200 hover:-translate-y-0.5"
               >
-                <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-bar-soft text-bar-ink"><IconDownload size={16} /></span>
+                <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-bg-2 text-ink"><IconDownload size={16} /></span>
                 <span className="min-w-0">
                   <span className="block truncate font-mono text-[13.5px] font-semibold">{a.file}</span>
                   <span className="block text-[12.5px] leading-snug text-ink-2">{a.note}</span>
@@ -271,9 +271,9 @@ export function IntegrateView() {
       </section>
 
       <section id="snippets" className="mt-12 scroll-mt-24">
-        <h2 className="mb-1 text-[20px] font-semibold">Snippets</h2>
+        <h2 className="mb-1 text-[22px] font-semibold tracking-[-0.03em]">Snippets</h2>
         <p className="mb-4 text-[14px] text-ink-2">viem v2, TypeScript. Copy, set PRIVATE_KEY, run.</p>
-        <div role="tablist" aria-label="Snippets" className="-mx-4 flex gap-1 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
+        <div role="tablist" aria-label="Snippets" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
           {TABS.map((t) => (
             <button
               key={t.id}
@@ -282,10 +282,9 @@ export function IntegrateView() {
               aria-selected={tab === t.id}
               aria-controls="snippet-panel"
               onClick={() => setTab(t.id)}
-              className={`relative shrink-0 px-3 py-3 text-[14px] font-medium transition-colors ${tab === t.id ? "text-ink" : "text-ink-2 hover:text-ink"}`}
+              className={`shrink-0 rounded-full px-3.5 py-2 text-[13.5px] font-medium transition-colors ${tab === t.id ? "bg-ink text-bg" : "bg-surface text-ink-2 hover:text-ink"}`}
             >
               {t.label}
-              {tab === t.id && <span className="bar-hatch absolute inset-x-2 -bottom-px h-[3px] rounded-full" />}
             </button>
           ))}
         </div>
@@ -296,9 +295,9 @@ export function IntegrateView() {
       </section>
 
       <section id="errors" className="mt-12 scroll-mt-24">
-        <h2 className="mb-1 text-[20px] font-semibold">Revert reasons</h2>
+        <h2 className="mb-1 text-[22px] font-semibold tracking-[-0.03em]">Revert reasons</h2>
         <p className="mb-3 text-[14px] text-ink-2">Custom errors in the ABIs. Simulate first and viem names them for you; this app does exactly that.</p>
-        <div className="overflow-hidden rounded-xl border border-line bg-surface">
+        <div className="card overflow-hidden">
           <ul className="rows">
             {Object.entries(ERROR_TEXT).map(([name, text]) => (
               <li key={name} className="grid gap-1 px-4 py-3 sm:grid-cols-[210px_1fr] sm:gap-6">
@@ -311,8 +310,8 @@ export function IntegrateView() {
       </section>
 
       <section id="rpc" className="mt-12 scroll-mt-24">
-        <h2 className="mb-3 text-[20px] font-semibold">Network</h2>
-        <div className="rows overflow-hidden rounded-xl border border-line bg-surface text-[14px]">
+        <h2 className="mb-3 text-[22px] font-semibold tracking-[-0.03em]">Network</h2>
+        <div className="card rows overflow-hidden text-[14px]">
           {[
             ["Chain", "Unichain Sepolia, id 1301"],
             ["RPC", D.rpc],
