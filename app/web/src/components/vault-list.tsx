@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { DEPOSIT_WINDOW } from "@/lib/chain";
-import { fmtDuration, fmtSignedBp, short } from "@/lib/format";
+import { fmtDuration, fmtSignedPct, short } from "@/lib/format";
 import { BOND_IS_WETH } from "@/lib/chain";
-import { money, moneyAlt, unitName, useUnit } from "@/lib/unit";
+import { money, useUnit, type Unit } from "@/lib/unit";
 import type { VaultSummary } from "@/lib/types";
-import { BondMeter, SignedValue, StatusPill, useNow } from "./ui";
+import { BondMeter, Chip, StatusPill, useNow } from "./ui";
 
 export function epochInfo(v: Pick<VaultSummary, "epochStart" | "epochSeconds" | "fired">, now: number) {
   const end = v.epochStart + v.epochSeconds;
@@ -19,98 +19,103 @@ export function vaultName(v: Pick<VaultSummary, "label" | "address">) {
   return v.label ?? `Vault ${short(v.address, 3)}`;
 }
 
-/** `price` = USD per ETH at the hook TWAP (what the contract marks NAV at). */
-export function VaultList({ vaults, price, compact = false, bondIsWeth = BOND_IS_WETH }: { vaults: VaultSummary[]; price: number; compact?: boolean; bondIsWeth?: boolean }) {
-  const now = useNow(1000);
-  const { unit } = useUnit();
+/** Depositors and strategy minus par, in points of starting capital, in the chosen unit's basis. */
+export function vsPar(v: Pick<VaultSummary, "cumulative">, unit: Unit) {
+  const c = v.cumulative;
+  if (!c) return null;
+  return unit === "usd"
+    ? { you: c.depositorUsd - c.parUsd, strat: c.strategyUsd - c.parUsd, youAbs: c.depositorUsd - 1, parAbs: c.parUsd - 1, stratAbs: c.strategyUsd - 1 }
+    : { you: c.depositor - c.par, strat: c.strategy - c.par, youAbs: c.depositor - 1, parAbs: c.par - 1, stratAbs: c.strategy - 1 };
+}
+
+/** "+0.05 pts": a gap to par in points of starting capital. */
+export const fmtPts = (f: number | null | undefined, d = 2) => fmtSignedPct(f, d).replace("%", " pts");
+
+export function Monogram({ name, size = 36 }: { name: string; size?: number }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-surface">
-      <div className="hidden grid-cols-[minmax(0,1.5fr)_0.8fr_1fr_1.2fr_0.9fr_1fr] gap-4 border-b border-line bg-bg-2 px-5 py-2.5 text-[12px] font-medium text-ink-2 lg:grid">
-        <span>Vault</span>
-        <span>Status</span>
-        <span className="text-right">NAV ({unitName(unit, bondIsWeth)})</span>
-        <span>Bond / NAV</span>
-        <span className="text-right">Last epoch vs par</span>
-        <span className="text-right">Epoch</span>
-      </div>
-      <ul className="rows">
-        {vaults.map((v) => {
-          const e = epochInfo(v, now);
-          return (
-            <li key={v.address}>
-              <Link
-                href={`/vaults/${v.address}`}
-                className="group grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-4 transition-colors duration-150 hover:bg-bg-2 sm:px-5 lg:grid-cols-[minmax(0,1.5fr)_0.8fr_1fr_1.2fr_0.9fr_1fr] lg:items-center"
-              >
-                <div className="col-span-2 flex min-w-0 items-center justify-between gap-3 lg:col-span-1">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 font-semibold">
-                      <span className="truncate group-hover:underline">{vaultName(v)}</span>
-                      <span className="text-[12px] font-normal text-ink-2">carry {v.carryBps / 100}%</span>
-                    </div>
-                    <div className="truncate text-[12.5px] text-ink-2">
-                      <span className="font-mono">{short(v.address)}</span>
-                      {v.note ? ` · ${v.note}` : ` · curator ${short(v.curator)}`}
-                    </div>
-                  </div>
-                  <span className="lg:hidden"><StatusPill status={v.status} size="sm" /></span>
-                </div>
-                <div className="hidden lg:block"><StatusPill status={v.status} /></div>
-                <div className="lg:text-right">
-                  <div className="text-[11.5px] text-ink-2 lg:hidden">NAV</div>
-                  <div className="num font-medium">{money(v.nav, price, unit, 4, bondIsWeth)}</div>
-                  <div className="num text-[12.5px] text-ink-2">{v.nav ? moneyAlt(v.nav, price, unit, bondIsWeth) : ""}</div>
-                </div>
-                <div>
-                  <div className="text-[11.5px] text-ink-2 lg:hidden">Bond / NAV</div>
-                  <div className="num mb-1.5 text-[13.5px] font-medium">{v.bondBps != null ? `${(v.bondBps / 100).toFixed(2)}%` : "–"}</div>
-                  <BondMeter bondBps={v.bondBps} minBondBps={v.minBondBps} compact />
-                </div>
-                <div className="lg:text-right">
-                  <div className="text-[11.5px] text-ink-2 lg:hidden">Last epoch vs par</div>
-                  {v.lastSettle ? (
-                    <SignedValue v={v.lastSettle.vsPar} className="font-medium">{fmtSignedBp(v.lastSettle.vsPar)}</SignedValue>
-                  ) : (
-                    <span className="text-ink-2">no settlement yet</span>
-                  )}
-                </div>
-                <div className="lg:text-right">
-                  <div className="text-[11.5px] text-ink-2 lg:hidden">Epoch</div>
-                  {v.fired ? (
-                    <span className="text-[13.5px] text-ink-2">parked passive</span>
-                  ) : e.due ? (
-                    <span className="text-[13.5px] font-semibold text-bar-ink">Settle due</span>
-                  ) : (
-                    <span className="num text-[13.5px] font-medium">{fmtDuration(e.left)}</span>
-                  )}
-                  {!compact && !v.fired && (
-                    <div className={`text-[12px] ${e.windowOpen ? "text-good" : "text-ink-2"}`}>
-                      {e.windowOpen ? (e.due ? "deposits open (settles first)" : `deposits open · ${fmtDuration(e.windowLeft)}`) : "deposits closed"}
-                    </div>
-                  )}
-                </div>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+    <span aria-hidden className="grid shrink-0 place-items-center rounded-full bg-bg-2 font-semibold text-ink" style={{ width: size, height: size, fontSize: size * 0.4 }}>
+      {name.replace(/^Vault /, "")[0]?.toUpperCase()}
+    </span>
   );
 }
 
-export function VaultListSkeleton({ rows = 2 }: { rows?: number }) {
+/** One vault as a card (the reference's Projects card): name, bond against its floor, you vs par, the hour clock. */
+export function VaultCard({ v, price, bondIsWeth = BOND_IS_WETH, compact = false }: { v: VaultSummary; price: number; bondIsWeth?: boolean; compact?: boolean }) {
+  const now = useNow(1000);
+  const { unit } = useUnit();
+  const e = epochInfo(v, now);
+  const g = vsPar(v, unit);
+  const name = vaultName(v);
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-surface">
+    <Link
+      href={`/vaults/${v.address}`}
+      className="card group block p-4 transition-transform duration-200 ease-[var(--ease-out-quart)] hover:-translate-y-0.5"
+    >
+      <div className="flex items-center gap-3">
+        <Monogram name={name} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[15px] font-medium">{name}</div>
+          <div className="truncate text-[12px] text-ink-3">{v.note ? v.note.split(",")[0] : `curator ${short(v.curator)}`}</div>
+        </div>
+        <StatusPill status={v.status} size="sm" />
+      </div>
+
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <div>
+          <div className="text-[12px] text-ink-2">You vs par</div>
+          <div className="num text-[24px] font-medium leading-tight tracking-[-0.03em]">{g ? fmtPts(g.you) : <span className="text-[15px] text-ink-2">no settle yet</span>}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-[12px] text-ink-2">Deposits</div>
+          <div className="num text-[15px] font-medium">{money(v.nav, price, unit, 4, bondIsWeth)}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-between text-[12px]">
+        <span><b className="num font-medium">{v.bondBps != null ? `${(v.bondBps / 100).toFixed(2)}%` : "–"}</b> <span className="text-ink-3">bond of deposits</span></span>
+        <span className="text-ink-2">floor {v.minBondBps / 100}%</span>
+      </div>
+      <div className="mt-1.5"><BondMeter bondBps={v.bondBps} minBondBps={v.minBondBps} compact /></div>
+
+      <div className="mt-3.5 flex items-center justify-between gap-2 text-[12px] text-ink-2">
+        <span className="num">{v.totals.settlements ? `${v.totals.beats} of ${v.totals.settlements} hours beat par` : "first settle pending"}</span>
+        {v.fired ? (
+          <Chip>{v.parked ? "Parked passive" : "Parking"}</Chip>
+        ) : e.due ? (
+          <Chip tone="ink">Settle due</Chip>
+        ) : !compact && e.windowOpen ? (
+          <Chip tone="good">Deposits open · {fmtDuration(e.windowLeft)}</Chip>
+        ) : (
+          <Chip><span className="num">Settles in {fmtDuration(e.left)}</span></Chip>
+        )}
+      </div>
+    </Link>
+  );
+}
+
+/** `price` = USD per ETH at the hook TWAP (what the contract marks NAV at). */
+export function VaultList({ vaults, price, compact = false, bondIsWeth = BOND_IS_WETH }: { vaults: VaultSummary[]; price: number; compact?: boolean; bondIsWeth?: boolean }) {
+  return (
+    <ul className={`grid gap-2.5 ${compact ? "" : "sm:grid-cols-2 lg:grid-cols-3"}`}>
+      {vaults.map((v) => (
+        <li key={v.address}>
+          <VaultCard v={v} price={price} bondIsWeth={bondIsWeth} compact={compact} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function VaultListSkeleton({ rows = 2, compact = false }: { rows?: number; compact?: boolean }) {
+  return (
+    <div className={`grid gap-2.5 ${compact ? "" : "sm:grid-cols-2 lg:grid-cols-3"}`} aria-busy="true" aria-label="Loading vaults">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-center gap-6 border-b border-line px-5 py-5 last:border-0">
-          <Skeleton w="w-40" />
-          <Skeleton w="w-16" />
-          <Skeleton w="ml-auto w-24" />
+        <div key={i} className="card p-4">
+          <div className="flex items-center gap-3"><span className="skeleton block h-9 w-9 rounded-full" /><span className="skeleton block h-4 w-32" /></div>
+          <span className="skeleton mt-5 block h-6 w-24" />
+          <span className="skeleton mt-5 block h-1 w-full" />
         </div>
       ))}
     </div>
   );
-}
-function Skeleton({ w }: { w: string }) {
-  return <span className={`skeleton block h-4 ${w}`} />;
 }

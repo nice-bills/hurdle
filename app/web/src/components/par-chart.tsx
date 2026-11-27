@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useRef, useState, useEffect, type ReactNode } from "react";
+import { useMemo, useRef, useState, useEffect, type ReactNode } from "react";
 
 export type Line = {
   id: string;
@@ -50,7 +50,6 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
-  const uid = useId().replace(/:/g, "");
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -121,18 +120,12 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
           onPointerLeave={() => setHover(null)}
           className="block touch-pan-y"
         >
-          <defs>
-            <pattern id={`hatch-${uid}`} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
-              <rect width="8" height="8" fill="var(--bar)" />
-              <rect width="3" height="8" fill="var(--surface)" opacity=".5" />
-            </pattern>
-          </defs>
           {yTitle && (
             <text x={g.l - (narrow ? 40 : 50)} y={11} className="fill-ink-2 text-[11.5px] font-medium">{yTitle}</text>
           )}
           {dom.ticks.map((v) => (
             <g key={v}>
-              <line x1={g.l} x2={w - g.r} y1={Y(v)} y2={Y(v)} stroke={Math.abs(v) < 1e-12 ? "var(--line-2)" : "var(--grid)"} />
+              <line x1={g.l} x2={w - g.r} y1={Y(v)} y2={Y(v)} stroke={Math.abs(v) < 1e-12 ? "var(--line-2)" : "var(--line)"} />
               <text x={g.l - 8} y={Y(v) + 4} textAnchor="end" className="num fill-ink-2 text-[11px]">{yFormat(v)}</text>
             </g>
           ))}
@@ -145,15 +138,15 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
             <path d={`${path(pts(par.values))}L${pts(par.values).at(-1)![0]} ${g.t + ih}L${pts(par.values)[0][0]} ${g.t + ih}Z`} fill="var(--bad-soft)" />
           )}
           {par && pts(par.values).length > 1 && (
-            <path d={path(pts(par.values))} fill="none" stroke={`url(#hatch-${uid})`} strokeWidth={par.width ?? 7} strokeLinejoin="round" strokeLinecap="round" />
+            <path d={path(pts(par.values))} fill="none" stroke="var(--bar)" strokeWidth={par.width ?? 1.6} strokeDasharray="3 4" strokeLinejoin="round" />
           )}
           {lines.filter((l) => l.kind !== "par").map((l) => {
             const p = pts(l.values);
             if (p.length < 2) return null;
             return (
               <g key={l.id}>
-                <path d={path(p)} fill="none" stroke={l.color} strokeWidth={l.width ?? (l.kind === "dash" ? 1.6 : 2.4)} strokeDasharray={l.kind === "dash" ? "5 4" : undefined} strokeLinejoin="round" />
-                {l.kind === "solid" && <circle cx={p.at(-1)![0]} cy={p.at(-1)![1]} r={3.5} fill={l.color} />}
+                <path d={path(p)} fill="none" stroke={l.color} strokeWidth={l.width ?? (l.kind === "dash" ? 1.5 : 2.25)} strokeDasharray={l.kind === "dash" ? "5 4" : undefined} strokeLinejoin="round" strokeLinecap="round" />
+                {l.kind === "solid" && <circle cx={p.at(-1)![0]} cy={p.at(-1)![1]} r={4} fill="var(--surface)" stroke={l.color} strokeWidth={2} />}
                 {dots && l.kind === "solid" && p.map((q, i) => <circle key={i} cx={q[0]} cy={q[1]} r={2} fill={l.color} />)}
               </g>
             );
@@ -173,7 +166,7 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
           {pos != null && N > 1 && Number.isFinite(X(interp(t, end))) && <line x1={X(interp(t, end))} x2={X(interp(t, end))} y1={g.t} y2={g.t + ih} stroke="var(--ink-3)" opacity={0.5} />}
           {hover != null && (
             <g>
-              <line x1={X(t[hover])} x2={X(t[hover])} y1={g.t} y2={g.t + ih} stroke="var(--ink-2)" strokeWidth={1} />
+              <line x1={X(t[hover])} x2={X(t[hover])} y1={g.t} y2={g.t + ih} stroke="var(--ink)" strokeWidth={2} />
               {lines.map((l) => (
                 <circle key={l.id} cx={X(t[hover])} cy={Y(l.values[hover])} r={4} fill="var(--surface)" stroke={l.kind === "par" ? "var(--bar)" : l.color} strokeWidth={2} />
               ))}
@@ -184,7 +177,7 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
       {xTitle && w > 0 && <div className="absolute inset-x-0 bottom-0 pr-3 text-right text-[11px] text-ink-2">{xTitle}</div>}
       {hover != null && tooltip && w > 0 && (
         <div
-          className="pointer-events-none absolute top-2 z-[var(--z-menu)] min-w-[180px] rounded-lg border border-line bg-surface px-3 py-2 text-[12.5px] shadow-card"
+          className="chart-tip pointer-events-none absolute top-2 z-[var(--z-menu)] min-w-[180px] rounded-xl bg-ink px-3 py-2 text-[12.5px] text-bg shadow-card"
           style={X(t[hover]) > w / 2 ? { right: w - X(t[hover]) + 12 } : { left: X(t[hover]) + 12 }}
         >
           {tooltip(hover)}
@@ -200,11 +193,11 @@ export function Legend({ items }: { items: { label: string; color?: string; kind
       {items.map((it) => (
         <span key={it.label} className="inline-flex items-center gap-1.5">
           {it.kind === "par" ? (
-            <span className="bar-hatch h-[6px] w-6 rounded-full" />
+            <span className="bar-hatch h-[2px] w-5" />
           ) : it.kind === "area" ? (
             <span className="h-2.5 w-3.5 rounded-sm bg-bad-soft outline outline-1 outline-bad/40" />
           ) : (
-            <span className="w-6" style={{ borderTop: `${it.kind === "dash" ? 2 : 3}px ${it.kind === "dash" ? "dashed" : "solid"} ${it.color}` }} />
+            <span className="w-5 rounded-full" style={{ borderTop: `2px ${it.kind === "dash" ? "dashed" : "solid"} ${it.color}` }} />
           )}
           {it.label}
         </span>
