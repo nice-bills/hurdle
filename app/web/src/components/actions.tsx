@@ -14,7 +14,7 @@ import { depositStatus } from "@/lib/deposit-status";
 import { fmtBond, markPrice } from "@/lib/unit";
 import { epochInfo } from "./vault-list";
 import { RangeBar } from "./range-bar";
-import { Note, btn, inputCls, useNow } from "./ui";
+import { Note, Segmented, btn, inputCls, useNow } from "./ui";
 
 type Tab = "deposit" | "withdraw" | "settle" | "curator";
 
@@ -68,23 +68,24 @@ export function ActionPanel({ vault, pool }: { vault: VaultSummary; pool: PoolSt
     ...(isCurator ? [{ id: "curator" as Tab, label: "Curator" }] : []),
   ];
   return (
-    <div className="rounded-xl border border-line bg-surface">
-      <div role="tablist" aria-label="Vault actions" className="flex border-b border-line px-2">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={`relative flex-1 px-2 py-3.5 text-[14px] font-medium transition-colors ${tab === t.id ? "text-ink" : "text-ink-2 hover:text-ink"}`}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              {t.label}
-              {t.dot && <span className="h-1.5 w-1.5 rounded-full bg-bar" aria-label="due" />}
-            </span>
-            {tab === t.id && <span className="bar-hatch absolute inset-x-3 -bottom-px h-[3px] rounded-full" />}
-          </button>
-        ))}
+    <div className="card">
+      <div className="px-3 pt-3">
+        <Segmented
+          tabs
+          label="Vault actions"
+          value={tab}
+          onChange={setTab}
+          className="flex w-full"
+          options={tabs.map((t) => ({
+            v: t.id,
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                {t.label}
+                {t.dot && <span className="h-1.5 w-1.5 rounded-full bg-you" aria-label="due" />}
+              </span>
+            ),
+          }))}
+        />
       </div>
       <div className="p-4 sm:p-5">
         {!address ? (
@@ -147,7 +148,7 @@ function Faucet() {
   const { address } = useAccount();
   const tx = useTx();
   return (
-    <div className="rounded-lg border border-dashed border-line-2 p-3">
+    <div className="rounded-2xl bg-bg-2 p-3">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[13px] font-semibold">Test token faucet</span>
         <span className="text-[12px] text-ink-2">mock tokens, free</span>
@@ -205,7 +206,7 @@ function DepositPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState })
       <Field id="dep-amt" label="Shares to buy" hint={<button type="button" className="underline-offset-2 hover:underline" onClick={() => setAmt(formatUnits(roomShares > 0n && roomShares < ONE_SHARE ? roomShares : SUGGEST_SHARES, BOND.decimals))}>use {roomShares > 0n && roomShares < ONE_SHARE ? "max capacity" : formatUnits(SUGGEST_SHARES, BOND.decimals)}</button>}>
         <input id="dep-amt" inputMode="decimal" placeholder={formatUnits(SUGGEST_SHARES, BOND.decimals)} className={inputCls} value={amt} onChange={(x) => setAmt(x.target.value.replace(/[^0-9.]/g, ""))} />
       </Field>
-      <div className="rows rounded-lg border border-line px-3">
+      <div className="rows rounded-2xl bg-bg-2 px-3">
         <Row k="Value at NAV" v={shares ? `${fmtUsd(bondToUsd(valueWei, markPrice(pool)))} · ${fmtBond(valueWei)} ${BOND.symbol}` : "–"} />
         <Row k="You pay (quote)" v={q ? pairStr(q[0], q[1]) : quote.isFetching ? "quoting…" : "–"} />
         <Row k="Max with 1% slack" v={q ? `${fmtToken(max0, TOKENS.token0.decimals)} + ${fmtToken(max1, TOKENS.token1.decimals)}` : "–"} />
@@ -259,7 +260,7 @@ function WithdrawPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState }
   const tooMuch = shares != null && shares > w.shares;
   return (
     <div className="space-y-4">
-      <div className="rows rounded-lg border border-line px-3">
+      <div className="rows rounded-2xl bg-bg-2 px-3">
         <Row k="Your shares" v={fmtBond(w.shares)} />
         <Row k="Share of vault" v={supply > 0n ? `${(Number((w.shares * 1_000_000n) / supply) / 10_000).toFixed(2)}%` : "–"} />
         <Row k="Value at NAV" v={`${fmtUsd(bondToUsd(myValue, markPrice(pool)))} · ${fmtBond(myValue)} ${BOND.symbol}`} />
@@ -267,7 +268,7 @@ function WithdrawPanel({ vault, pool }: { vault: VaultSummary; pool: PoolState }
       <Field id="wd-amt" label="Shares to redeem" hint={<button type="button" className="hover:underline" onClick={() => setAmt(formatUnits(w.shares, BOND.decimals))}>max</button>}>
         <input id="wd-amt" inputMode="decimal" placeholder="0.0" className={inputCls} value={amt} onChange={(x) => setAmt(x.target.value.replace(/[^0-9.]/g, ""))} />
       </Field>
-      <div className="rows rounded-lg border border-line px-3">
+      <div className="rows rounded-2xl bg-bg-2 px-3">
         <Row k="You receive (approx.)" v={q ? pairStr(q[0], q[1]) : "–"} />
       </div>
       <Note tone="info">
@@ -300,7 +301,7 @@ function SettlePanel({ vault }: { vault: VaultSummary }) {
     <div className="space-y-4">
       <div className="rounded-lg bg-bg-2 p-4 text-center">
         <div className="text-[12.5px] text-ink-2">{e.due ? "Epoch ended" : "Epoch ends in"}</div>
-        <div className={`tnum mt-1 text-[28px] font-semibold tracking-tight ${e.due ? "text-bar-ink" : ""}`}>{e.due ? "Settle now" : fmtDuration(e.left)}</div>
+        <div className={`tnum mt-1 text-[28px] font-semibold tracking-tight ${e.due ? "text-you" : ""}`}>{e.due ? "Settle now" : fmtDuration(e.left)}</div>
         <div className="num mt-1 text-[12px] text-ink-2">epoch {fmtDuration(vault.epochSeconds)} · started {new Date(vault.epochStart * 1000).toISOString().slice(11, 16)} UTC</div>
       </div>
       <p className="text-[13.5px] leading-relaxed text-ink-2">
@@ -339,7 +340,7 @@ function gate(vault: VaultSummary, pool: PoolState) {
 export function GateStatus({ vault, pool }: { vault: VaultSummary; pool: PoolState }) {
   const g = gate(vault, pool);
   return (
-    <div className="rounded-lg border border-line p-3">
+    <div className="rounded-2xl bg-bg-2 p-3">
       <div className="mb-2 flex items-center justify-between text-[13px]">
         <span className="font-semibold">TWAP gate</span>
         <span className={g.ok ? "text-good" : "text-bad"}>{g.ok ? "passing: rebalance allowed" : "failing: rebalance would revert PriceDeviation"}</span>
@@ -396,11 +397,11 @@ export function RebalanceForm({ vault, pool, onDone }: { vault: VaultSummary; po
     <div className="space-y-3">
       <div className="flex flex-wrap gap-1.5">
         {PRESETS.map((p) => (
-          <button key={p.id} type="button" onClick={() => setPreset(p.id)} className={`rounded-md border px-3 py-1.5 text-[13px] font-medium ${preset === p.id ? "border-bar bg-bar-soft" : "border-line hover:bg-bg-2"}`}>
+          <button key={p.id} type="button" onClick={() => setPreset(p.id)} className={`rounded-full px-3 py-1.5 text-[13px] font-medium ${preset === p.id ? "bg-ink text-bg" : "bg-bg-2 hover:bg-bg-3"}`}>
             {p.label}
           </button>
         ))}
-        <button type="button" onClick={() => setPreset("custom")} className={`rounded-md border px-3 py-1.5 text-[13px] font-medium ${preset === "custom" ? "border-bar bg-bar-soft" : "border-line hover:bg-bg-2"}`}>
+        <button type="button" onClick={() => setPreset("custom")} className={`rounded-full px-3 py-1.5 text-[13px] font-medium ${preset === "custom" ? "bg-ink text-bg" : "bg-bg-2 hover:bg-bg-3"}`}>
           Custom
         </button>
       </div>
@@ -454,7 +455,7 @@ export function PostBondForm({ vault, onDone }: { vault: VaultSummary; onDone?: 
   const needApprove = v != null && w.allow1 < v;
   return (
     <div className="space-y-3">
-      <div className="rows rounded-lg border border-line px-3">
+      <div className="rows rounded-2xl bg-bg-2 px-3">
         <Row k="Bond now" v={`${fmtBond(bv)} ${BOND.symbol}`} />
         <Row k="Floor at current NAV" v={`${fmtBond(toFloor)} ${BOND.symbol}`} />
         <Row k={`Your ${BOND.symbol}`} v={fmtBond(w.bal1)} />

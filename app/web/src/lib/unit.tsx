@@ -5,6 +5,7 @@ import { BOND_IS_WETH } from "./chain";
 import { fmtEth, fmtToken, fmtUsd } from "./format";
 import { bondToUsd } from "./math";
 import type { PoolState } from "./types";
+import { Segmented } from "@/components/ui";
 
 export type Unit = "usd" | "eth";
 const KEY = "hurdle-unit";
@@ -61,21 +62,9 @@ export const unitName = (u: Unit, bondIsWeth = BOND_IS_WETH) => (u === "usd" ? "
 export function UnitToggle({ className = "" }: { className?: string }) {
   const { unit, setUnit } = useUnit();
   return (
-    <div role="group" aria-label="Display unit" className={`inline-flex items-center gap-2 text-[12.5px] text-ink-2 ${className}`}>
+    <span className={`inline-flex items-center gap-2 text-[12.5px] text-ink-2 ${className}`}>
       <span aria-hidden>Show in</span>
-      <div className="flex gap-0.5 rounded-lg border border-line bg-bg-2 p-0.5">
-        {(["usd", "eth"] as const).map((u) => (
-          <button
-            key={u}
-            type="button"
-            aria-pressed={unit === u}
-            onClick={() => setUnit(u)}
-            className={`rounded-md px-2.5 py-1 text-[12.5px] font-medium transition-colors ${unit === u ? "bg-surface text-ink shadow-sm" : "text-ink-2 hover:text-ink"}`}
-          >
-            {unitName(u)}
-          </button>
-        ))}
-      </div>
-    </div>
+      <Segmented label="Display unit" value={unit} onChange={setUnit} className="[&>button]:h-[30px] [&>button]:px-3 [&>button]:text-[12.5px]" options={(["usd", "eth"] as const).map((u) => ({ v: u, label: unitName(u) }))} />
+    </span>
   );
 }

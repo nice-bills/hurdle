@@ -184,6 +184,7 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 }
 
 /* ------------------------------------------------------------------ C components */
+@layer components {
 .card { background: var(--surface); border-radius: 22px; }
 .dim { color: var(--ink-3); }
 /* segmented control: grey track, white thumb that slides (see Segmented in ui.tsx) */
@@ -201,3 +202,4 @@ input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
 .chart-tip .text-ink-2 { color: color-mix(in oklch, var(--bg) 62%, var(--ink)); }
 .chart-tip .text-good { color: var(--bar-2); }
 .chart-tip .text-bad { color: color-mix(in oklch, var(--bad) 70%, var(--bg)); }
+}
