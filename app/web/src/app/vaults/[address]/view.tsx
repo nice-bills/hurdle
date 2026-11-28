@@ -15,6 +15,8 @@ import { RangeBar } from "@/components/range-bar";
 import { Address, BondMeter, Chip, Note, Num, Panel, Segmented, SignedValue, Skeleton, SourceBadge, StatusPill, useNow } from "@/components/ui";
 import { epochInfo, vaultName } from "@/components/vault-list";
 import { IconAlert, IconBack, IconExternal } from "@/components/icons";
+import { Countdown, Flow } from "@/components/motion";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 
 type ChartView = "gap" | "level";
 
@@ -83,11 +85,11 @@ function Loaded({ d }: { d: VaultDetail }) {
       )}
 
       {/* scoreboard */}
-      <dl className="mt-6 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+      <dl className="stagger mt-6 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         <Cell k={`NAV (${unitName(unit, bondIsWeth)})`} v={fm(v.nav)} sub={v.nav ? `${moneyAlt(v.nav, price, unit, bondIsWeth)} · ETH $${price.toFixed(0)} TWAP` : ""} />
         <Cell
           k={`Depositors vs par (${unitName(unit)})`}
-          v={depVsPar != null ? <SignedValue v={depVsPar}>{fmtSignedPct(depVsPar, 3)}</SignedValue> : "–"}
+          v={depVsPar != null ? <SignedValue v={depVsPar}><Flow value={fmtSignedPct(depVsPar, 3)} /></SignedValue> : "–"}
           sub={stratVsPar != null ? `strategy ${fmtSignedPct(stratVsPar, 3)} · points of starting capital · ${v.totals.settlements} epochs` : "starts at the first settlement"}
         />
         <Cell
@@ -97,7 +99,7 @@ function Loaded({ d }: { d: VaultDetail }) {
         />
         <Cell
           k={v.fired ? "Epoch" : e.due ? "Epoch over" : "Epoch ends in"}
-          v={v.fired ? "parked" : e.due ? <span>settle due</span> : fmtDuration(e.left)}
+          v={v.fired ? "parked" : e.due ? <span>settle due</span> : <Countdown sec={e.left} />}
           sub={v.fired ? "" : e.windowOpen ? <span className="text-good">deposit window open</span> : "deposit window closed"}
         />
       </dl>
@@ -189,7 +191,7 @@ function Cell({ k, v, sub }: { k: string; v: React.ReactNode; sub?: React.ReactN
   return (
     <div className="card min-w-0 px-4 py-4 sm:px-5">
       <dt className="text-[12.5px] text-ink-2">{k}</dt>
-      <dd className="num mt-1 text-[20px] font-medium tracking-[-0.03em] sm:text-[24px]">{v}</dd>
+      <dd className="num mt-1 text-[20px] font-medium tracking-[-0.03em] sm:text-[24px]">{typeof v === "string" ? <Flow value={v} dim /> : v}</dd>
       {sub ? <dd className="num mt-0.5 text-[12.5px] text-ink-2">{sub}</dd> : null}
     </div>
   );
@@ -336,9 +338,11 @@ function describe(e: VaultEvent, unit: Unit, price: number, wethIs0: boolean): R
 /** The reference's transaction list: one row per hour, beat or missed, and what moved because of it. */
 function SettleHistory({ events, unit, price, wethIs0 }: { events: VaultEvent[]; unit: Unit; price: number; wethIs0: boolean }) {
   const settled = events.filter((e) => e.name === "Settled").slice(0, 6);
+  // AutoAnimate: a new settlement slides in at the top while the older rows move down
+  const [list] = useAutoAnimate<HTMLUListElement>({ duration: 320, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
   if (!settled.length) return <p className="text-[14px] text-ink-2">No settlement yet.</p>;
   return (
-    <ul className="-my-1 divide-y divide-line">
+    <ul ref={list} className="-my-1 divide-y divide-line">
       {settled.map((e) => {
         const a = e.args;
         const nav = BigInt(String(a.nav)), bench = BigInt(String(a.bench));

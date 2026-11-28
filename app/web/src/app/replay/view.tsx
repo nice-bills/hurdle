@@ -7,6 +7,8 @@ import { fmtSignedPct, utc } from "@/lib/format";
 import { Legend, ParChart } from "@/components/par-chart";
 import { BondMeter, Chip, Note, Num, Segmented, Skeleton } from "@/components/ui";
 import { IconAlert, IconPause, IconPlay, IconRestart } from "@/components/icons";
+import { Annotate, Flow } from "@/components/motion";
+import { AnimatePresence, motion } from "motion/react";
 
 const DURATION = 24; // seconds for a full 1× playback
 const ROLE: Record<string, { color: string; range: string; blurb: string }> = {
@@ -27,6 +29,7 @@ export function ReplayView() {
   const [speed, setSpeed] = useState(1);
   const raf = useRef(0);
   const lastTs = useRef(0);
+  const [finished, setFinished] = useState(0); // bumps each time a playback runs to the end
 
   useEffect(() => {
     setD(null); setErr(null); setPlaying(false);
@@ -42,7 +45,7 @@ export function ReplayView() {
       lastTs.current = ts;
       setPos((p) => {
         const np = p + (dt * (N - 1) * speed) / DURATION;
-        if (np >= N - 1) { setPlaying(false); return N - 1; }
+        if (np >= N - 1) { setPlaying(false); setFinished((f) => f + 1); return N - 1; }
         return np;
       });
       raf.current = requestAnimationFrame(step);
@@ -101,8 +104,8 @@ export function ReplayView() {
     d ? fn(...d.points.flatMap((q) => [q.par, ...names.flatMap((n) => [q.vaults[n].depositor, q.vaults[n].nav])])) - 1 : 0;
 
   return (
-    <div className="pt-8 sm:pt-10">
-      <header className="mx-auto max-w-[760px] text-center">
+    <div className="pt-8 sm:pt-10" data-playing={playing}>
+      <header className="replay-dim mx-auto max-w-[760px] text-center">
         <h1 className="text-balance text-[clamp(2rem,4.6vw,3rem)] font-medium leading-[1.05] tracking-[-0.04em]">Two real weeks, replayed through the hook</h1>
         <p className="mx-auto mt-3 max-w-[60ch] text-pretty text-[15.5px] leading-relaxed text-ink-2">
           Every swap of mainnet ETH/USDC (Uniswap v3, 0.05%) run through a local v4 pool with the Hurdle hook and two vaults, settled
@@ -125,7 +128,7 @@ export function ReplayView() {
       ) : (
         <>
           {/* the verdict first: where depositors ended, and the worst they ever were against par */}
-          <div className="mt-8 grid gap-2.5 sm:grid-cols-2">
+          <div className="stagger replay-dim mt-8 grid gap-2.5 sm:grid-cols-2">
             {names.map((n) => {
               const last = d.points[N - 1];
               const end = last.vaults[n].depositor - last.par;
@@ -136,9 +139,12 @@ export function ReplayView() {
                     <span className="h-2.5 w-2.5 rounded-full" style={{ background: ROLE[n]?.color }} />
                     {cap(n)} depositors at the end of the week
                   </div>
-                  <div className="num mt-1.5 text-[34px] font-medium leading-tight tracking-[-0.035em]"><Num value={fmtSignedPct(end).replace("%", " pts")} /></div>
+                  <div className="num mt-1.5 text-[34px] font-medium leading-tight tracking-[-0.035em]"><Num key={id} value={fmtSignedPct(end).replace("%", " pts")} /></div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Chip tone={held ? "good" : "bad"}>{held ? `Never below par in ${N - 1} settlements` : `Lowest ${fmtSignedPct(worst[n])} vs par`}</Chip>
+                    {/* after a full playback, the claim gets circled by hand (Rough Notation) */}
+                    <Annotate key={`${id}-${finished}`} type="box" color={held ? "var(--good)" : "var(--bad)"} show={finished > 0} padding={3} delay={250}>
+                      <Chip tone={held ? "good" : "bad"}>{held ? `Never below par in ${N - 1} settlements` : `Lowest ${fmtSignedPct(worst[n])} vs par`}</Chip>
+                    </Annotate>
                     {firedAt[n] != null && <Chip tone="bad">Curator fired</Chip>}
                   </div>
                 </div>
@@ -150,17 +156,27 @@ export function ReplayView() {
             <section className="card min-w-0 p-4 sm:p-5" aria-label="Chart">
               <Legend items={[{ label: "Par", kind: "par" }, ...names.flatMap((n) => [{ label: `${cap(n)} depositors`, kind: "solid" as const, color: ROLE[n]?.color }, { label: `${cap(n)} NAV`, kind: "dash" as const, color: ROLE[n]?.color }]), { label: "below par", kind: "area" as const }]} />
               <div aria-live="polite" className="mt-3 space-y-1.5 empty:hidden">
-                {names.filter((n) => firedAt[n] != null && firedAt[n] <= (d.points[i]?.t ?? 0)).map((n) => (
-                  <div key={n} className="fade-in flex items-start gap-2 rounded-2xl bg-bad-soft px-3 py-2.5 text-[13px]">
-                    <IconAlert size={14} className="mt-0.5 shrink-0 text-bad" />
-                    <span><b className="font-semibold text-bad">{cap(n)} fired · {utc(firedAt[n])}.</b> A miss left the bond below half the floor; the vault parked passive. Depositors still at or above par.</span>
-                  </div>
-                ))}
+                <AnimatePresence initial={false}>
+                  {names.filter((n) => firedAt[n] != null && firedAt[n] <= (d.points[i]?.t ?? 0)).map((n) => (
+                    <motion.div
+                      key={n}
+                      initial={{ opacity: 0, transform: "translateY(-8px) scale(0.98)" }}
+                      animate={{ opacity: 1, transform: "translateY(0px) scale(1)" }}
+                      exit={{ opacity: 0, transform: "translateY(-4px) scale(0.98)", transition: { duration: 0.15 } }}
+                      transition={{ type: "spring", duration: 0.45, bounce: 0.2 }}
+                      className="flex items-start gap-2 rounded-2xl bg-bad-soft px-3 py-2.5 text-[13px]"
+                    >
+                      <IconAlert size={14} className="mt-0.5 shrink-0 text-bad" />
+                      <span><b className="font-semibold text-bad">{cap(n)} fired · {utc(firedAt[n])}.</b> A miss left the bond below half the floor; the vault parked passive. Depositors still at or above par.</span>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
               <div className="mt-3">
                 <ParChart
                   t={d.points.map((q) => q.t)}
                   pos={pos}
+                  revealKey={id}
                   height={320}
                   belowPar
                   ariaLabel="Depositor value and NAV of each vault against par over the week"
@@ -192,6 +208,7 @@ export function ReplayView() {
                 <ParChart
                   t={d.points.map((q) => q.t)}
                   pos={pos}
+                  revealKey={id}
                   height={96}
                   includeZero={false}
                   ariaLabel="ETH price in USDC over the week"
@@ -237,7 +254,11 @@ export function ReplayView() {
           {/* player: floats above the phone tab bar */}
           <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-[var(--z-sticky)] mt-2.5 flex flex-wrap items-center gap-2.5 rounded-[26px] bg-surface/95 px-2.5 py-2.5 shadow-[0_12px_32px_-12px_oklch(0.2_0.01_270/0.35)] backdrop-blur md:bottom-3 md:rounded-full">
             <button onClick={() => (playing ? setPlaying(false) : play())} className="inline-flex h-10 min-w-[100px] items-center justify-center gap-2 rounded-full bg-ink px-4 font-medium text-bg transition-transform active:scale-[0.97]" aria-label={playing ? "Pause" : "Play"}>
-              {playing ? <IconPause size={15} /> : <IconPlay size={15} />}
+              <AnimatePresence mode="popLayout" initial={false}>
+                <motion.span key={playing ? "pause" : "play"} className="grid place-items-center" initial={{ opacity: 0, transform: "scale(0.6)" }} animate={{ opacity: 1, transform: "scale(1)" }} exit={{ opacity: 0, transform: "scale(0.6)" }} transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}>
+                  {playing ? <IconPause size={15} /> : <IconPlay size={15} />}
+                </motion.span>
+              </AnimatePresence>
               {playing ? "Pause" : pos >= N - 1 ? "Replay" : "Play"}
             </button>
             <button onClick={() => { setPlaying(false); setPos(0); }} className="grid h-10 w-10 place-items-center rounded-full bg-bg-2 hover:bg-bg-3" aria-label="Restart">
@@ -245,7 +266,7 @@ export function ReplayView() {
             </button>
             <input type="range" min={0} max={N - 1} step={0.01} value={pos} onChange={(e) => { setPlaying(false); setPos(+e.target.value); }} aria-label="Time" className="order-last h-8 w-full accent-[var(--ink)] sm:order-none sm:w-auto sm:flex-1" />
             <Segmented label="Speed" value={String(speed)} onChange={(x) => setSpeed(+x)} options={[1, 2, 4].map((x) => ({ v: String(x), label: `${x}×` }))} className="[&>button]:h-[30px] [&>button]:px-2.5" />
-            <span className="num ml-auto pr-2 text-[12.5px] text-ink-2 sm:ml-0">Day {Math.min(Math.floor((p!.t - d.points[0].t) / 86400) + 1, 7)} · {utc(p!.t)}</span>
+            <span className="num ml-auto pr-2 text-[12.5px] text-ink-2 sm:ml-0">Day <Flow countUp={false} value={String(Math.min(Math.floor((p!.t - d.points[0].t) / 86400) + 1, 7))} /> · {utc(p!.t)}</span>
           </div>
           <p className="mt-3 px-1 text-[12px] text-ink-3">Keys: space play/pause, ←/→ step one settlement, Home/End. Source: <code className="font-mono">test/Replay.t.sol</code>; on-chain par matches an offchain computation within 0.001 bp at every settlement.</p>
         </>

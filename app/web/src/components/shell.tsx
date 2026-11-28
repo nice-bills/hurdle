@@ -4,6 +4,7 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { motion } from "motion/react";
 import { HurdleMark, IconChart, IconHome, IconMenu, IconMoon, IconSun, IconSwap, IconVaults, IconX } from "./icons";
 import { useTheme } from "./providers";
 import { D, addrUrl } from "@/lib/chain";
@@ -44,11 +45,14 @@ export function Header() {
               key={n.href}
               href={n.href}
               aria-current={active(n.href) ? "page" : undefined}
-              className={`rounded-full px-3.5 py-1.5 text-[13.5px] transition-colors duration-150 ${
-                active(n.href) ? "bg-surface font-medium text-ink shadow-[0_1px_2px_oklch(0_0_0/0.08)]" : "text-ink-2 hover:text-ink"
+              className={`relative rounded-full px-3.5 py-1.5 text-[13.5px] transition-colors duration-150 ${
+                active(n.href) ? "font-medium text-ink" : "text-ink-2 hover:text-ink"
               }`}
             >
-              {n.label}
+              {active(n.href) && (
+                <motion.span layoutId="nav-pill" aria-hidden className="absolute inset-0 rounded-full bg-surface shadow-[0_1px_2px_oklch(0_0_0/0.08)]" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />
+              )}
+              <span className="relative">{n.label}</span>
             </Link>
           ))}
         </nav>
@@ -106,10 +110,13 @@ export function TabBar() {
           key={href}
           href={href}
           aria-current={on(href) ? "page" : undefined}
-          className={`grid min-w-[64px] justify-items-center gap-0.5 rounded-full px-2 py-1.5 text-[11px] ${on(href) ? "text-ink" : "text-ink-3"}`}
+          className={`relative grid min-w-[64px] justify-items-center gap-0.5 rounded-full px-2 py-1.5 text-[11px] transition-[color,transform] duration-150 active:scale-95 ${on(href) ? "text-ink" : "text-ink-3"}`}
         >
-          <Icon size={21} />
-          {label}
+          {on(href) && (
+            <motion.span layoutId="tab-pill" aria-hidden className="absolute inset-0 rounded-full bg-bg-2" transition={{ type: "spring", duration: 0.4, bounce: 0.15 }} />
+          )}
+          <Icon size={21} className="relative" />
+          <span className="relative">{label}</span>
         </Link>
       ))}
     </nav>

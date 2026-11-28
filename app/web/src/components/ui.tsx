@@ -5,6 +5,7 @@ import { addrUrl, txUrl } from "@/lib/chain";
 import { short } from "@/lib/format";
 import type { DataSource, VaultStatus } from "@/lib/types";
 import { IconAlert, IconCheck, IconCopy, IconExternal, IconSnow } from "./icons";
+import { Flow } from "./motion";
 
 export function useNow(intervalMs = 1000) {
   const [now, setNow] = useState(() => Date.now() / 1000);
@@ -72,7 +73,7 @@ export function Segmented<T extends string>({ value, onChange, options, label, t
 /** Round white icon button (the reference's bell / plus / back). */
 export function RoundButton({ label, children, onClick, className = "" }: { label: string; children: ReactNode; onClick?: () => void; className?: string }) {
   return (
-    <button type="button" aria-label={label} onClick={onClick} className={`grid h-10 w-10 shrink-0 place-items-center rounded-full bg-surface text-ink transition-transform duration-150 active:scale-95 ${className}`}>
+    <button type="button" aria-label={label} onClick={onClick} className={`grid h-10 w-10 shrink-0 place-items-center rounded-full bg-surface text-ink transition-[transform,background-color] duration-150 hover:bg-bg-3 active:scale-95 ${className}`}>
       {children}
     </button>
   );
@@ -80,12 +81,8 @@ export function RoundButton({ label, children, onClick, className = "" }: { labe
 
 /** A number with its decimals in light grey ("$248" + ".9k"). */
 export function Num({ value, className = "" }: { value: string; className?: string }) {
-  const m = value.match(/^([^.]*)(\.\d+)(.*)$/);
-  return (
-    <span className={`num ${className}`}>
-      {m ? (<>{m[1]}<span className="dim">{m[2]}{m[3]}</span></>) : value}
-    </span>
-  );
+  // rolls digit by digit (NumberFlow) and counts up the first time it is seen
+  return <Flow value={value} dim className={`num ${className}`} />;
 }
 
 export function Address({ value, kind = "address", chars = 4, className = "" }: { value: string; kind?: "address" | "tx"; chars?: number; className?: string }) {
@@ -124,7 +121,9 @@ export function BondMeter({ bondBps, minBondBps, compact = false }: { bondBps: n
   return (
     <div className="w-full" role="meter" aria-valuenow={v ?? undefined} aria-valuemin={0} aria-valuemax={max} aria-label={`Bond ${v?.toFixed(2) ?? "unknown"}% of NAV, floor ${floor}%, fire line ${fire}%`}>
       <div className={`relative rounded-full bg-bg-3 ${compact ? "h-1" : "h-1.5"}`}>
-        <div className={`absolute inset-y-0 left-0 rounded-full ${tone} transition-[width] duration-700 ease-[var(--ease-out-quart)]`} style={{ width: v == null ? 0 : pos(v) }} />
+        <div className="absolute inset-y-0 left-0 transition-[width] duration-700 ease-[var(--ease-out)]" style={{ width: v == null ? 0 : pos(v) }}>
+          <div className={`grow-x h-full w-full rounded-full ${tone}`} />
+        </div>
         {!compact && <span className="absolute -inset-y-1 w-[2px] -translate-x-1/2 rounded bg-surface shadow-[0_0_0_1px_var(--line-2)]" style={{ left: pos(floor) }} />}
         {!compact && <span className="absolute -inset-y-1 w-[2px] -translate-x-1/2 rounded bg-surface shadow-[0_0_0_1px_var(--bad)]" style={{ left: pos(fire) }} />}
       </div>

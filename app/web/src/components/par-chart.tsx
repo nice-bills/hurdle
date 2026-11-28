@@ -31,6 +31,9 @@ type Props = {
   /** axis titles: unit and basis of the y axis, what the x axis is */
   yTitle?: string;
   xTitle?: string;
+  /** draw the lines in left to right on mount (CSS clip-path); change `revealKey` to draw again */
+  reveal?: boolean;
+  revealKey?: string | number;
 };
 
 function nice(lo: number, hi: number) {
@@ -46,7 +49,7 @@ function nice(lo: number, hi: number) {
   return { lo, hi, ticks };
 }
 
-export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = (v) => v.toFixed(2), xFormat, tooltip, belowPar, ariaLabel, dots, fixedDomain, includeZero = true, yTitle, xTitle }: Props) {
+export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = (v) => v.toFixed(2), xFormat, tooltip, belowPar, ariaLabel, dots, fixedDomain, includeZero = true, yTitle, xTitle, reveal = true, revealKey }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
@@ -134,6 +137,7 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
               {xFormat!(ts)}
             </text>
           ))}
+          <g key={revealKey} className={reveal ? "chart-reveal" : undefined}>
           {belowPar && par && pts(par.values).length > 1 && (
             <path d={`${path(pts(par.values))}L${pts(par.values).at(-1)![0]} ${g.t + ih}L${pts(par.values)[0][0]} ${g.t + ih}Z`} fill="var(--bad-soft)" opacity={0.45} />
           )}
@@ -146,11 +150,13 @@ export function ParChart({ t, lines, height = 300, pos, markers = [], yFormat = 
             return (
               <g key={l.id}>
                 <path d={path(p)} fill="none" stroke={l.color} strokeWidth={l.width ?? (l.kind === "dash" ? 1.5 : 2.25)} strokeDasharray={l.kind === "dash" ? "5 4" : undefined} strokeLinejoin="round" strokeLinecap="round" />
+                {l.kind === "solid" && hover == null && <circle className="ping" cx={p.at(-1)![0]} cy={p.at(-1)![1]} r={4} fill={l.color} aria-hidden />}
                 {l.kind === "solid" && <circle cx={p.at(-1)![0]} cy={p.at(-1)![1]} r={4} fill="var(--surface)" stroke={l.color} strokeWidth={2} />}
                 {dots && l.kind === "solid" && p.map((q, i) => <circle key={i} cx={q[0]} cy={q[1]} r={2} fill={l.color} />)}
               </g>
             );
           })}
+          </g>
           {markers.filter((m) => N > 1 && m.t <= interp(t, end) + 1e-9).map((m, k) => {
             const x = X(m.t);
             const right = x > w * 0.6;

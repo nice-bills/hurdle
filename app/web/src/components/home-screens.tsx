@@ -53,7 +53,7 @@ function OverviewScreen() {
   return (
     <Screen id="s-overview" title="Overview" sub="Live on Unichain Sepolia" action={error ? null : <SourceBadge source={data?.source} head={data?.head} />}>
       {error ? <p className="card mb-2.5 p-4 text-[13px] text-bad">Chain read failed: {(error as Error).message}</p> : null}
-      <Link href={v ? `/vaults/${v.address}` : "/vaults"} className="card block p-4">
+      <Link href={v ? `/vaults/${v.address}` : "/vaults"} className="card lift block p-4">
         <div className="flex items-center justify-between gap-2 text-[12.5px] text-ink-2">
           <span>{v ? `${vaultName(v)} · you vs par` : "You vs par"}</span>
           {v ? <StatusPill status={v.status} size="sm" /> : null}
@@ -103,7 +103,7 @@ function VaultsScreen() {
       title="Vaults"
       sub={data ? `${data.vaults.length} curators with a bond up` : "Curators with a bond up"}
       action={
-        <Link href="/vaults" className="inline-flex h-10 items-center gap-1 rounded-full bg-surface px-3.5 text-[13px] font-medium">
+        <Link href="/vaults" className="inline-flex h-10 items-center gap-1 rounded-full bg-surface px-3.5 text-[13px] font-medium transition-[transform,background-color] duration-150 hover:bg-bg-3 active:scale-[0.97]">
           All <IconArrow size={14} />
         </Link>
       }
@@ -116,7 +116,7 @@ function VaultsScreen() {
 function Rule({ tone, icon, head, body }: { tone: "good" | "bad" | "ice"; icon: ReactNode; head: string; body: string }) {
   const c = { good: "bg-good-soft text-good", bad: "bg-bad-soft text-bad", ice: "bg-ice-soft text-ice" }[tone];
   return (
-    <li className="card flex gap-3 p-3.5">
+    <li className="card lift flex gap-3 p-3.5">
       <span aria-hidden className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${c}`}>{icon}</span>
       <div>
         <div className="text-[14.5px] font-medium">{head}</div>
@@ -144,7 +144,7 @@ function RulesScreen() {
 
 export function HomeScreens() {
   return (
-    <div className="grid gap-10 md:gap-4 lg:grid-cols-3">
+    <div className="stagger grid gap-10 md:gap-4 lg:grid-cols-3">
       <OverviewScreen />
       <VaultsScreen />
       <RulesScreen />

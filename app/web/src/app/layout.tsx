@@ -3,6 +3,7 @@ import { Host_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Footer, Header, TabBar } from "@/components/shell";
+import { MotionRoot } from "@/components/motion";
 
 const sans = Host_Grotesk({ subsets: ["latin"], variable: "--font-host", display: "swap", weight: ["400", "500", "600", "700"] });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jbm", display: "swap", weight: ["400", "500"] });
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-dvh">
         <Providers>
+          <MotionRoot>
           <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[var(--z-toast)] focus:rounded-md focus:bg-surface focus:px-3 focus:py-2">
             Skip to content
           </a>
@@ -44,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </main>
           <Footer />
           <TabBar />
+          </MotionRoot>
         </Providers>
       </body>
     </html>
