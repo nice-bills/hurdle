@@ -15,6 +15,7 @@ import { fmtBond, markPrice } from "@/lib/unit";
 import { epochInfo } from "./vault-list";
 import { RangeBar } from "./range-bar";
 import { Note, Segmented, btn, inputCls, useNow } from "./ui";
+import { Countdown } from "./motion";
 
 type Tab = "deposit" | "withdraw" | "settle" | "curator";
 
@@ -301,7 +302,7 @@ function SettlePanel({ vault }: { vault: VaultSummary }) {
     <div className="space-y-4">
       <div className="rounded-2xl bg-bg-2 p-4 text-center">
         <div className="text-[12.5px] text-ink-2">{e.due ? "Epoch ended" : "Epoch ends in"}</div>
-        <div className={`tnum mt-1 text-[28px] font-semibold tracking-tight ${e.due ? "text-you" : ""}`}>{e.due ? "Settle now" : fmtDuration(e.left)}</div>
+        <div className={`tnum mt-1 text-[28px] font-semibold tracking-tight ${e.due ? "text-you" : ""}`}>{e.due ? "Settle now" : <Countdown sec={e.left} />}</div>
         <div className="num mt-1 text-[12px] text-ink-2">epoch {fmtDuration(vault.epochSeconds)} · started {new Date(vault.epochStart * 1000).toISOString().slice(11, 16)} UTC</div>
       </div>
       <p className="text-[13.5px] leading-relaxed text-ink-2">

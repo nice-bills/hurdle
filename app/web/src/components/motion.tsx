@@ -10,10 +10,11 @@
  * Everything respects prefers-reduced-motion and animates transform / opacity only.
  */
 
-import NumberFlow from "@number-flow/react";
+import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
+import { fmtDuration } from "@/lib/format";
 import { Dithering } from "@paper-design/shaders-react";
 import { MotionConfig, useReducedMotion, useSpring } from "motion/react";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { annotate } from "rough-notation";
 import { useTheme } from "./providers";
 
@@ -21,19 +22,19 @@ export function MotionRoot({ children }: { children: ReactNode }) {
   return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
 }
 
-/** true once the element has been at least partly on screen (never flips back). */
+/** true once the element has been at least partly on screen (never flips back). Returns a callback ref, so it follows
+ *  the element even when a skeleton is swapped for the real thing. */
 export function useSeen<T extends Element>(margin = "0px 0px -8% 0px") {
-  const ref = useRef<T>(null);
+  const [el, setEl] = useState<T | null>(null);
   const [seen, setSeen] = useState(false);
   useEffect(() => {
-    const el = ref.current;
     if (!el || seen) return;
     if (typeof IntersectionObserver === "undefined") return setSeen(true);
     const io = new IntersectionObserver(([e]) => e.isIntersecting && setSeen(true), { rootMargin: margin });
     io.observe(el);
     return () => io.disconnect();
-  }, [seen, margin]);
-  return [ref, seen] as const;
+  }, [el, seen, margin]);
+  return [setEl as (node: T | null) => void, seen, el] as const;
 }
 
 const NUM_RE = /^([^\d]*?)(\d[\d,]*)(?:\.(\d+))?([\s\S]*)$/;
@@ -124,16 +125,15 @@ type AnnotateType = "underline" | "box" | "circle" | "highlight";
 export function Annotate({ children, type = "underline", color = "var(--bar)", show = true, delay = 0, padding = 2, className = "" }: {
   children: ReactNode; type?: AnnotateType; color?: string; show?: boolean; delay?: number; padding?: number; className?: string;
 }) {
-  const [ref, seen] = useSeen<HTMLSpanElement>();
+  const [ref, seen, el] = useSeen<HTMLSpanElement>();
   const reduce = useReducedMotion();
   useEffect(() => {
-    const el = ref.current;
     if (!el || !seen || !show) return;
     const resolved = color.startsWith("var(") ? getComputedStyle(el).getPropertyValue(color.slice(4, -1)).trim() || "currentColor" : color;
     const a = annotate(el, { type, color: resolved, strokeWidth: type === "underline" ? 2.5 : 2, padding, iterations: 1, animate: !reduce, animationDuration: 700, multiline: true });
     const t = setTimeout(() => a.show(), delay);
     return () => { clearTimeout(t); a.remove(); };
-  }, [seen, show, type, color, delay, padding, reduce, ref]);
+  }, [seen, show, type, color, delay, padding, reduce, el]);
   return <span ref={ref} className={className}>{children}</span>;
 }
 
@@ -149,5 +149,23 @@ export function WordsIn({ text, from = 0, step = 40, base = 0 }: { text: string;
         </Fragment>
       ))}
     </>
+  );
+}
+
+/** Epoch countdown in fmtDuration's shape ("59m 07s"), each unit rolling as the seconds tick. */
+export function Countdown({ sec, className = "" }: { sec: number; className?: string }) {
+  const s = Math.max(0, Math.floor(sec));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  const t = { duration: 450, easing: "cubic-bezier(0.23, 1, 0.32, 1)" };
+  const unit = (v: number, suffix: string, pad: boolean) => (
+    <NumberFlow aria-hidden className="flow" value={v} suffix={suffix} format={{ minimumIntegerDigits: pad ? 2 : 1 }} transformTiming={t} spinTiming={t} trend={-1} />
+  );
+  return (
+    <span className={`relative inline-block whitespace-nowrap ${className}`}>
+      <span className="sr-only">{fmtDuration(s)}</span>
+      <NumberFlowGroup>
+        {h > 0 ? <>{unit(h, "h", false)} {unit(m, "m", true)}</> : m > 0 ? <>{unit(m, "m", false)} {unit(r, "s", true)}</> : unit(r, "s", false)}
+      </NumberFlowGroup>
+    </span>
   );
 }

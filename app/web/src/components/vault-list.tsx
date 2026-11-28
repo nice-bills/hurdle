@@ -7,6 +7,7 @@ import { BOND_IS_WETH } from "@/lib/chain";
 import { money, useUnit, type Unit } from "@/lib/unit";
 import type { VaultSummary } from "@/lib/types";
 import { BondMeter, Chip, StatusPill, useNow } from "./ui";
+import { Countdown } from "./motion";
 
 export function epochInfo(v: Pick<VaultSummary, "epochStart" | "epochSeconds" | "fired">, now: number) {
   const end = v.epochStart + v.epochSeconds;
@@ -49,7 +50,7 @@ export function VaultCard({ v, price, bondIsWeth = BOND_IS_WETH, compact = false
   return (
     <Link
       href={`/vaults/${v.address}`}
-      className="card group block p-4 transition-transform duration-200 ease-[var(--ease-out-quart)] hover:-translate-y-0.5"
+      className="card lift group block p-4"
     >
       <div className="flex items-center gap-3">
         <Monogram name={name} />
@@ -84,9 +85,9 @@ export function VaultCard({ v, price, bondIsWeth = BOND_IS_WETH, compact = false
         ) : e.due ? (
           <Chip tone="ink">Settle due</Chip>
         ) : !compact && e.windowOpen ? (
-          <Chip tone="good">Deposits open · {fmtDuration(e.windowLeft)}</Chip>
+          <Chip tone="good">Deposits open · <Countdown sec={e.windowLeft} className="ml-1" /></Chip>
         ) : (
-          <Chip><span className="num">Settles in {fmtDuration(e.left)}</span></Chip>
+          <Chip><span className="num">Settles in <Countdown sec={e.left} /></span></Chip>
         )}
       </div>
     </Link>
@@ -96,7 +97,7 @@ export function VaultCard({ v, price, bondIsWeth = BOND_IS_WETH, compact = false
 /** `price` = USD per ETH at the hook TWAP (what the contract marks NAV at). */
 export function VaultList({ vaults, price, compact = false, bondIsWeth = BOND_IS_WETH }: { vaults: VaultSummary[]; price: number; compact?: boolean; bondIsWeth?: boolean }) {
   return (
-    <ul className={`grid gap-2.5 ${compact ? "" : "sm:grid-cols-2 lg:grid-cols-3"}`}>
+    <ul className={`stagger grid gap-2.5 ${compact ? "" : "sm:grid-cols-2 lg:grid-cols-3"}`}>
       {vaults.map((v) => (
         <li key={v.address}>
           <VaultCard v={v} price={price} bondIsWeth={bondIsWeth} compact={compact} />

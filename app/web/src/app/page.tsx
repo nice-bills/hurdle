@@ -2,27 +2,31 @@ import Link from "next/link";
 import { HeroChart } from "@/components/hero-chart";
 import { HomeScreens } from "@/components/home-screens";
 import { IconArrow } from "@/components/icons";
+import { Annotate, HeroField, WordsIn } from "@/components/motion";
 
 export default function Home() {
   return (
     <div className="pb-8">
-      <section className="mx-auto max-w-[920px] pb-12 pt-10 text-center sm:pb-14 sm:pt-16">
-        <p className="mb-5 inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1 text-[12.5px] text-ink-2">
+      <section className="relative isolate mx-auto max-w-[920px] pb-12 pt-10 text-center sm:pb-14 sm:pt-16">
+        <HeroField />
+        <p className="rise mb-5 inline-flex items-center gap-2 rounded-full bg-surface px-3 py-1 text-[12.5px] text-ink-2">
           <span className="bar-hatch h-[2px] w-4" />
           Uniswap v4 hook · curated liquidity
         </p>
         <h1 className="text-balance text-[clamp(2.3rem,5.4vw,3.6rem)] font-medium leading-[1.03] tracking-[-0.04em]">
-          Your curator must beat par every hour, or their bond pays you.
+          <WordsIn text="Your curator must" base={80} />{" "}
+          <Annotate type="underline" delay={900} padding={1}><WordsIn text="beat par" from={3} base={80} /></Annotate>{" "}
+          <WordsIn text="every hour, or their bond pays you." from={5} base={80} />
         </h1>
-        <p className="mx-auto mt-5 max-w-[54ch] text-pretty text-[16.5px] leading-relaxed text-ink-2">
+        <p style={{ animationDelay: "420ms" }} className="rise mx-auto mt-5 max-w-[54ch] text-pretty text-[16.5px] leading-relaxed text-ink-2">
           Par is what a passive full-range LP would have earned, read from the pool itself. A miss is paid from the
           curator&apos;s bond. Carry is earned only above par.
         </p>
-        <div className="mt-7 flex flex-wrap justify-center gap-2.5">
-          <Link href="/vaults" className="inline-flex h-12 items-center gap-2 rounded-full bg-ink px-6 text-[15px] font-medium text-bg transition-transform active:scale-[0.97]">
+        <div style={{ animationDelay: "500ms" }} className="rise mt-7 flex flex-wrap justify-center gap-2.5">
+          <Link href="/vaults" className="inline-flex h-12 items-center gap-2 rounded-full bg-ink px-6 text-[15px] font-medium text-bg transition-[transform,opacity] duration-150 hover:opacity-90 active:scale-[0.97]">
             Open a vault <IconArrow size={16} />
           </Link>
-          <Link href="/replay" className="inline-flex h-12 items-center rounded-full bg-surface px-6 text-[15px] font-medium transition-transform active:scale-[0.97]">
+          <Link href="/replay" className="inline-flex h-12 items-center rounded-full bg-surface px-6 text-[15px] font-medium transition-[transform,background-color] duration-150 hover:bg-bg-2 active:scale-[0.97]">
             Watch a real week
           </Link>
         </div>

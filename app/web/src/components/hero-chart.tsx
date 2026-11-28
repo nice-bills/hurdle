@@ -7,17 +7,20 @@ import { fmtSignedPct } from "@/lib/format";
 import { Legend, ParChart } from "./par-chart";
 import { Skeleton } from "./ui";
 import { IconArrow } from "./icons";
+import { useSeen } from "./motion";
 
 /** Real replay data drawn on load: Patient's depositors versus the hatched par bar. */
 export function HeroChart() {
   const [d, setD] = useState<ReplayData | null>(null);
   const [pos, setPos] = useState<number | undefined>(undefined);
   const raf = useRef(0);
+  const [seenRef, seen] = useSeen<HTMLDivElement>();
   useEffect(() => {
     loadReplay("range-week").then(setD).catch(() => {});
   }, []);
   useEffect(() => {
     if (!d) return;
+    if (!seen) return setPos(0); // wait until the chart scrolls into view, then draw the week
     const N = d.points.length - 1;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return setPos(undefined);
     const t0 = performance.now();
@@ -30,11 +33,11 @@ export function HeroChart() {
     };
     raf.current = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf.current);
-  }, [d]);
+  }, [d, seen]);
 
   if (!d)
     return (
-      <div className="relative h-[300px] w-full" role="status" aria-label="Loading chart">
+      <div ref={seenRef} className="relative h-[300px] w-full" role="status" aria-label="Loading chart">
         <Skeleton className="h-full w-full" />
         <svg aria-hidden className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
           <path d="M0 62 C12 58 20 70 32 55 S52 40 62 48 S84 30 100 34" fill="none" stroke="var(--ink-3)" strokeWidth="1.5" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
@@ -46,13 +49,14 @@ export function HeroChart() {
   const last = P[P.length - 1];
   const dep = last.vaults.patient.depositor - last.par;
   return (
-    <figure className="m-0">
+    <figure ref={seenRef} className="m-0">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <Legend items={[{ label: "Par: passive full-range LP", kind: "par" }, { label: "Patient depositors", kind: "solid", color: "var(--you)" }, { label: "Patient strategy NAV", kind: "dash", color: "var(--ink-2)" }]} />
       </div>
       <ParChart
         t={t}
         pos={pos}
+        reveal={false}
         height={280}
         ariaLabel="Patient vault depositors versus par over a real week of ETH/USDC swaps"
         yFormat={(v) => fmtSignedPct(v, 1)}
