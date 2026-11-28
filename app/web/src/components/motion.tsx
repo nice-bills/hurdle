@@ -55,8 +55,8 @@ export function Flow({ value, dim = false, countUp = true, className = "" }: { v
   return (
     <span ref={ref} className={`relative inline-block ${className}`}>
       <span className="sr-only">{value}</span>
+      <span aria-hidden="true">
       <NumberFlow
-        aria-hidden
         className={`flow ${dim ? "flow-dim" : ""}`}
         value={shown}
         prefix={prefix || undefined}
@@ -66,6 +66,7 @@ export function Flow({ value, dim = false, countUp = true, className = "" }: { v
         spinTiming={{ duration: 750, easing: "cubic-bezier(0.23, 1, 0.32, 1)" }}
         opacityTiming={{ duration: 300, easing: "ease-out" }}
       />
+      </span>
     </span>
   );
 }
@@ -97,7 +98,7 @@ export function HeroField() {
     addEventListener("pointermove", onMove, { passive: true });
     return () => { removeEventListener("pointermove", onMove); ux(); uy(); };
   }, [reduce, ox, oy]);
-  const front = mode === "dark" ? "rgba(92, 204, 133, 0.30)" : "rgba(47, 154, 92, 0.22)";
+  const front = mode === "dark" ? "rgba(92, 204, 133, 0.17)" : "rgba(47, 154, 92, 0.16)";
   return (
     <div ref={ref} aria-hidden className="hero-field pointer-events-none absolute inset-0 -z-10 overflow-hidden">
       {ok && seen && (
@@ -158,14 +159,16 @@ export function Countdown({ sec, className = "" }: { sec: number; className?: st
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
   const t = { duration: 450, easing: "cubic-bezier(0.23, 1, 0.32, 1)" };
   const unit = (v: number, suffix: string, pad: boolean) => (
-    <NumberFlow aria-hidden className="flow" value={v} suffix={suffix} format={{ minimumIntegerDigits: pad ? 2 : 1 }} transformTiming={t} spinTiming={t} trend={-1} />
+    <NumberFlow className="flow" value={v} suffix={suffix} format={{ minimumIntegerDigits: pad ? 2 : 1 }} transformTiming={t} spinTiming={t} trend={-1} />
   );
   return (
     <span className={`relative inline-block whitespace-nowrap ${className}`}>
       <span className="sr-only">{fmtDuration(s)}</span>
+      <span aria-hidden="true">
       <NumberFlowGroup>
         {h > 0 ? <>{unit(h, "h", false)} {unit(m, "m", true)}</> : m > 0 ? <>{unit(m, "m", false)} {unit(r, "s", true)}</> : unit(r, "s", false)}
       </NumberFlowGroup>
+      </span>
     </span>
   );
 }

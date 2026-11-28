@@ -180,8 +180,8 @@ function SwapForm({ pool }: { pool: ReturnType<typeof usePool>["data"] | null })
           {bal > 0n && <button type="button" className="hover:underline" onClick={() => setAmt(fmtToken(bal / 4n, tin.decimals).replace(/,/g, ""))}>25%</button>}
         </div>
       </div>
-      <button type="button" onClick={() => { setSellUsdc((x) => !x); setAmt(""); }} className="relative z-10 mx-auto -my-6 grid h-10 w-10 place-items-center rounded-full bg-surface text-ink shadow-[0_0_0_4px_var(--surface)] transition-transform hover:rotate-180 duration-300" aria-label="Flip direction">
-        <IconSwap size={16} />
+      <button type="button" onClick={() => { setSellUsdc((x) => !x); setAmt(""); }} className="relative z-10 mx-auto -my-6 grid h-10 w-10 place-items-center rounded-full bg-surface text-ink shadow-[0_0_0_4px_var(--surface)] transition-[transform,background-color] duration-150 hover:bg-bg-3 active:scale-90" aria-label="Flip direction">
+        <IconSwap size={16} className="transition-transform duration-300 ease-[var(--ease-in-out)]" style={{ transform: `rotate(${sellUsdc ? 180 : 0}deg)` }} />
       </button>
       <div className="rounded-2xl bg-bg-2 p-4">
         <div className="text-[13px] text-ink-2">You receive (estimate)</div>

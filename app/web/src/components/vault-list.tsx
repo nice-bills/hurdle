@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { DEPOSIT_WINDOW } from "@/lib/chain";
-import { fmtDuration, fmtSignedPct, short } from "@/lib/format";
+import { fmtSignedPct, short } from "@/lib/format";
 import { BOND_IS_WETH } from "@/lib/chain";
 import { money, useUnit, type Unit } from "@/lib/unit";
 import type { VaultSummary } from "@/lib/types";
